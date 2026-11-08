@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>IPTVKZ</title>
+<style>
+  html, body { height: 100%; margin: 0; background: #08080b; color: #f4f4f8; font-family: "LG Smart", "Segoe UI", Arial, sans-serif; overflow: hidden; }
+  #wrap { height: 100%; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; }
+  img { width: 130px; height: 130px; border-radius: 24px; margin-bottom: 24px; }
+  h1 { font-size: 40px; margin: 0 0 10px; }
+  p { font-size: 26px; color: #9c9cb2; margin: 0 0 26px; text-align: center; }
+  #addr { width: 640px; height: 76px; line-height: 76px; text-align: center; font-size: 40px; font-weight: 700; background: #14141d; border: 2px solid #33334a; border-radius: 14px; margin-bottom: 14px; }
+  #err { height: 36px; font-size: 26px; color: #ff8a8a; margin-bottom: 14px; }
+  #pad { width: 640px; }
+  .row { display: -webkit-flex; display: flex; }
+  .key { -webkit-flex: 1; flex: 1; height: 72px; line-height: 72px; margin: 5px; text-align: center; font-size: 34px; font-weight: 700; background: #222230; border-radius: 12px; border: 3px solid transparent; }
+  .key.wide { font-size: 30px; }
+  .key.go { background: #ff2a2a; }
+  .key.sel { border-color: #fff; background: #ff2a2a; }
+  .hide { display: none !important; }
+  /* ao reconectar sozinho, a mesma imagem e posição da abertura do app: nada muda de tamanho */
+  #boot { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 9; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; background: radial-gradient(ellipse at 20% 0%, #4d0d12 0%, rgba(77, 13, 18, 0) 60%), radial-gradient(ellipse at 90% 100%, #3a0716 0%, rgba(58, 7, 22, 0) 55%), #060609; }
+  #boot img { width: 756px; height: auto; margin: 0; border-radius: 0; }
+  #boot i { display: block; width: 243px; height: 4px; margin-top: 59px; border-radius: 4px; background: rgba(255, 255, 255, .12); }
+</style>
+</head>
+<body>
+<div id="boot" class="hide"><img src="logo-horizontal.webp" alt="IPTVKZ" /><i></i></div>
+<div id="wrap">
+  <img src="largeIcon.png" alt="" />
+  <h1>IPTVKZ</h1>
+  <p id="msg">Digite o endereço mostrado em Configurações → TV, no computador</p>
+  <div id="addr"></div>
+  <div id="err"></div>
+  <div id="pad"></div>
+</div>
+<script>
+// O app da TV é uma casca: conecta no IPTVKZ que roda no computador da mesma rede.
+(function () {
+  var KEY = 'iptvkz.server';
+  var DEFAULT_SERVER = '__SERVER__'.indexOf('__') === 0 ? '' : '__SERVER__';
+  var ROWS = [['1', '2', '3', '4', '5'], ['6', '7', '8', '9', '0'], ['.', ':', 'Apagar'], ['Conectar']];
+  var value = '';
+  var row = 3, col = 0;
+  var busy = false;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function saved() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
+  function remember(v) { try { localStorage.setItem(KEY, v); } catch (e) {} }
+  function full(v) { return v.indexOf(':') >= 0 ? v : v + ':8787'; }
+
+  function paint() {
+    $('addr').textContent = value;
+    var keys = $('pad').querySelectorAll('.key');
+    for (var i = 0; i < keys.length; i++) {
+      keys[i].className = keys[i].className.replace(' sel', '');
+      if (+keys[i].getAttribute('data-r') === row && +keys[i].getAttribute('data-c') === col) keys[i].className += ' sel';
+    }
+  }
+
+  function build() {
+    var html = '';
+    for (var r = 0; r < ROWS.length; r++) {
+      html += '<div class="row">';
+      for (var c = 0; c < ROWS[r].length; c++) {
+        var k = ROWS[r][c];
+        html += '<div class="key' + (k.length > 1 ? ' wide' : '') + (k === 'Conectar' ? ' go' : '') + '" data-r="' + r + '" data-c="' + c + '">' + k + '</div>';
+      }
+      html += '</div>';
+    }
+    $('pad').innerHTML = html;
+    $('pad').onclick = function (e) {
+      var t = e.target;
+      if (!t.getAttribute('data-r')) return;
+      row = +t.getAttribute('data-r');
+      col = +t.getAttribute('data-c');
+      press();
+      paint();
+    };
+  }
+
+  function showPad(error) {
+    busy = false;
+    $('boot').className = 'hide';
+    $('pad').className = '';
+    $('addr').className = '';
+    $('err').textContent = error || '';
+    $('msg').textContent = 'Digite o endereço mostrado em Configurações → TV, no computador';
+    paint();
+  }
+
+  function connect(addr) {
+    if (busy || !addr) return;
+    busy = true;
+    var server = full(addr);
+    $('pad').className = 'hide';
+    $('err').textContent = '';
+    $('msg').textContent = 'Conectando em ' + server + '…';
+    $('addr').className = 'hide';
+    var finished = false;
+    var fail = function () {
+      if (finished) return;
+      finished = true;
+      showPad('Não conectou. O computador está ligado e com o acesso pela rede ativo?');
+    };
+    var timer = setTimeout(fail, 8000);
+    var probe = new Image();
+    probe.onerror = function () { clearTimeout(timer); fail(); };
+    probe.onload = function () {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      remember(addr);
+      location.replace('http://' + server + '/?tv=1');
+    };
+    probe.src = 'http://' + server + '/favicon-16.png?t=' + Date.now();
+  }
+
+  function press() {
+    var k = ROWS[row][col];
+    $('err').textContent = '';
+    if (k === 'Apagar') value = value.slice(0, -1);
+    else if (k === 'Conectar') connect(value);
+    else if (value.length < 21) value += k;
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (busy) return;
+    var c = e.keyCode;
+    if (c === 37) col = Math.max(0, col - 1);
+    else if (c === 39) col = Math.min(ROWS[row].length - 1, col + 1);
+    else if (c === 38 || c === 40) {
+      var ratio = (col + 0.5) / ROWS[row].length;
+      row = Math.max(0, Math.min(ROWS.length - 1, row + (c === 38 ? -1 : 1)));
+      col = Math.min(ROWS[row].length - 1, Math.floor(ratio * ROWS[row].length));
+    } else if (c === 13) press();
+    else if (c >= 48 && c <= 57) value += String(c - 48);
+    else return;
+    e.preventDefault();
+    paint();
+  });
+
+  build();
+  value = saved() || DEFAULT_SERVER;
+  paint();
+  if (saved()) {
+    $('boot').className = '';
+    connect(saved());
+  }
+})();
+</script>
+</body>
+</html>

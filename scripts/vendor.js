@@ -1,9 +1,9 @@
-// Copia as bibliotecas do player para public/vendor (o app não depende de CDN).
+// Copia as bibliotecas do player para src/web/vendor (o app não depende de CDN).
 const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-const out = path.join(root, 'public', 'vendor');
+const out = path.join(root, 'src', 'web', 'vendor');
 fs.mkdirSync(out, { recursive: true });
 for (const [from, to] of [
   ['hls.js/dist/hls.min.js', 'hls.min.js'],

@@ -4,18 +4,20 @@
   "private": true,
   "description": "IPTVKZ — player IPTV pessoal para computador e TV (M3U e Xtream Codes)",
   "scripts": {
-    "start": "node server.js",
+    "start": "node src/server/index.js",
     "desktop": "electron .",
     "build": "node scripts/build-legacy.js",
     "vendor": "node scripts/vendor.js",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux",
+    "ipk": "node scripts/build-ipk.js"
   },
   "engines": {
     "node": ">=18"
   },
   "devDependencies": {
+    "@webos-tools/cli": "^3.2.6",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
     "esbuild": "^0.24.0",
@@ -26,7 +28,7 @@
     "electron@33.2.1": true,
     "esbuild@0.24.0": true
   },
-  "main": "electron/main.js",
+  "main": "platforms/desktop/main.js",
   "author": {
     "name": "lucasyemz",
     "email": "lukkolly@gmail.com"
@@ -46,17 +48,17 @@
       "output": "dist"
     },
     "files": [
-      "electron/**",
-      "server.js",
-      "lib/**",
-      "public/**",
-      "launcher/iptvkz.ico",
-      "assets/icon-1024.png",
-      "!public/**/*.map",
+      "platforms/desktop/**",
+      "platforms/windows/iptvkz.ico",
+      "src/server/**",
+      "src/web/**",
+      "!src/web/**/*.map",
+      "assets/brand/icon-1024.png",
+      "assets/brand/icon-small-64.png",
       "package.json"
     ],
     "win": {
-      "icon": "launcher/iptvkz.ico",
+      "icon": "platforms/windows/iptvkz.ico",
       "target": [
         {
           "target": "nsis",
@@ -78,13 +80,13 @@
       "perMachine": false,
       "shortcutName": "IPTVKZ",
       "artifactName": "IPTVKZ-${version}-windows-setup.${ext}",
-      "license": "public/termos.txt"
+      "license": "src/web/termos.txt"
     },
     "portable": {
       "artifactName": "IPTVKZ-${version}-windows-portable.${ext}"
     },
     "mac": {
-      "icon": "assets/icon-1024.png",
+      "icon": "assets/brand/icon-mac-1024.png",
       "category": "public.app-category.entertainment",
       "target": [
         {
@@ -98,7 +100,7 @@
       "identity": null
     },
     "linux": {
-      "icon": "assets/icon-1024.png",
+      "icon": "assets/brand/icon-1024.png",
       "category": "AudioVideo",
       "target": [
         "AppImage",
