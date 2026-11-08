@@ -39,7 +39,7 @@ const ctx = {
   },
   setTitle(t) {
     $('#pageTitle').textContent = t;
-    document.title = `${t} · IPTVKZ`;
+    document.title = t === 'IPTVKZ' ? t : `${t} · IPTVKZ`;
   },
   refreshNav: () => renderNav(),
   rerender: () => { current = null; route(); },

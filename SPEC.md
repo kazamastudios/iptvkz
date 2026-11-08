@@ -88,3 +88,10 @@ Procura em canais, filmes e séries ao mesmo tempo, com os resultados em três b
   - TV ao Vivo: canal em tela cheia; ▲▼/CH± troca de canal, ◀ abre a gaveta de canais, OK mostra o banner agora/a seguir.
   - Filmes/séries: OK pausa; ▼ leva aos botões do player (⚙️ áudio/legenda navegável); teclas de mídia funcionam.
 - **TVs antigas (webOS 4+ / Chromium 53+):** `index.html` detecta o navegador e carrega `js/app.legacy.js` (gerado com `npm run build`, esbuild → chrome53 + polyfills) e o CSS tem fallbacks (sem `inset`, `aspect-ratio`, flex `gap`, `cqh`). **Rodar `npm run build` após mudar `public/js`.**
+
+## 13. App de computador (v1.2): Electron
+- `electron/main.js` roda o mesmo `server.js` dentro do app (porta 8787; se ocupada, a próxima livre) e abre a interface numa janela própria. Dados em `userData/data` (ex.: `%APPDATA%\iptvkz\data`).
+- Com o acesso pela rede ligado, fechar a janela deixa o app na **bandeja** (Windows/Linux); “Iniciar com o sistema” usa o login item nativo e abre com `--background`.
+- hls.js e mpegts.js ficam em `public/vendor` (sem CDN).
+- Instaladores via electron-builder: Windows (NSIS + portátil), macOS (dmg x64/arm64), Linux (AppImage + deb), sem assinatura por enquanto.
+- GitHub Actions (`.github/workflows/build.yml`): PR/manual → artefatos; tag `v*` → rascunho de Release.

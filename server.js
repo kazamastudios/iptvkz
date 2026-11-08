@@ -13,7 +13,7 @@ const catalogs = require('./lib/catalog');
 const epg = require('./lib/epg');
 const net = require('./lib/network');
 
-const PORT = Number(process.env.PORT) || 8787;
+let PORT = Number(process.env.PORT) || 8787; // porta real (pode mudar no app de computador)
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC = path.join(__dirname, 'public');
 const IDLE_MS = 5 * 60 * 1000;
@@ -31,6 +31,8 @@ const MIME = {
 };
 
 let lastSeen = Date.now();
+// Ganchos do app de computador (Electron): sair e "iniciar com o sistema".
+const hooks = { onQuit: () => process.exit(0), autostart: null };
 let openStreams = 0;
 
 // ---------- helpers ----------
@@ -216,7 +218,8 @@ async function handleApi(req, res, url) {
       lanAccess: net.lanEnabled(),
       addresses: net.lanAddresses(),
       port: PORT,
-      autostart: net.autostartEnabled(),
+      autostart: hooks.autostart ? hooks.autostart.get() : net.autostartEnabled(),
+      desktop: !!hooks.autostart,
     });
   }
 
@@ -227,7 +230,7 @@ async function handleApi(req, res, url) {
 
   if (p === '/api/autostart' && m === 'POST') {
     const body = await readJsonBody(req);
-    const on = await net.setAutostart(!!body.on);
+    const on = hooks.autostart ? await hooks.autostart.set(!!body.on) : await net.setAutostart(!!body.on);
     return sendJson(res, 200, { autostart: on });
   }
 
@@ -302,7 +305,7 @@ async function handleApi(req, res, url) {
 
   if (p === '/api/quit' && m === 'POST') {
     sendJson(res, 200, { ok: true });
-    setTimeout(() => process.exit(0), 200);
+    setTimeout(() => hooks.onQuit(), 200);
     return;
   }
 
@@ -365,24 +368,49 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res, url.pathname);
 });
 
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.log(`IPTVKZ já está rodando em http://localhost:${PORT}`);
-    process.exit(0);
-  }
-  throw err;
-});
+// Inicia o servidor. Rodando direto (`npm start`) usa a porta fixa e encerra se ela já estiver
+// ocupada; no app de computador tenta as próximas portas e não desliga por inatividade.
+function start({ port = PORT, host = HOST, keepAlive = KEEPALIVE, portFallback = false, onQuit, autostart } = {}) {
+  if (onQuit) hooks.onQuit = onQuit;
+  if (autostart) hooks.autostart = autostart;
+  return new Promise((resolve, reject) => {
+    let tries = 0;
+    const listen = (p) => {
+      server.once('error', (err) => {
+        if (err.code === 'EADDRINUSE' && portFallback && tries++ < 15) return listen(p + 1);
+        reject(err);
+      });
+      server.listen(p, host, () => {
+        PORT = p;
+        if (!keepAlive) {
+          setInterval(() => {
+            if (net.lanEnabled()) return; // a TV precisa encontrar o servidor ligado
+            if (openStreams === 0 && Date.now() - lastSeen > IDLE_MS) {
+              console.log('Sem uso há 5 minutos, encerrando.');
+              process.exit(0);
+            }
+          }, 30000).unref();
+        }
+        resolve({ server, port: p });
+      });
+    };
+    listen(port);
+  });
+}
 
-server.listen(PORT, HOST, () => {
-  console.log(`\n  IPTVKZ rodando em  http://localhost:${PORT}\n`);
-});
+module.exports = { start, lanEnabled: net.lanEnabled };
 
-if (!KEEPALIVE) {
-  setInterval(() => {
-    if (net.lanEnabled()) return; // a TV precisa encontrar o servidor ligado
-    if (openStreams === 0 && Date.now() - lastSeen > IDLE_MS) {
-      console.log('Sem uso há 5 minutos, encerrando.');
-      process.exit(0);
-    }
-  }, 30000).unref();
+if (require.main === module) {
+  start().then(
+    ({ port }) => console.log(`
+  IPTVKZ rodando em  http://localhost:${port}
+`),
+    (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.log(`IPTVKZ já está rodando em http://localhost:${PORT}`);
+        process.exit(0);
+      }
+      throw err;
+    },
+  );
 }

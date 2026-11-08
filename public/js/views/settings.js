@@ -154,8 +154,10 @@ export function settingsView(params, ctx) {
           h('div.sub', 'Dica: se o endereço mudar de vez em quando, reserve um IP fixo para este computador no roteador.')));
       }
       tvBody.append(h('div.pref',
-        h('div.lbl', 'Iniciar com o Windows'),
-        h('div.sub', 'Liga o servidor sozinho quando o computador inicia, sem abrir janela. Útil para usar só pela TV.'),
+        h('div.lbl', info.desktop ? 'Iniciar com o sistema' : 'Iniciar com o Windows'),
+        h('div.sub', info.desktop
+          ? 'Abre o IPTVKZ em segundo plano (na bandeja) quando o computador liga. Útil para usar só pela TV.'
+          : 'Liga o servidor sozinho quando o computador inicia, sem abrir janela. Útil para usar só pela TV.'),
         sw(!!info.autostart, async (on, input) => {
           try {
             const r = await api('/api/autostart', { method: 'POST', body: JSON.stringify({ on }) });
