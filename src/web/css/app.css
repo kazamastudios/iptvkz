@@ -859,3 +859,77 @@ input, select, textarea { font: inherit; color: inherit; }
 /* volume fica no controle da TV; a barrinha só prenderia as setas */
 .tv .player .vol input { display: none; }
 .tv .player .seek .tip.on { display: block; bottom: 26px; padding: 6px 12px; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ---------- celular: menu embaixo, categorias em faixa, uma coluna ---------- */
+@media (max-width: 760px) {
+  input, select, textarea { font-size: 16px; } /* o iPhone dá zoom em campos menores */
+  #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; height: 100vh; height: 100dvh; }
+  .main { grid-row: 1; }
+
+  .sidebar { grid-row: 2; flex-direction: row; align-items: center; padding: 6px 4px; border-right: 0; border-top: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar .brand { display: none; }
+  .nav { flex-direction: row; flex: 1 0 auto; justify-content: space-around; gap: 0; }
+  .nav a, .sidebar-foot a { flex: none; width: 40px; height: 44px; padding: 0; justify-content: center; }
+  .sidebar-foot { flex-direction: row; margin: 0; flex: none; gap: 0; }
+  .sidebar-foot .status { display: none; }
+  .list-switch { order: 3; flex: none; margin: 0; }
+  .list-btn { width: 40px; height: 44px; padding: 0; justify-content: center; background: none; border: 0; }
+  .list-menu { position: fixed; top: auto; left: 8px; right: 8px; bottom: 64px; width: auto; max-height: 60vh; overflow: auto; }
+
+  .topbar { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
+  .topbar h1 { font-size: 18px; flex: 1 1 auto; }
+  .topbar .search { order: 3; width: 100%; max-width: none; flex: 1 0 100%; }
+  .status-banner { flex-wrap: wrap; margin: 0 14px 10px; padding: 10px 12px; }
+  .status-banner-text { flex: 1 1 70%; }
+  .status-pop { position: fixed; top: 60px; left: 12px; right: 12px; width: auto; }
+  .page { padding: 4px 14px 24px; }
+  .toasts { bottom: 66px; left: 12px; right: 12px; transform: none; }
+  .toast { border-radius: 14px; }
+  .guide-bar { padding: 0 14px 10px; }
+  .guide-bar select { width: 100%; }
+  .guide-scroll { margin-left: 0; }
+
+  /* categorias viram uma faixa rolável acima do conteúdo */
+  .live, .live.vod-browse { display: flex; flex-direction: column; }
+  .cats { flex: none; border-right: 0; padding: 0 0 8px; }
+  .cats .filter { display: none; }
+  .cat-list { display: flex; flex: none; overflow-x: auto; gap: 6px; padding: 0 14px; scrollbar-width: none; }
+  .cat-list::-webkit-scrollbar { display: none; }
+  .cat-item { flex: none; width: auto; max-width: 62vw; min-height: 36px; padding: 6px 12px; border-radius: 999px; background: var(--card); }
+  .cat-item .n, .cat-sep { display: none; }
+  .vod-content, .channels { flex: 1; min-height: 0; }
+  .vod-browse .page { padding-left: 14px; }
+
+  .ch-head { padding: 0 14px 10px; }
+  .ch-head .filter, .grid-head .filter { width: 100% !important; order: 3; }
+  .grid-head { flex-wrap: wrap; }
+  .ch-scroll { padding: 0 14px 20px; }
+  .ch-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .poster-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 8px; }
+  .shelf-row .poster, .sk-poster { width: 112px; }
+
+  /* assistindo ao vivo: player em cima, canais embaixo */
+  .live.watching { display: flex; flex-direction: column; }
+  .live.watching .channels { flex: none; }
+  .watch { flex: none; overflow: visible; padding: 0 0 8px; }
+  .watch-top { padding: 0 14px 8px; }
+  .player-box { max-height: none; border-radius: 0; box-shadow: none; }
+  .epg-now { display: none; }
+  .side-list { display: flex; flex: 1; min-height: 0; border-left: 0; }
+  .side-list .head { flex-direction: row; padding: 0 14px 8px; }
+  .side-list .head > * { flex: 1; min-width: 0; }
+
+  .player .pbtn { width: 44px; height: 44px; }
+  .player .vol { display: none; }
+  .player .ptime { font-size: 12px; padding: 0 4px; }
+  .player .seek { height: 28px; touch-action: none; }
+  .player .seek .knob { transform: translateX(-50%) scale(1); }
+  .pmenu { max-height: 70%; left: 8px; right: 8px; width: auto; }
+
+  .detail .hero .thumb { width: 150px; }
+  .modal { width: calc(100vw - 24px); max-height: 90vh; max-height: 90dvh; overflow: auto; }
+  .form-actions { flex-wrap: wrap; }
+  .pref-grid { grid-template-columns: minmax(0, 1fr); }
+  .pref { grid-column: auto !important; min-width: 0; }
+}

@@ -378,7 +378,7 @@ export function movieView(params, ctx) {
           if (TV.on) focusEl(d.acts.querySelector('.btn.primary'));
         },
       }, ico('check'), isWatched(movie.id) ? 'Assistido' : 'Marcar como assistido'),
-      S.vlc ? h('button.btn', { onclick: () => openVlc(version.url, movie.name) }, ico('external'), 'VLC') : null,
+      S.vlc && !matchMedia('(hover: none) and (pointer: coarse)').matches ? h('button.btn', { onclick: () => openVlc(version.url, movie.name) }, ico('external'), 'VLC') : null,
       resumable ? h('button.icon-btn', { title: 'Remover de "Continuar assistindo"', onclick: () => { clearProgress(movie.id); renderActs(); } }, ico('close')) : null,
     );
   }

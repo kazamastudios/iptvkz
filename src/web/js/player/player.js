@@ -24,6 +24,9 @@ function trackLabel(t, i) {
   return name || nice || `Faixa ${i + 1}`;
 }
 
+// Celular/tablet: sem mouse; o toque mostra ou esconde os controles.
+const isTouch = () => !TV.on && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
 export function proxyUrl(url) {
   return '/proxy?url=' + encodeURIComponent(url);
 }
@@ -115,7 +118,7 @@ export class Player {
 
     // ao vivo na TV já é tela cheia, e o menu seria quase só legenda, que canais não têm
     const liveTv = TV.on && o.live;
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, liveTv ? null : this.btnGear, TV.on ? null : this.btnPip, S.vlc && !TV.on ? this.btnVlc : null, liveTv ? null : this.btnFs);
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, liveTv ? null : this.btnGear, TV.on || isTouch() ? null : this.btnPip, S.vlc && !TV.on && !isTouch() ? this.btnVlc : null, liveTv ? null : this.btnFs);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
@@ -199,11 +202,16 @@ export class Player {
     });
     v.addEventListener('click', () => {
       if (!this.menu.classList.contains('hidden')) return this.closeMenu();
-      this.togglePlay();
+      if (!isTouch()) return this.togglePlay();
+      if (this.root.classList.contains('ctrl-visible')) {
+        clearTimeout(this._hideT);
+        this.root.classList.remove('ctrl-visible');
+      } else this._showCtrl();
     });
-    v.addEventListener('dblclick', () => this.toggleFullscreen());
+    v.addEventListener('dblclick', () => { if (!isTouch()) this.toggleFullscreen(); });
 
-    this.root.addEventListener('mousemove', () => this._showCtrl());
+    // no toque o navegador simula um mousemove, que reabriria os controles
+    this.root.addEventListener('mousemove', () => { if (!isTouch()) this._showCtrl(); });
     this.root.addEventListener('mouseleave', () => this._scheduleHide(600));
     this._onFs = () => this._setIcon(this.btnFs, document.fullscreenElement ? 'exitFs' : 'fullscreen');
     document.addEventListener('fullscreenchange', this._onFs);
@@ -481,8 +489,12 @@ export class Player {
   }
 
   toggleFullscreen() {
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    else this.root.requestFullscreen().catch(() => {});
+    if (document.fullscreenElement) return document.exitFullscreen().catch(() => {});
+    // iPhone: só o próprio vídeo entra em tela cheia
+    if (!this.root.requestFullscreen) return this.video.webkitEnterFullscreen && this.video.webkitEnterFullscreen();
+    this.root.requestFullscreen().then(() => {
+      if (isTouch() && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+    }).catch(() => {});
   }
 
   async togglePip() {
