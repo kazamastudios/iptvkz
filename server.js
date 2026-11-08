@@ -1,0 +1,388 @@
+// IPTVKZ: servidor local. Serve a interface, guarda os dados em data/,
+// normaliza listas, processa o guia e faz proxy dos streams. Aceita o próprio PC e,
+// se o "acesso pela rede" estiver ligado, aparelhos da rede de casa (TV).
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+const { Readable } = require('stream');
+
+const { UA } = require('./lib/util');
+const store = require('./lib/store');
+const catalogs = require('./lib/catalog');
+const epg = require('./lib/epg');
+const net = require('./lib/network');
+
+const PORT = Number(process.env.PORT) || 8787;
+const HOST = process.env.HOST || '0.0.0.0';
+const PUBLIC = path.join(__dirname, 'public');
+const IDLE_MS = 5 * 60 * 1000;
+const KEEPALIVE = (process.env.IPTVKZ_KEEPALIVE || process.env.MINHATV_KEEPALIVE) === '1';
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json',
+};
+
+let lastSeen = Date.now();
+let openStreams = 0;
+
+// ---------- helpers ----------
+
+function sendJson(res, status, obj) {
+  const body = typeof obj === 'string' ? obj : JSON.stringify(obj);
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(body);
+}
+
+function readBody(req, limit = 5 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new Error('Conteúdo grande demais'));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+async function readJsonBody(req) {
+  const buf = await readBody(req);
+  return buf.length ? JSON.parse(buf.toString('utf8')) : {};
+}
+
+function requireList(id) {
+  const list = id && store.getList(id);
+  if (!list) {
+    const err = new Error('Lista não encontrada');
+    err.status = 404;
+    throw err;
+  }
+  return list;
+}
+
+// ---------- proxy ----------
+
+function proxied(u) {
+  return '/proxy?url=' + encodeURIComponent(u);
+}
+
+function rewriteM3U8(text, base) {
+  const abs = (u) => {
+    try { return new URL(u, base).href; } catch { return u; }
+  };
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      const t = line.trim();
+      if (!t) return line;
+      if (t.startsWith('#')) return line.replace(/URI="([^"]+)"/g, (_, u) => `URI="${proxied(abs(u))}"`);
+      return proxied(abs(t));
+    })
+    .join('\n');
+}
+
+function looksLikeManifest(url, ct) {
+  if ((ct || '').toLowerCase().includes('mpegurl')) return true;
+  try { return new URL(url).pathname.toLowerCase().endsWith('.m3u8'); } catch { return false; }
+}
+
+async function handleProxy(req, res, query) {
+  let target;
+  try {
+    target = new URL(query.get('url'));
+    if (!/^https?:$/.test(target.protocol)) throw new Error();
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('URL inválida');
+  }
+
+  const headers = { 'User-Agent': UA, Accept: '*/*' };
+  if (req.headers.range) headers.Range = req.headers.range;
+
+  const controller = new AbortController();
+  res.on('close', () => controller.abort());
+
+  let upstream;
+  try {
+    upstream = await fetch(target.href, { headers, redirect: 'follow', signal: controller.signal });
+  } catch (err) {
+    if (controller.signal.aborted) return;
+    res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Falha ao conectar: ' + (err.cause?.code || err.message));
+  }
+
+  const ct = upstream.headers.get('content-type') || '';
+  const finalUrl = upstream.url || target.href;
+  const out = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' };
+
+  if (upstream.ok && looksLikeManifest(finalUrl, ct) && !ct.includes('video/mp2t')) {
+    const text = await upstream.text();
+    if (text.trimStart().startsWith('#EXTM3U') && /#EXT-X-/.test(text)) {
+      out['Content-Type'] = 'application/vnd.apple.mpegurl';
+      res.writeHead(200, out);
+      return res.end(rewriteM3U8(text, finalUrl));
+    }
+    out['Content-Type'] = ct || 'text/plain';
+    res.writeHead(upstream.status, out);
+    return res.end(text);
+  }
+
+  for (const h of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
+    const v = upstream.headers.get(h);
+    if (v) out[h] = v;
+  }
+  res.writeHead(upstream.status, out);
+  if (!upstream.body) return res.end();
+
+  openStreams++;
+  let closed = false;
+  const done = () => {
+    if (!closed) {
+      closed = true;
+      openStreams--;
+      lastSeen = Date.now();
+    }
+  };
+  res.on('close', done);
+  Readable.fromWeb(upstream.body)
+    .on('error', () => res.destroy())
+    .pipe(res);
+}
+
+// ---------- VLC ----------
+
+function findVlc() {
+  const candidates = [
+    process.env.VLC_PATH,
+    'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe',
+    'C:\\Program Files (x86)\\VideoLAN\\VLC\\vlc.exe',
+    '/Applications/VLC.app/Contents/MacOS/VLC',
+    '/usr/bin/vlc',
+  ].filter(Boolean);
+  return candidates.find((p) => fs.existsSync(p)) || null;
+}
+
+function openVlc(url, title) {
+  const vlc = findVlc();
+  if (!vlc) throw Object.assign(new Error('VLC não encontrado. Instale em videolan.org.'), { status: 404 });
+  const args = ['--no-one-instance'];
+  if (title) args.push('--meta-title=' + title);
+  args.push(url);
+  const child = spawn(vlc, args, { detached: true, stdio: 'ignore', windowsHide: false });
+  child.on('error', () => {});
+  child.unref();
+}
+
+// ---------- API ----------
+
+const catalogText = new Map(); // listId -> { updatedAt, text }
+
+function serializeCatalog(catalog) {
+  const c = catalogText.get(catalog.listId);
+  if (c && c.updatedAt === catalog.updatedAt) return c.text;
+  const text = JSON.stringify(catalog);
+  catalogText.set(catalog.listId, { updatedAt: catalog.updatedAt, text });
+  return text;
+}
+
+async function handleApi(req, res, url) {
+  const p = url.pathname;
+  const q = url.searchParams;
+  const m = req.method;
+
+  if (p === '/api/ping') return sendJson(res, 200, { ok: true });
+
+  if (p === '/api/state' && m === 'GET') {
+    return sendJson(res, 200, { ...store.getState(), dataDir: store.DATA, vlc: req.isLocal && !!findVlc(), local: req.isLocal });
+  }
+
+  if (p === '/api/info' && m === 'GET') {
+    return sendJson(res, 200, {
+      local: req.isLocal,
+      lanAccess: net.lanEnabled(),
+      addresses: net.lanAddresses(),
+      port: PORT,
+      autostart: net.autostartEnabled(),
+    });
+  }
+
+  // Daqui pra baixo, ações que só fazem sentido no próprio PC.
+  if (!req.isLocal && ['/api/vlc', '/api/quit', '/api/autostart'].includes(p)) {
+    return sendJson(res, 403, { error: 'Disponível só no computador.' });
+  }
+
+  if (p === '/api/autostart' && m === 'POST') {
+    const body = await readJsonBody(req);
+    const on = await net.setAutostart(!!body.on);
+    return sendJson(res, 200, { autostart: on });
+  }
+
+  if (p.startsWith('/api/state/') && (m === 'PUT' || m === 'POST')) {
+    const key = p.slice('/api/state/'.length);
+    store.setState(key, await readJsonBody(req));
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (p === '/api/catalog' && m === 'GET') {
+    const list = requireList(q.get('list'));
+    const force = q.get('refresh') === '1';
+    if (force) {
+      catalogs.forget(list.id);
+      epg.forget(list.id);
+    }
+    const { catalog, refreshing } = await catalogs.getCatalog(list, { force });
+    const epgUrl = force && epg.sourceUrl(list, catalog);
+    if (epgUrl) epg.refresh(list.id, epgUrl).catch(() => {});
+    const body = `{"refreshing":${refreshing},"catalog":${serializeCatalog(catalog)}}`;
+    return sendJson(res, 200, body);
+  }
+
+  if (p === '/api/catalog/status' && m === 'GET') {
+    const id = q.get('list');
+    const cached = store.readJson(`catalog-${id}.json`, null);
+    return sendJson(res, 200, { refreshing: catalogs.isRefreshing(id), updatedAt: cached ? cached.updatedAt : null });
+  }
+
+  if (p === '/api/m3u' && m === 'POST') {
+    const id = q.get('list');
+    if (!/^[\w-]+$/.test(id || '')) return sendJson(res, 400, { error: 'id inválido' });
+    const buf = await readBody(req, 300 * 1024 * 1024);
+    fs.writeFileSync(store.file(`m3u-${id}.m3u`), buf);
+    catalogs.forget(id);
+    return sendJson(res, 200, { ok: true, bytes: buf.length });
+  }
+
+  if (p === '/api/list' && m === 'DELETE') {
+    const id = q.get('list');
+    if (!/^[\w-]+$/.test(id || '')) return sendJson(res, 400, { error: 'id inválido' });
+    catalogs.forget(id);
+    epg.forget(id);
+    catalogText.delete(id);
+    store.removeListFiles(id);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (p === '/api/series' && m === 'GET') {
+    const list = requireList(q.get('list'));
+    return sendJson(res, 200, await catalogs.xtreamSeriesInfo(list, q.get('xid')));
+  }
+
+  if (p === '/api/vod' && m === 'GET') {
+    const list = requireList(q.get('list'));
+    return sendJson(res, 200, await catalogs.xtreamVodInfo(list, q.get('xid')));
+  }
+
+  if (p === '/api/epg' && m === 'POST') {
+    const body = await readJsonBody(req);
+    const list = requireList(body.list);
+    const cached = store.readJson(`catalog-${list.id}.json`, null);
+    return sendJson(res, 200, epg.query(list, cached, body.chans, { force: !!body.force }));
+  }
+
+  if (p === '/api/vlc' && m === 'POST') {
+    const body = await readJsonBody(req);
+    if (!/^https?:\/\//i.test(body.url || '')) return sendJson(res, 400, { error: 'URL inválida' });
+    openVlc(body.url, body.title);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (p === '/api/quit' && m === 'POST') {
+    sendJson(res, 200, { ok: true });
+    setTimeout(() => process.exit(0), 200);
+    return;
+  }
+
+  return sendJson(res, 404, { error: 'Rota não encontrada' });
+}
+
+// ---------- estáticos ----------
+
+function serveStatic(req, res, pathname) {
+  let rel = decodeURIComponent(pathname);
+  if (rel === '/') rel = '/index.html';
+  const file = path.normalize(path.join(PUBLIC, rel));
+  if (!file.startsWith(PUBLIC)) {
+    res.writeHead(403);
+    return res.end();
+  }
+  fs.readFile(file, (err, data) => {
+    if (err) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Não encontrado');
+    }
+    res.writeHead(200, {
+      'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
+      'Cache-Control': 'no-cache',
+    });
+    res.end(data);
+  });
+}
+
+// ---------- servidor ----------
+
+const BLOCKED_PAGE = `<!doctype html><meta charset="utf-8"><title>IPTVKZ</title>
+<body style="background:#0a0a0f;color:#eee;font:22px system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center">
+<div><h1 style="color:#ff2a2a">IPTVKZ</h1><p>O acesso pela rede está desligado.</p>
+<p style="color:#999">No computador, abra Configurações → TV e outros aparelhos → ligue “Permitir acesso pela rede”.</p></div>`;
+
+const server = http.createServer((req, res) => {
+  const ip = req.socket.remoteAddress;
+  req.isLocal = net.isLoopback(ip);
+  if (!req.isLocal && !(net.isPrivate(ip) && net.lanEnabled())) {
+    res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(BLOCKED_PAGE);
+  }
+  lastSeen = Date.now();
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (url.pathname === '/proxy') {
+    handleProxy(req, res, url.searchParams).catch((err) => {
+      if (!res.headersSent) res.writeHead(500);
+      res.end(String(err.message || err));
+    });
+    return;
+  }
+  if (url.pathname.startsWith('/api/')) {
+    handleApi(req, res, url).catch((err) => {
+      if (res.headersSent) return res.end();
+      sendJson(res, err.status || 500, { error: err.message || String(err) });
+    });
+    return;
+  }
+  serveStatic(req, res, url.pathname);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`IPTVKZ já está rodando em http://localhost:${PORT}`);
+    process.exit(0);
+  }
+  throw err;
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`\n  IPTVKZ rodando em  http://localhost:${PORT}\n`);
+});
+
+if (!KEEPALIVE) {
+  setInterval(() => {
+    if (net.lanEnabled()) return; // a TV precisa encontrar o servidor ligado
+    if (openStreams === 0 && Date.now() - lastSeen > IDLE_MS) {
+      console.log('Sem uso há 5 minutos, encerrando.');
+      process.exit(0);
+    }
+  }, 30000).unref();
+}

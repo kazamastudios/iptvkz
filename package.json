@@ -1,0 +1,16 @@
+{
+  "name": "iptvkz",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Player IPTV pessoal (M3U e Xtream Codes) que roda no navegador",
+  "scripts": {
+    "start": "node server.js",
+    "build": "node scripts/build-legacy.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

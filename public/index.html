@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IPTVKZ</title>
+  <link rel="icon" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <meta name="theme-color" content="#000000" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <a class="brand" href="#/live">
+        <img src="/icon.png" alt="" />
+        <span>IPTV<b>KZ</b></span>
+      </a>
+      <div class="list-switch" id="listSwitch"></div>
+      <nav class="nav" id="nav"></nav>
+      <div class="sidebar-foot" id="sideFoot"></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <h1 id="pageTitle"></h1>
+        <label class="search">
+          <span class="ico" data-icon="search"></span>
+          <input id="globalSearch" type="search" placeholder="Buscar canais, filmes e séries  ( / )" autocomplete="off" />
+        </label>
+      </header>
+      <section class="view" id="view"></section>
+    </main>
+  </div>
+  <div id="overlayRoot"></div>
+  <div class="toasts" id="toasts"></div>
+  <script>
+    // Navegadores modernos carregam os módulos; TVs antigas, a versão compilada (npm run build).
+    (function () {
+      var modern = false;
+      try {
+        new Function('var a = {}; a.b ||= 1; return a?.c ?? 2');
+        modern = 'noModule' in document.createElement('script') && location.search.indexOf('legacy=1') < 0;
+      } catch (e) {}
+      var s = document.createElement('script');
+      if (modern) { s.type = 'module'; s.src = '/js/app.js'; } else { s.src = '/js/app.legacy.js'; }
+      document.body.appendChild(s);
+    })();
+  </script>
+</body>
+</html>
