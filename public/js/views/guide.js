@@ -1,6 +1,6 @@
 // Guia de programação: canais × horários, com a linha do "agora".
 import { h, ico, img, incremental, fmtClock } from '../util.js';
-import { C, visibleCats, visibleItems, favItems, fetchEpg, epgFor, epgState, resetEpgCache } from '../store.js';
+import { C, visibleCats, visibleItems, favItems, catItems, fetchEpg, epgFor, epgState, resetEpgCache } from '../store.js';
 
 const PX = 4; // pixels por minuto
 const CHW = 210;
@@ -126,7 +126,7 @@ export function guideView(params, ctx) {
     status.textContent = map[st.status] || '';
   }
 
-  const items = cat === 'fav' ? favItems('live') : cat === 'all' ? visibleItems('live') : C().live.byCat.get(cat) || [];
+  const items = cat === 'fav' ? favItems('live') : cat === 'all' ? visibleItems('live') : catItems('live', cat);
   if (!items.length) {
     table.append(h('div.empty', { style: { width: '600px' } }, cat === 'fav' ? 'Nenhum canal favorito. Escolha outra categoria.' : 'Nenhum canal.'));
   } else {

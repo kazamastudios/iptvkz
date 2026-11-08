@@ -1,7 +1,12 @@
 // Configurações: listas, categorias (ocultar/ordenar), reprodução e sobre.
-import { h, ico, fmtAgo, confirmDialog } from '../util.js';
-import { S, C, activeList, orderedCats, setCatHidden, setCatOrder, resetCats, setSetting, saveNow, api } from '../store.js';
+import { h, ico, fmtAgo, confirmDialog, toast } from '../util.js';
+import {
+  S, C, activeList, orderedCats, setCatHidden, setCatOrder, resetCats, setSetting, saveNow, api,
+  parentalEnabled, adultLocked, pinHash, checkPin, unlockAdult, lockAdult, setCatAdult, adultCatCount,
+} from '../store.js';
+import { pinDialog } from './pin.js';
 import { TV, setTvMode } from '../tv.js';
+import { showTermsDialog } from './terms.js';
 
 const TYPE = { xtream: 'Xtream Codes', url: 'Link M3U', file: 'Arquivo M3U' };
 
@@ -75,6 +80,10 @@ export function settingsView(params, ctx) {
         const row = h('div.cat-row' + (c.hidden ? '.off' : ''), { draggable: 'true' },
           h('span.grip', { title: 'Arraste para reordenar' }, ico('grip')),
           h('span.nm', c.name), h('span.n', String(c.count)),
+          adultLocked() ? null : h('button.adult-tag' + (c.adult ? '.on' : ''), {
+            title: c.adult ? 'Marcada como adulta (clique para desmarcar)' : 'Marcar como conteúdo adulto',
+            onclick: () => { setCatAdult(section, c.id, !c.adult); renderEditor(); ctx.refreshNav(); },
+          }, '18+'),
           h('button.icon-btn', { title: 'Subir', onclick: () => move(c.id, -1) }, ico('up')),
           h('button.icon-btn', { title: 'Descer', onclick: () => move(c.id, 1) }, ico('down')),
           h('button.icon-btn', {
@@ -178,6 +187,78 @@ export function settingsView(params, ctx) {
   renderTv({ local: S.local !== false, addresses: [], port: location.port || 8787, autostart: false });
   api('/api/info').then(renderTv).catch(() => {});
 
+  // ---------- controle dos pais ----------
+  const pc = h('div.pref-grid');
+  page.append(h('div.set-section',
+    h('h3', 'Controle dos pais'),
+    h('p', 'Esconde canais, filmes e séries adultos em todos os aparelhos. Para ver, é preciso o PIN.'),
+    pc));
+  const rerender = () => ctx.rerender();
+  if (!parentalEnabled()) {
+    pc.append(h('div.pref',
+      h('div.lbl', 'Desativado'),
+      h('div.sub', 'Categorias como “Adultos”, “XXX” e “+18” são reconhecidas sozinhas; dá para marcar outras em Categorias.'),
+      h('div.row', h('button.btn.small.primary', {
+        onclick: async () => {
+          const pin = await pinDialog({ title: 'Criar PIN', text: 'Escolha um PIN de 4 dígitos. Ele será pedido para mostrar conteúdo adulto.', confirm: true });
+          if (!pin) return;
+          setSetting('parentalPin', pinHash(pin));
+          await saveNow('settings').catch(() => {});
+          lockAdult();
+          toast('Controle dos pais ativado', 'ok');
+          rerender();
+        },
+      }, ico('lock'), 'Ativar controle dos pais'))));
+  } else {
+    const locked = adultLocked();
+    pc.append(h('div.pref',
+      h('div.lbl', locked ? 'Ativo: conteúdo adulto escondido' : 'Liberado neste aparelho'),
+      h('div.sub', locked
+        ? 'Digite o PIN para mostrar o conteúdo adulto até fechar o app.'
+        : `Fica liberado até você bloquear ou fechar o app. ${adultCatCount()} categorias marcadas como adultas.`),
+      h('div.row', { style: { flexWrap: 'wrap' } },
+        locked
+          ? h('button.btn.small.primary', {
+            onclick: async () => {
+              const pin = await pinDialog({ title: 'Desbloquear', text: 'Digite o PIN do controle dos pais.', check: checkPin });
+              if (pin && unlockAdult(pin)) { toast('Conteúdo adulto liberado neste aparelho', 'ok'); rerender(); }
+            },
+          }, ico('unlock'), 'Desbloquear')
+          : h('button.btn.small.primary', { onclick: () => { lockAdult(); toast('Bloqueado'); rerender(); } }, ico('lock'), 'Bloquear agora'),
+        h('button.btn.small', {
+          onclick: async () => {
+            const cur = await pinDialog({ title: 'Trocar PIN', text: 'Primeiro, o PIN atual.', check: checkPin });
+            if (!cur) return;
+            const pin = await pinDialog({ title: 'Novo PIN', text: 'Escolha o novo PIN de 4 dígitos.', confirm: true });
+            if (!pin) return;
+            setSetting('parentalPin', pinHash(pin));
+            await saveNow('settings').catch(() => {});
+            toast('PIN trocado', 'ok');
+          },
+        }, 'Trocar PIN'),
+        h('button.btn.small.ghost', {
+          onclick: async () => {
+            const pin = await pinDialog({ title: 'Desativar controle dos pais', text: 'Digite o PIN para desativar.', check: checkPin });
+            if (!pin) return;
+            setSetting('parentalPin', null);
+            await saveNow('settings').catch(() => {});
+            toast('Controle dos pais desativado');
+            rerender();
+          },
+        }, 'Desativar'))),
+      S.local !== false ? h('div.pref',
+        h('div.lbl', 'Esqueceu o PIN?'),
+        h('div.sub', 'Só dá para apagar o PIN neste computador (não pela TV). O controle dos pais será desativado.'),
+        h('div.row', h('button.btn.small.ghost', {
+          onclick: async () => {
+            if (!(await confirmDialog('Apagar o PIN', 'O controle dos pais será desativado e o conteúdo adulto volta a aparecer. Continuar?', 'Apagar PIN', true))) return;
+            setSetting('parentalPin', null);
+            await saveNow('settings').catch(() => {});
+            rerender();
+          },
+        }, 'Apagar PIN'))) : null);
+  }
+
   // ---------- reprodução ----------
   const selectPref = (label, sub, key, options) => {
     const sel = h('select.input', { onchange: (e) => setSetting(key, e.target.value) },
@@ -204,6 +285,9 @@ export function settingsView(params, ctx) {
   page.append(h('div.set-section',
     h('h3', 'Sobre'),
     h('p', 'IPTVKZ 1.0. Os dados ficam em ', h('code', S.dataDir || 'data/'), '.'),
+    h('p.muted', 'O IPTVKZ é só um player: não fornece listas nem conteúdo, e cada usuário responde pelo que adiciona e assiste.'),
+    h('div.row', { style: { marginBottom: '12px' } },
+      h('button.btn.small', { onclick: () => showTermsDialog() }, ico('file'), 'Termos de uso')),
     h('p.muted', S.vlc ? 'VLC encontrado: o botão “Abrir no VLC” está ativo.' : 'VLC não encontrado. Instale o VLC para abrir formatos que o navegador não toca.'),
     h('button.btn.small.ghost', {
       onclick: async () => {

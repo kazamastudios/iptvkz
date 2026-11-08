@@ -133,9 +133,105 @@ export function orderedCats(section) {
   const p = prefs(section);
   const pos = new Map(p.order.map((id, i) => [id, i]));
   return sec.cats
-    .map((c, i) => ({ ...c, count: sec.byCat.get(c.id)?.length || 0, hidden: p.hidden.includes(c.id), _i: i }))
-    .filter((c) => c.count > 0)
+    .map((c, i) => ({ ...c, count: sec.byCat.get(c.id)?.length || 0, hidden: p.hidden.includes(c.id), adult: isAdultCat(section, c.id), _i: i }))
+    .filter((c) => c.count > 0 && !(c.adult && adultLocked()))
     .sort((a, b) => (pos.has(a.id) ? pos.get(a.id) : 1e6 + a._i) - (pos.has(b.id) ? pos.get(b.id) : 1e6 + b._i));
+}
+
+// ---------- controle dos pais (conteúdo adulto) ----------
+// Categorias: detecta pelo nome; o usuário pode marcar/desmarcar. Itens: nomes inequívocos.
+const ADULT_CAT_RE = /(adult|adulto|xxx|\+\s?18|18\s?\+|porn|er[oó]tic|sexy|playboy|hustler|brazzers|penthouse|dorcel|redlight|bangbros|venus|\bhot\b|after ?dark)/i;
+const ADULT_ITEM_RE = /(xxx|porn|\badult|adulto|\+\s?18\b|\b18\s?\+|playboy|brazzers|hustler|penthouse|dorcel|redlight|bangbros|private ?(tv|gold|spice)|venus ?tv|sextreme)/i;
+
+let adultUnlocked = false; // por aparelho, até recarregar o app
+let adultVer = 0;
+let adultMemo = { key: null, data: {} };
+
+export function parentalEnabled() {
+  return !!S.settings.parentalPin;
+}
+
+export function adultLocked() {
+  return parentalEnabled() && !adultUnlocked;
+}
+
+// Não é segurança de banco: só impede que alguém leia o PIN direto do arquivo.
+export function pinHash(pin) {
+  let h = 0x811c9dc5;
+  const s = 'iptvkz:' + pin;
+  for (let r = 0; r < 2000; r++) {
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i) + r;
+      h = Math.imul(h, 0x01000193);
+    }
+  }
+  return (h >>> 0).toString(36);
+}
+
+export function checkPin(pin) {
+  return parentalEnabled() && pinHash(String(pin)) === S.settings.parentalPin;
+}
+
+export function unlockAdult(pin) {
+  if (!checkPin(pin)) return false;
+  adultUnlocked = true;
+  return true;
+}
+
+export function lockAdult() {
+  adultUnlocked = false;
+}
+
+function adultInfo(section) {
+  const key = `${current?.listId}|${current?.updatedAt}|${adultVer}`;
+  if (adultMemo.key !== key) adultMemo = { key, data: {} };
+  if (adultMemo.data[section]) return adultMemo.data[section];
+  const sec = current?.[section];
+  const p = prefs(section);
+  const cats = new Set();
+  const items = new Set();
+  if (sec) {
+    for (const c of sec.cats) {
+      const on = (p.adult || []).includes(c.id) || (!(p.notAdult || []).includes(c.id) && ADULT_CAT_RE.test(c.name));
+      if (on) cats.add(c.id);
+    }
+    for (const it of sec.items) if (cats.has(it.cat) || ADULT_ITEM_RE.test(it.name)) items.add(it.id);
+  }
+  return (adultMemo.data[section] = { cats, items });
+}
+
+export function isAdultCat(section, id) {
+  return adultInfo(section).cats.has(id);
+}
+
+export function isAdultItem(section, id) {
+  return adultInfo(section).items.has(id);
+}
+
+export function setCatAdult(section, id, on) {
+  const p = prefs(section);
+  p.adult = (p.adult || []).filter((x) => x !== id);
+  p.notAdult = (p.notAdult || []).filter((x) => x !== id);
+  (on ? p.adult : p.notAdult).push(id);
+  adultVer++;
+  save('catPrefs');
+}
+
+export function adultCatCount() {
+  return ['live', 'movies', 'series'].reduce((n, s) => n + adultInfo(s).cats.size, 0);
+}
+
+function hideAdult(section, arr) {
+  if (!adultLocked()) return arr;
+  const set = adultInfo(section).items;
+  return set.size ? arr.filter((it) => !set.has(it.id)) : arr;
+}
+
+// Itens de uma categoria, respeitando o controle dos pais.
+export function catItems(section, catId) {
+  const sec = current?.[section];
+  if (!sec || (adultLocked() && isAdultCat(section, catId))) return [];
+  return hideAdult(section, sec.byCat.get(catId) || []);
 }
 
 export function visibleCats(section) {
@@ -166,8 +262,8 @@ export function visibleItems(section) {
   const sec = current?.[section];
   if (!sec) return [];
   const hidden = new Set(prefs(section).hidden);
-  if (!hidden.size) return sec.items;
-  return sec.items.filter((it) => !hidden.has(it.cat));
+  if (!hidden.size) return hideAdult(section, sec.items);
+  return hideAdult(section, sec.items.filter((it) => !hidden.has(it.cat)));
 }
 
 // ---------- favoritos / recentes / progresso ----------
@@ -194,7 +290,7 @@ export function toggleFav(section, id) {
 
 export function favItems(section) {
   const sec = current?.[section];
-  return bucket(S.favorites, section).map((id) => sec.byId.get(id)).filter(Boolean);
+  return hideAdult(section, bucket(S.favorites, section).map((id) => sec.byId.get(id)).filter(Boolean));
 }
 
 export function addRecent(section, id) {
@@ -208,7 +304,7 @@ export function addRecent(section, id) {
 
 export function recentItems(section) {
   const sec = current?.[section];
-  return bucket(S.recents, section).map((id) => sec.byId.get(id)).filter(Boolean);
+  return hideAdult(section, bucket(S.recents, section).map((id) => sec.byId.get(id)).filter(Boolean));
 }
 
 // Limpa e devolve uma função que desfaz.
@@ -270,7 +366,7 @@ export function continueMovies() {
     .filter(([, p]) => p.kind === 'movie' && p.d && p.t / p.d > 0.02 && p.t / p.d < 0.95)
     .sort((a, b) => b[1].at - a[1].at)
     .map(([id]) => sec.byId.get(id))
-    .filter(Boolean);
+    .filter((it) => it && !(adultLocked() && isAdultItem('movies', it.id)));
 }
 
 export function continueSeries() {
@@ -279,7 +375,7 @@ export function continueSeries() {
     .filter(([k, p]) => k.startsWith('s:') && p.kind === 'serie-last')
     .sort((a, b) => b[1].at - a[1].at)
     .map(([k]) => sec.byId.get(k.slice(2)))
-    .filter(Boolean);
+    .filter((it) => it && !(adultLocked() && isAdultItem('series', it.id)));
 }
 
 // ---------- séries / filmes (detalhes sob demanda no Xtream) ----------

@@ -1,0 +1,39 @@
+﻿TERMOS DE USO DO IPTVKZ
+Versão 1 — novembro de 2026
+
+Ao instalar ou usar o IPTVKZ, você declara que leu e concorda com estes termos. Se não concordar, não use o aplicativo.
+
+1. O QUE É O IPTVKZ
+O IPTVKZ é apenas um reprodutor de mídia (player). Ele lê listas de reprodução (M3U/M3U8, Xtream Codes) e guias de programação (XMLTV) que o próprio usuário informa, e reproduz os endereços contidos nelas.
+
+2. O IPTVKZ NÃO FORNECE CONTEÚDO
+O IPTVKZ não fornece, hospeda, vende, distribui, indica ou divulga nenhuma lista, canal, filme, série, programa ou qualquer outro conteúdo. O aplicativo é distribuído sem nenhuma lista. Os desenvolvedores não têm relação com os provedores das listas usadas pelos usuários.
+
+3. RESPONSABILIDADE DO USUÁRIO
+Você é o único responsável:
+a) pelas listas, contas e endereços que adicionar ao aplicativo;
+b) pelo conteúdo que acessar, assistir ou baixar por meio dele;
+c) por ter o direito ou a autorização necessária para acessar esse conteúdo;
+d) por cumprir as leis aplicáveis no seu país, incluindo as de direitos autorais e de proteção a programas de computador.
+Não use o IPTVKZ para acessar conteúdo pirata ou sem autorização dos titulares dos direitos.
+
+4. ISENÇÃO DE RESPONSABILIDADE
+Os desenvolvedores do IPTVKZ não se responsabilizam:
+a) pelo conteúdo de terceiros acessado por meio do aplicativo, nem pela sua legalidade, qualidade, exatidão ou disponibilidade;
+b) por qualquer uso indevido, ilegal ou não autorizado do aplicativo;
+c) por danos, perdas ou prejuízos, diretos ou indiretos, decorrentes do uso ou da impossibilidade de uso do aplicativo ou de qualquer conteúdo.
+
+5. SEM GARANTIAS
+O IPTVKZ é fornecido "no estado em que se encontra" (as is), sem garantias de qualquer tipo, expressas ou implícitas, conforme a Licença MIT que acompanha o software. Não há garantia de funcionamento contínuo, livre de erros ou compatível com qualquer lista, aparelho ou formato.
+
+6. PRIVACIDADE
+O IPTVKZ não coleta, não envia e não vende dados pessoais. As listas, senhas, favoritos e preferências ficam guardados apenas no dispositivo onde o aplicativo está instalado. O aplicativo se conecta somente aos endereços das listas e guias que você cadastrar.
+
+7. MARCAS E DIREITOS DE TERCEIROS
+Nomes, logotipos e marcas de canais, programas ou serviços que eventualmente apareçam no aplicativo vêm das listas do usuário e pertencem aos seus respectivos titulares. Sua exibição não indica qualquer vínculo, patrocínio ou autorização.
+
+8. ALTERAÇÕES
+Estes termos podem ser atualizados em novas versões do aplicativo. Quando isso acontecer, o aplicativo pedirá um novo aceite. Continuar usando o IPTVKZ depois disso significa que você concorda com a nova versão.
+
+9. LICENÇA DO SOFTWARE
+O código-fonte do IPTVKZ é distribuído sob a Licença MIT (arquivo LICENSE). Estes termos tratam do uso do aplicativo e não restringem os direitos concedidos por essa licença.

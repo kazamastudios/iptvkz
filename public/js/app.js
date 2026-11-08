@@ -12,6 +12,7 @@ import { searchView } from './views/search.js';
 import { settingsView } from './views/settings.js';
 import { openListForm, welcomeView } from './views/lists.js';
 import { overlayKey, isOverlayOpen } from './views/vodplayer.js';
+import { ensureTerms } from './views/terms.js';
 
 const view = $('#view');
 const routes = {
@@ -383,6 +384,7 @@ setInterval(() => { if (appState === 'ready') renderNav(); }, 60000);
     showState(h('div.center-state', h('h2', 'Servidor indisponível'), h('p', 'Abra o IPTVKZ pelo atalho da área de trabalho (ou rode “npm start”).')), 'IPTVKZ');
     return;
   }
+  await ensureTerms();
   renderListSwitch();
   if (!S.lists.length) {
     route();

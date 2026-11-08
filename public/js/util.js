@@ -209,21 +209,27 @@ const modalStack = [];
 export function closeTopModal() {
   const top = modalStack[modalStack.length - 1];
   if (!top) return false;
-  top();
+  if (!top.locked) top();
   return true;
 }
 
 // Modal genérico. Retorna { el, close }.
-export function modal(title, body, { wide = false, onClose } = {}) {
+// locked: sem botão de fechar, sem Esc/Voltar e sem clique fora (ex.: aceite dos termos).
+export function modal(title, body, { wide = false, onClose, locked = false } = {}) {
   const root = $('#overlayRoot');
   const box = h('div.modal' + (wide ? '.wide' : ''),
-    h('div.modal-head', h('h2', title), h('button.icon-btn', { title: 'Fechar', onclick: () => close() }, ico('close'))),
+    h('div.modal-head', h('h2', title), locked ? null : h('button.icon-btn', { title: 'Fechar', onclick: () => close() }, ico('close'))),
     h('div.modal-body', body));
   const back = h('div.modal-back', box);
   back.addEventListener('mousedown', (e) => {
-    if (e.target === back) close();
+    if (e.target === back && !locked) close();
   });
   const onKey = (e) => {
+    if (locked && isBack(e)) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
     if (isBack(e) && !(e.key === 'Escape' && e.target && e.target.tagName === 'SELECT')) {
       e.stopPropagation();
       e.preventDefault();
@@ -234,6 +240,7 @@ export function modal(title, body, { wide = false, onClose } = {}) {
   root.append(back);
   requestAnimationFrame(() => back.classList.add('show'));
   const prevFocus = document.activeElement;
+  close.locked = locked;
   modalStack.push(close);
   let closed = false;
   function close() {

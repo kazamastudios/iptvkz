@@ -3,7 +3,7 @@ import { h, ico, img, incremental, matcher, debounce, fmtDur, fmtTime, toast } f
 import { starIcon } from '../icons.js';
 import {
   C, S, visibleCats, visibleItems, favItems, isFav, toggleFav, getProgress, clearProgress,
-  continueMovies, continueSeries, clearContinue, seriesDetail, movieDetail, preferredVersion, setSetting, api,
+  continueMovies, continueSeries, clearContinue, catItems, adultLocked, isAdultItem, seriesDetail, movieDetail, preferredVersion, setSetting, api,
 } from '../store.js';
 import { playMovie, playEpisode } from './vodplayer.js';
 
@@ -95,7 +95,7 @@ export function vodHome(section) {
       for (const e of entries) {
         if (!e.isIntersecting) continue;
         io.unobserve(e.target);
-        const items = sec.byCat.get(e.target.dataset.cat) || [];
+        const items = catItems(section, e.target.dataset.cat);
         const row = e.target.querySelector('.shelf-row');
         for (const it of items.slice(0, 24)) row.append(posterCard(section, it, ctx));
       }
@@ -144,7 +144,7 @@ function vodGrid(section, cat, ctx) {
     grid);
 
   function items() {
-    let arr = cat === 'all' ? visibleItems(section) : cat === 'fav' ? favItems(section) : sec.byCat.get(cat) || [];
+    let arr = cat === 'all' ? visibleItems(section) : cat === 'fav' ? favItems(section) : catItems(section, cat);
     if (query) {
       const m = matcher(query);
       arr = arr.filter((x) => m(x.name));
@@ -231,10 +231,16 @@ async function openVlc(url, title) {
   }
 }
 
+function lockedState() {
+  return h('div.center-state', ico('lock'), h('h2', 'Conteúdo bloqueado'),
+    h('p', 'O controle dos pais está ativo. Para liberar, vá em Configurações → Controle dos pais.'));
+}
+
 export function movieView(params, ctx) {
   const movie = C().movies.byId.get(params.get('id'));
   ctx.setTitle('Filmes');
   if (!movie) return { el: h('div.center-state', h('h2', 'Filme não encontrado'), h('p', 'Ele pode ter saído da lista.')) };
+  if (adultLocked() && isAdultItem('movies', movie.id)) return { el: lockedState() };
   const d = heroBase(movie, 'movies');
   let version = preferredVersion(movie.versions);
 
@@ -270,6 +276,7 @@ export function serieView(params, ctx) {
   const serie = C().series.byId.get(params.get('id'));
   ctx.setTitle('Séries');
   if (!serie) return { el: h('div.center-state', h('h2', 'Série não encontrada'), h('p', 'Ela pode ter saído da lista.')) };
+  if (adultLocked() && isAdultItem('series', serie.id)) return { el: lockedState() };
   const d = heroBase(serie, 'series');
   const seasonsBar = h('div.seasons');
   const epsEl = h('div.episodes');
