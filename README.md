@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon-1024.png" width="160" alt="IPTVKZ" />
+  <img src="assets/brand/icon-1024.png" width="160" alt="IPTVKZ" />
 </p>
 
 <h1 align="center">IPTVKZ</h1>
@@ -8,7 +8,7 @@
 
 ---
 
-> O IPTVKZ é **só um player**. Ele não vem com nenhuma lista, canal ou conteúdo: você usa as listas que você mesmo cadastrar e é o único responsável pelo que adiciona e assiste. Use apenas conteúdo que você tem direito de assistir. Ao usar o app você concorda com os **[Termos de Uso](public/termos.txt)**.
+> O IPTVKZ é **só um player**. Ele não vem com nenhuma lista, canal ou conteúdo: você usa as listas que você mesmo cadastrar e é o único responsável pelo que adiciona e assiste. Use apenas conteúdo que você tem direito de assistir. Ao usar o app você concorda com os **[Termos de Uso](src/web/termos.txt)**.
 
 ## Recursos
 
@@ -54,6 +54,19 @@ npm run desktop
 
 Gerar os instaladores: `npm run dist:win`, `npm run dist:mac` ou `npm run dist:linux` (saem em `dist/`). No GitHub, isso é feito automaticamente: cada pull request gera os instaladores como artefatos, e cada tag `v*` cria um rascunho de Release com eles.
 
+### Rodar no Mac
+
+Requisitos: [Node.js](https://nodejs.org) 18 ou mais novo.
+
+```bash
+git clone https://github.com/lucasyemz/iptvkz.git
+cd iptvkz
+npm install
+npm start
+```
+
+Abra http://localhost:8787. Para testar na janela do app, use `npm run desktop` no lugar de `npm start`. Suas listas não vão pelo Git: cadastre de novo no Mac. O macOS pode pedir para permitir conexões de rede, o que é necessário para a TV acessar.
+
 ### Assistir na TV
 
 1. No computador: **Configurações → TV e outros aparelhos → Permitir acesso pela rede de casa**.
@@ -65,22 +78,31 @@ O computador precisa ficar ligado. No app de computador, com o acesso pela rede 
 ## Como funciona
 
 ```
-public/        interface (HTML/CSS/JS sem framework)
-  js/app.legacy.js   versão para TVs antigas (gerada por `npm run build`)
-  vendor/            hls.js e mpegts.js (copiados por `npm run vendor`)
-electron/      app de computador (janela, bandeja, iniciar com o sistema)
-lib/           catálogo (M3U/Xtream), guia (XMLTV), dados, rede
-server.js      servidor local: interface, API, proxy de streams
-launcher/      atalho do Windows para rodar pelo código (abre o Chrome em modo app)
-data/          suas listas e preferências ao rodar pelo código (fora do Git);
-               no app instalado ficam na pasta de dados do usuário
+src/
+  server/            servidor local: API, proxy de streams, catálogo (M3U/Xtream), guia (XMLTV), dados
+  web/               interface (HTML/CSS/JS sem framework), servida como está
+    js/core/         estado, utilidades, ícones, busca
+    js/player/       player, prévia, legendas, limite de telas
+    js/tv/           modo TV: foco, controle remoto, teclados
+    js/views/        telas do app
+    js/app.legacy.js versão para TVs antigas (gerada por `npm run build`)
+    vendor/          hls.js e mpegts.js (copiados por `npm run vendor`)
+platforms/
+  desktop/           app de computador (Electron)
+  webos/             app da TV LG (`npm run ipk`)
+  windows/           atalho do Windows para rodar pelo código
+assets/brand/        logos e ícones originais
+docs/                especificação
+scripts/             geração de ícones, IPK e versão para TVs antigas
+data/                suas listas e preferências ao rodar pelo código (fora do Git);
+                     no app instalado ficam na pasta de dados do usuário
 ```
 
 O servidor local faz proxy dos streams (resolve CORS e links `http`), normaliza as listas num catálogo único e processa o guia. Ele aceita só o próprio computador — e, se você ligar, aparelhos da sua rede de casa.
 
-Depois de mexer em `public/js`, rode `npm install` (uma vez) e `npm run build` para atualizar a versão das TVs antigas.
+Depois de mexer em `src/web/js`, rode `npm install` (uma vez) e `npm run build` para atualizar a versão das TVs antigas.
 
 ## Termos e licença
 
-- **[Termos de Uso](public/termos.txt):** aceitos na primeira vez que o app abre (e no instalador do Windows).
+- **[Termos de Uso](src/web/termos.txt):** aceitos na primeira vez que o app abre (e no instalador do Windows).
 - **Código:** [Licença MIT](LICENSE).
