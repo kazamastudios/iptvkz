@@ -1,4 +1,4 @@
-// Gera o app da LG (dist-tv/*.ipk). Uso:
+// Gera o app da LG (dist/webos/*.ipk). Uso:
 //   npm run ipk                              endereço em branco na primeira abertura
 //   set IPTVKZ_TV_SERVER=192.168.1.10:8787   (opcional) já vem preenchido, para testes
 const fs = require('fs');
@@ -7,8 +7,8 @@ const { execFileSync } = require('child_process');
 
 const root = path.join(__dirname, '..');
 const src = path.join(root, 'platforms', 'webos');
-const work = path.join(root, 'dist-tv', 'app');
-const out = path.join(root, 'dist-tv');
+const work = path.join(root, 'dist', 'webos', 'app');
+const out = path.join(root, 'dist', 'webos');
 
 fs.rmSync(work, { recursive: true, force: true });
 fs.mkdirSync(work, { recursive: true });

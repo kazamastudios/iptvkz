@@ -52,7 +52,7 @@ npm install
 npm run desktop
 ```
 
-Gerar os instaladores: `npm run dist:win`, `npm run dist:mac` ou `npm run dist:linux` (saem em `dist/`). No GitHub, isso é feito automaticamente: cada pull request gera os instaladores como artefatos, e cada tag `v*` cria um rascunho de Release com eles.
+Gerar os instaladores: `npm run dist:win`, `npm run dist:mac` ou `npm run dist:linux` (saem em `dist/desktop/`). No GitHub, isso é feito automaticamente: cada pull request gera os instaladores como artefatos, e cada tag `v*` cria um rascunho de Release com eles.
 
 ### Rodar no Mac
 
@@ -77,7 +77,7 @@ O computador precisa ficar ligado. No app de computador, com o acesso pela rede 
 
 ### Android TV
 
-`npm run android` gera `dist-android/IPTVKZ-android.apk` (precisa de JDK 17 e Android SDK com NDK). O app roda o servidor dentro da própria TV, sem precisar do computador.
+`npm run android` gera `dist/android/IPTVKZ-android.apk` (precisa de JDK 17 e Android SDK com NDK). O app roda o servidor dentro da própria TV, sem precisar do computador.
 
 Atualizações: a cada tag `v*` com a Release publicada, o app baixa sozinho as mudanças de `src/` e aplica na próxima abertura. Mudanças no app Android exigem aumentar `nativeVersion` em `platforms/android/version.properties`, e aí ele oferece o APK novo. As chaves de assinatura ficam nos secrets do GitHub (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_UPDATE_KEY`); sem a mesma chave, a TV não aceita atualizar o app.
 
@@ -100,6 +100,7 @@ platforms/
 assets/brand/        logos e ícones originais
 docs/                especificação
 scripts/             geração de ícones, IPK e versão para TVs antigas
+dist/                saída dos builds, uma subpasta por plataforma (fora do Git)
 data/                suas listas e preferências ao rodar pelo código (fora do Git);
                      no app instalado ficam na pasta de dados do usuário
 ```

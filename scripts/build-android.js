@@ -1,4 +1,4 @@
-// Gera o APK da Android TV e os arquivos de atualização em dist-android/.
+// Gera o APK da Android TV e os arquivos de atualização em dist/android/.
 // Uso: npm run android           (compila)
 // Chaves: ANDROID_KEYSTORE, ANDROID_KEYSTORE_PASSWORD e ANDROID_UPDATE_KEY (arquivo PEM).
 const fs = require('fs');
@@ -9,7 +9,7 @@ const { execFileSync } = require('child_process');
 
 const root = path.join(__dirname, '..');
 const android = path.join(root, 'platforms', 'android');
-const out = path.join(root, 'dist-android');
+const out = path.join(root, 'dist', 'android');
 const NODE_VERSION = 'v18.20.4';
 
 function run(cmd, args, opts = {}) {
