@@ -132,7 +132,8 @@ export class Player {
     this.nextCard = null;
 
     this.flashEl = h('div.seek-flash');
-    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.top, this.center, this.flashEl, this.bottom, this.menu, this.errorEl);
+    this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
+    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.noImageEl, this.top, this.center, this.flashEl, this.bottom, this.menu, this.errorEl);
     this.host.append(this.root);
   }
 
@@ -228,7 +229,7 @@ export class Player {
     document.addEventListener('keyup', this._onKeyUp);
 
     this._subTimer = setInterval(() => this._renderSubs(), 100);
-    this._watchdog = setInterval(() => this._checkStall(), 5000);
+    this._watchdog = setInterval(() => { this._checkStall(); this._checkImage(); }, 5000);
     this._showCtrl();
   }
 
@@ -246,7 +247,59 @@ export class Player {
     this._hideError();
     this._removeNextCard();
     this.nextDismissed = false;
+    this._resetImage();
     this._claimAndStart(src);
+  }
+
+  // ---------- ao vivo com som e sem imagem (vídeo em formato que este caminho não abre) ----------
+  _resetImage() {
+    this.forceNative = false;
+    this.imgAltTried = false;
+    this.imgNativeTried = false;
+    this.imgTrying = false;
+    this.imgDone = false;
+    this.imgFromAlt = null;
+    this.noImgTicks = 0;
+    this.noImageEl.classList.add('hidden');
+  }
+
+  _checkImage() {
+    const v = this.video;
+    if (!this.opts.live || this.destroyed || this.imgDone || v.paused || !this.errorEl.classList.contains('hidden')) return;
+    if (v.videoWidth > 0) {
+      this.imgTrying = false;
+      this.noImgTicks = 0;
+      return;
+    }
+    const moved = v.currentTime > this.noImgTime;
+    this.noImgTime = v.currentTime;
+    this.noImgTicks = moved ? this.noImgTicks + 1 : 0;
+    if (this.noImgTicks >= 2) this._nextImageRoute();
+  }
+
+  // Link alternativo, depois o decodificador da TV; sem imagem em nenhum, volta ao áudio com aviso.
+  _nextImageRoute() {
+    if (this.imgFromAlt === null) this.imgFromAlt = this.usingAlt;
+    this.imgTrying = true;
+    if (this.src.alt && !this.usingAlt && !this.imgAltTried) {
+      this.imgAltTried = true;
+      this.usingAlt = true;
+      return this._start(this.src.alt);
+    }
+    if (TV.on && !this.imgNativeTried) {
+      this.imgNativeTried = true;
+      this.forceNative = true;
+      // o player da TV lida melhor com HLS do que com .ts puro
+      const hlsUrl = [this.src.url, this.src.alt].find((u) => u && /\.m3u8(\?|$)/i.test(u));
+      if (hlsUrl) this.usingAlt = hlsUrl === this.src.alt && hlsUrl !== this.src.url;
+      return this._start(this.currentUrl());
+    }
+    this.imgTrying = false;
+    this.imgDone = true;
+    this.forceNative = false;
+    this.usingAlt = this.imgFromAlt;
+    this._start(this.currentUrl());
+    this.noImageEl.classList.remove('hidden');
   }
 
   // Confere o limite de telas da conta antes de abrir o vídeo.
@@ -312,10 +365,13 @@ export class Player {
     this._spin(true);
     this.lastProgressAt = Date.now();
     this.lastTime = -1;
+    this.noImgTicks = 0;
+    this.noImgTime = -1;
     const live = !!this.opts.live;
     let engine = detectEngine(url, live);
     if (engine === 'hls' && !(window.Hls && Hls.isSupported())) engine = 'native';
     if (engine === 'mpegts' && !(window.mpegts && mpegts.getFeatureList().mseLivePlayback)) engine = 'native';
+    if (this.forceNative) engine = 'native';
     this.engine = engine;
     const purl = proxyUrl(url);
     const v = this.video;
@@ -373,6 +429,7 @@ export class Player {
     // e cada tentativa só é tratada uma vez.
     if (this.destroyed || gen !== this.gen || this.failedGen === gen) return;
     this.failedGen = gen;
+    if (this.imgTrying) return this._nextImageRoute(); // a tentativa de recuperar a imagem falhou: próxima
     const t = this.video.currentTime;
     if (!this.opts.live && t > 1) this.resumeAt = t;
 
@@ -413,9 +470,11 @@ export class Player {
 
   _showError(kind) {
     const fmt = kind === 'format';
-    const title = fmt ? 'O navegador não toca este formato' : this.opts.live ? 'Canal indisponível' : 'Não foi possível carregar';
+    // TV e celular não têm VLC para oferecer: o botão abriria no computador
+    const vlc = S.vlc && !TV.on && !isTouch();
+    const title = fmt ? (vlc ? 'O navegador não toca este formato' : 'Este aparelho não toca este formato') : this.opts.live ? 'Canal indisponível' : 'Não foi possível carregar';
     const text = fmt
-      ? 'Isso é comum com MKV, áudio AC3/E-AC3 ou vídeo H.265. O VLC toca normalmente.'
+      ? (vlc ? 'Isso é comum com MKV, áudio AC3/E-AC3 ou vídeo H.265. O VLC toca normalmente.' : 'Isso é comum em arquivos MKV. Tente outra versão do título, se houver, ou assista em outro aparelho.')
       : 'O canal pode estar fora do ar, ou o servidor da lista recusou a conexão. Tente de novo em instantes.';
     this.errorEl.replaceChildren(
       ico('alert'),
@@ -423,7 +482,7 @@ export class Player {
       h('p', text),
       h('div.acts',
         h('button.btn', { onclick: () => this.retry() }, ico('refresh'), 'Tentar de novo'),
-        S.vlc ? h('button.btn.primary', { onclick: () => this.openVlc() }, ico('external'), 'Abrir no VLC') : null),
+        vlc ? h('button.btn.primary', { onclick: () => this.openVlc() }, ico('external'), 'Abrir no VLC') : null),
     );
     this.errorEl.classList.remove('hidden');
   }
@@ -434,6 +493,7 @@ export class Player {
 
   retry() {
     this._hideError();
+    this._resetImage();
     this.attempts = 0;
     this.usingAlt = false;
     this._start(this.src.url);
