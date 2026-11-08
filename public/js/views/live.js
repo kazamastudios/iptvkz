@@ -2,7 +2,7 @@
 import { h, ico, img, incremental, matcher, debounce, fmtClock, toast } from '../util.js';
 import { starIcon } from '../icons.js';
 import {
-  C, S, visibleCats, visibleItems, favItems, recentItems, clearRecents, isFav, toggleFav, addRecent,
+  C, S, visibleCats, visibleItems, favItems, recentItems, clearRecents, catItems, adultLocked, isAdultItem, isFav, toggleFav, addRecent,
   fetchEpg, epgFor, nowNext, epgState, setSetting,
 } from '../store.js';
 import { Player } from '../player.js';
@@ -18,7 +18,7 @@ function itemsFor(cat) {
   if (cat === 'fav') return favItems('live');
   if (cat === 'recent') return recentItems('live');
   if (cat === 'all') return visibleItems('live');
-  return C().live.byCat.get(cat) || [];
+  return catItems('live', cat);
 }
 
 function defaultCat() {
@@ -290,7 +290,7 @@ export function liveView(params, ctx) {
 
   function play(id) {
     const ch = C().live.byId.get(id);
-    if (!ch) return;
+    if (!ch || (adultLocked() && isAdultItem('live', id))) return;
     if (!root.classList.contains('watching')) {
       ctx.navigate(`#/live?cat=${encodeURIComponent(cat)}&ch=${encodeURIComponent(id)}`);
       return;
@@ -363,7 +363,8 @@ export function liveView(params, ctx) {
 
   function apply(p) {
     const newCat = p.get('cat') || cat;
-    const ch = p.get('ch');
+    let ch = p.get('ch');
+    if (ch && adultLocked() && isAdultItem('live', ch)) ch = null; // controle dos pais
     const catChanged = newCat !== cat;
     cat = newCat;
     if (catChanged) query = '';

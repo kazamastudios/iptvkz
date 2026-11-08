@@ -8,7 +8,7 @@
 
 ---
 
-> O IPTVKZ é **só um player**. Ele não vem com nenhuma lista, canal ou conteúdo: você usa as listas que você mesmo cadastrar. Use apenas conteúdo que você tem direito de assistir.
+> O IPTVKZ é **só um player**. Ele não vem com nenhuma lista, canal ou conteúdo: você usa as listas que você mesmo cadastrar e é o único responsável pelo que adiciona e assiste. Use apenas conteúdo que você tem direito de assistir. Ao usar o app você concorda com os **[Termos de Uso](public/termos.txt)**.
 
 ## Recursos
 
@@ -18,6 +18,7 @@
 - **Guia (EPG):** XMLTV (inclusive `.gz`) em grade de horários, com ajuste de fuso por lista.
 - **Player:** HLS (hls.js), MPEG-TS (mpegts.js) e nativo; troca de **áudio**, **legendas** (do stream ou arquivo `.srt`/`.vtt`, com atraso, tamanho e fundo), qualidade, picture-in-picture e **“Abrir no VLC”** para formatos que o navegador não toca.
 - **Modo TV:** use pelo navegador da Smart TV (testado para LG webOS) com o PC como servidor — navegação pelas setas/OK/Voltar do controle e zapping em tela cheia. Versão compatível com TVs antigas (webOS 4+).
+- **Controle dos pais:** PIN de 4 dígitos que esconde canais, filmes e séries adultos (detectados pelo nome ou marcados por você) em todos os aparelhos.
 - **Busca global**, categorias ocultáveis/reordenáveis, tudo em PT-BR.
 
 ## Instalar
@@ -79,6 +80,7 @@ O servidor local faz proxy dos streams (resolve CORS e links `http`), normaliza 
 
 Depois de mexer em `public/js`, rode `npm install` (uma vez) e `npm run build` para atualizar a versão das TVs antigas.
 
-## Licença
+## Termos e licença
 
-MIT
+- **[Termos de Uso](public/termos.txt):** aceitos na primeira vez que o app abre (e no instalador do Windows).
+- **Código:** [Licença MIT](LICENSE).

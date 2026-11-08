@@ -165,6 +165,14 @@ input, select, textarea { font: inherit; color: inherit; }
 .row { display: flex; gap: 12px; align-items: center; }
 .row > .field { flex: 1; }
 .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.terms {
+  max-height: 52vh; overflow: auto; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 16px 20px; font-size: 13px; line-height: 1.55; color: #d4d4de;
+}
+.terms h3 { margin: 0 0 4px; font: 650 15px var(--font-display); color: var(--text); }
+.terms h4 { margin: 16px 0 6px; font-size: 12px; letter-spacing: .5px; color: var(--text); }
+.terms p { margin: 0 0 6px; }
+.tv .terms:focus { box-shadow: 0 0 0 2px var(--accent); }
 .error-box { background: #2a1214; border: 1px solid #5c2026; color: #ffb3b5; padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 14px; }
 
 .tabs { display: flex; gap: 6px; padding: 4px; background: var(--bg-2); border-radius: 999px; border: 1px solid var(--line); margin-bottom: 18px; width: fit-content; }
@@ -530,6 +538,17 @@ input, select, textarea { font: inherit; color: inherit; }
 .cat-row.off .nm { color: var(--faint); text-decoration: line-through; }
 .cat-row .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cat-row .n { font-size: 12px; color: var(--faint); }
+.adult-tag {
+  height: 22px; padding: 0 7px; border-radius: 6px; border: 1px solid var(--line-2); background: none; cursor: pointer;
+  font-size: 10px; font-weight: 800; letter-spacing: .3px; color: var(--faint);
+}
+.adult-tag.on { background: rgba(255, 42, 42, .18); border-color: var(--accent); color: #ff8a8a; }
+.tv .adult-tag:focus { box-shadow: 0 0 0 2px var(--accent); }
+.pin-input {
+  width: 200px; height: 56px; text-align: center; font: 700 28px var(--font-display); letter-spacing: 14px;
+  border-radius: var(--radius-sm); border: 1px solid var(--line-2); background: var(--bg-2); outline: none; padding-left: 14px;
+}
+.pin-input:focus { border-color: var(--accent); }
 .cat-row .grip { cursor: grab; color: var(--faint); }
 .cat-row.drag { opacity: .4; }
 .cat-row.over { box-shadow: inset 0 2px 0 var(--accent); }
