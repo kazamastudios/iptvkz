@@ -2,15 +2,114 @@
   "name": "iptvkz",
   "version": "1.0.0",
   "private": true,
-  "description": "Player IPTV pessoal (M3U e Xtream Codes) que roda no navegador",
+  "description": "IPTVKZ — player IPTV pessoal para computador e TV (M3U e Xtream Codes)",
   "scripts": {
     "start": "node server.js",
-    "build": "node scripts/build-legacy.js"
+    "desktop": "electron .",
+    "build": "node scripts/build-legacy.js",
+    "vendor": "node scripts/vendor.js",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
   },
   "engines": {
     "node": ">=18"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0"
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
+    "hls.js": "^1.5.17",
+    "mpegts.js": "^1.7.3"
+  },
+  "allowScripts": {
+    "electron@33.2.1": true,
+    "esbuild@0.24.0": true
+  },
+  "main": "electron/main.js",
+  "author": {
+    "name": "lucasyemz",
+    "email": "lukkolly@gmail.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/lucasyemz/iptvkz",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lucasyemz/iptvkz.git"
+  },
+  "build": {
+    "appId": "com.lucasyemz.iptvkz",
+    "productName": "IPTVKZ",
+    "copyright": "Copyright © 2026 lucasyemz",
+    "artifactName": "IPTVKZ-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**",
+      "server.js",
+      "lib/**",
+      "public/**",
+      "launcher/iptvkz.ico",
+      "assets/icon-1024.png",
+      "!public/**/*.map",
+      "package.json"
+    ],
+    "win": {
+      "icon": "launcher/iptvkz.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "shortcutName": "IPTVKZ",
+      "artifactName": "IPTVKZ-${version}-windows-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "IPTVKZ-${version}-windows-portable.${ext}"
+    },
+    "mac": {
+      "icon": "assets/icon-1024.png",
+      "category": "public.app-category.entertainment",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null
+    },
+    "linux": {
+      "icon": "assets/icon-1024.png",
+      "category": "AudioVideo",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "maintainer": "lucasyemz <lukkolly@gmail.com>"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "lucasyemz",
+      "repo": "iptvkz",
+      "releaseType": "draft"
+    }
   }
 }
