@@ -315,15 +315,22 @@ async function buildFromXtream(list) {
   if (!auth || !auth.user_info || Number(auth.user_info.auth) === 0) {
     throw new Error('Usuário ou senha inválidos (o servidor recusou o login).');
   }
-  const safe = (pr) => pr.catch(() => []);
-  const [liveCats, liveStreams, vodCats, vodStreams, serCats, serList] = await Promise.all([
-    safe(x.api('get_live_categories')),
-    safe(x.api('get_live_streams')),
-    safe(x.api('get_vod_categories')),
-    safe(x.api('get_vod_streams')),
-    safe(x.api('get_series_categories')),
-    safe(x.api('get_series')),
-  ]);
+  // Uma de cada vez: alivia aparelhos fracos e provedores que limitam conexões.
+  // Seção indisponível fica vazia, mas prazo esgotado interrompe e mostra o erro.
+  const get = async (action) => {
+    try {
+      return await x.api(action);
+    } catch (err) {
+      if (err.timeout) throw err;
+      return [];
+    }
+  };
+  const liveCats = await get('get_live_categories');
+  const liveStreams = await get('get_live_streams');
+  const vodCats = await get('get_vod_categories');
+  const vodStreams = await get('get_vod_streams');
+  const serCats = await get('get_series_categories');
+  const serList = await get('get_series');
 
   const live = (Array.isArray(liveStreams) ? liveStreams : []).map((s) => ({
     id: 'l' + s.stream_id,
@@ -368,6 +375,9 @@ async function buildFromXtream(list) {
     }
     if (!g.poster && s.cover) g.poster = s.cover;
     addVersion(g.versions, { label, xid: s.series_id });
+  }
+  if (!live.length && !movieRaw.length && !seriesMap.size) {
+    throw new Error('O servidor não enviou nenhum canal, filme ou série. Tente de novo.');
   }
   const series = [...seriesMap.values()];
   for (const s of series) sortVersions(s.versions);

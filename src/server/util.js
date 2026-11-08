@@ -43,16 +43,31 @@ function safeHost(url) {
   try { return new URL(url).host; } catch { return 'o servidor'; }
 }
 
-async function fetchText(url) {
-  const res = await fetchWithTimeout(url);
-  if (!res.ok) throw new Error(`O servidor respondeu ${res.status} (${safeHost(url)})`);
-  return res.text();
+// Baixa o corpo inteiro dentro do prazo: o provedor pode parar de enviar no meio da resposta.
+async function readText(url, ms = 120000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      headers: { 'User-Agent': UA, Accept: '*/*' },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw Object.assign(new Error(`O servidor respondeu ${res.status} (${safeHost(url)})`), { status: res.status });
+    return await res.text();
+  } catch (err) {
+    if (ctrl.signal.aborted) throw Object.assign(new Error('Tempo esgotado ao baixar de ' + safeHost(url)), { timeout: true });
+    if (err.status) throw err;
+    throw new Error('Não foi possível conectar a ' + safeHost(url) + ' (' + (err.cause?.code || err.message) + ')');
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
+const fetchText = (url) => readText(url);
+
 async function fetchJson(url) {
-  const res = await fetchWithTimeout(url);
-  if (!res.ok) throw new Error(`O servidor respondeu ${res.status} (${safeHost(url)})`);
-  const text = await res.text();
+  const text = await readText(url);
   try {
     return JSON.parse(text);
   } catch {
