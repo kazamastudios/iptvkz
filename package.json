@@ -11,7 +11,8 @@
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
-    "ipk": "node scripts/build-ipk.js"
+    "ipk": "node scripts/build-ipk.js",
+    "android": "node scripts/build-android.js"
   },
   "engines": {
     "node": ">=18"

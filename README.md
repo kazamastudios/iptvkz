@@ -75,6 +75,12 @@ Abra http://localhost:8787. Para testar na janela do app, use `npm run desktop` 
 
 O computador precisa ficar ligado. No app de computador, com o acesso pela rede ligado, fechar a janela deixa o IPTVKZ na bandeja do sistema; a opção **Iniciar com o sistema** abre ele em segundo plano quando o computador liga.
 
+### Android TV
+
+`npm run android` gera `dist-android/IPTVKZ-android.apk` (precisa de JDK 17 e Android SDK com NDK). O app roda o servidor dentro da própria TV, sem precisar do computador.
+
+Atualizações: a cada tag `v*` com a Release publicada, o app baixa sozinho as mudanças de `src/` e aplica na próxima abertura. Mudanças no app Android exigem aumentar `nativeVersion` em `platforms/android/version.properties`, e aí ele oferece o APK novo. As chaves de assinatura ficam nos secrets do GitHub (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_UPDATE_KEY`); sem a mesma chave, a TV não aceita atualizar o app.
+
 ## Como funciona
 
 ```
