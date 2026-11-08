@@ -1,6 +1,6 @@
 {
   "name": "iptvkz",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "IPTVKZ — player IPTV pessoal para computador e TV (M3U e Xtream Codes)",
   "scripts": {
@@ -11,7 +11,8 @@
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
-    "ipk": "node scripts/build-ipk.js"
+    "ipk": "node scripts/build-ipk.js",
+    "android": "node scripts/build-android.js"
   },
   "engines": {
     "node": ">=18"
@@ -45,7 +46,7 @@
     "copyright": "Copyright © 2026 lucasyemz",
     "artifactName": "IPTVKZ-${version}-${os}-${arch}.${ext}",
     "directories": {
-      "output": "dist"
+      "output": "dist/desktop"
     },
     "files": [
       "platforms/desktop/**",
