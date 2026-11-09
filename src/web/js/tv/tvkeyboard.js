@@ -115,8 +115,34 @@ export function openKeyboard(input) {
   focusEl(grid.querySelector(numeric ? '.tvkb-key' : '.tvkb-key:nth-child(11)'));
 }
 
+// O que entra no campo se soma ao que já está nele: sem limpar, a nova busca vira "antiga nova" e não acha nada.
+function newSearch(input) {
+  if (input.id === 'globalSearch') input.value = '';
+}
+
+// Texto que entra com o teclado escondido veio do ditado: a TV esconde o teclado enquanto escuta a voz.
+// Ao confirmar o ditado, a busca já roda; então fecha o teclado e leva o foco para os resultados.
+let dictated = null;
+let dictationTimer = 0;
+function onInput(e) {
+  const el = e.target;
+  if (!TV.on || !el || !el.dataset || !el.dataset.native || nativeKeyboardOpen() || !el.value.trim()) return;
+  dictated = el;
+  clearTimeout(dictationTimer);
+  dictationTimer = setTimeout(() => {
+    if (dictated === el && document.activeElement === el) finishDictation(el);
+  }, 500);
+}
+function finishDictation(input) {
+  dictated = null;
+  clearTimeout(dictationTimer);
+  finishNative(input);
+}
+
 // De preferência o teclado do aparelho; o do app fica para o PIN e para quando o nativo não abrir.
 function openEntry(input) {
+  dictated = null;
+  newSearch(input);
   if (hasNativeKeyboard() && !input.classList.contains('pin-input')) startNativeInput(input, openKeyboard);
   else openKeyboard(input);
 }
@@ -145,10 +171,17 @@ function onKey(e) {
         }
         return;
       }
-      // Fechado: OK abre de novo; qualquer outra tecla volta a navegar.
+      // Fechado: OK logo depois do ditado confirma a busca; fora isso, OK abre de novo
+      // e qualquer outra tecla volta a navegar.
       if (enter) {
         e.preventDefault();
         e.stopPropagation();
+        if (dictated === el && el.value.trim()) {
+          finishDictation(el);
+          return;
+        }
+        dictated = null;
+        newSearch(el);
         startNativeInput(el, openKeyboard);
       } else endNativeInput();
       return;
@@ -177,6 +210,7 @@ function onKey(e) {
 
 export function initTvKeyboard() {
   window.addEventListener('keydown', onKey, true);
+  document.addEventListener('input', onInput, true);
   // Ponteiro do Magic Remote em um campo de texto
   document.addEventListener('click', (e) => {
     if (TV.on && isTextInput(e.target)) openEntry(e.target);

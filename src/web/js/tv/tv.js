@@ -148,6 +148,7 @@ export function endNativeInput() {
 // O sistema da TV consegue dizer se o teclado abriu? undefined = não sabe dizer.
 function systemKeyboardVisible() {
   try {
+    if (androidKeyboard()) return !!window.IPTVKZAndroid.isKeyboardVisible();
     const sys = window.webOSSystem || window.PalmSystem;
     const v = sys && sys.isKeyboardVisible;
     return typeof v === 'function' ? v.call(sys) : v;
@@ -158,7 +159,14 @@ function systemKeyboardVisible() {
 
 // TVs com teclado próprio para páginas. onFail: abrir o teclado do app quando o nativo não apareceu.
 export function hasNativeKeyboard() {
-  return /web0s|webos|tizen/i.test(navigator.userAgent);
+  return /web0s|webos|tizen/i.test(navigator.userAgent) || androidKeyboard();
+}
+
+// O app Android abre o teclado do sistema (com voz) a partir do APK que traz showKeyboard.
+// Os APKs anteriores continuam com o teclado do app.
+function androidKeyboard() {
+  const a = window.IPTVKZAndroid;
+  return !!a && typeof a.showKeyboard === 'function' && typeof a.isKeyboardVisible === 'function';
 }
 
 export function startNativeInput(input, onFail) {
@@ -173,6 +181,7 @@ export function startNativeInput(input, onFail) {
   input.addEventListener('blur', endNativeInput, { once: true });
   input.focus({ preventScroll: true });
   syncFocus(input);
+  if (androidKeyboard()) window.IPTVKZAndroid.showKeyboard(); // no Android, focar o campo não basta
   setTimeout(() => {
     if (nativeInput !== input || systemKeyboardVisible() !== false) return;
     endNativeInput();

@@ -17,6 +17,7 @@ import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -25,7 +26,9 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -67,14 +70,18 @@ public class MainActivity extends Activity {
     private View splash;
     private ProgressBar bar;
     private TextView message;
+    private volatile boolean keyboardVisible;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // Sem isto, antes do Android 11 o app não fica sabendo que o teclado abriu.
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
         setContentView(root);
+        watchKeyboard();
         createWebView();
         createSplash();
         updater = new Updater(this);
@@ -199,6 +206,37 @@ public class MainActivity extends Activity {
         return "";
     }
 
+    /**
+     * Avisa a interface quando o teclado do sistema abre ou fecha, com o mesmo evento da LG
+     * (keyboardStateChange). Assim a busca por voz funciona igual nos dois.
+     */
+    private void watchKeyboard() {
+        View decor = getWindow().getDecorView();
+        decor.setOnApplyWindowInsetsListener((v, insets) -> {
+            boolean visible;
+            if (Build.VERSION.SDK_INT >= 30) {
+                visible = insets.isVisible(WindowInsets.Type.ime());
+            } else {
+                visible = insets.getSystemWindowInsetBottom() > v.getHeight() * 0.15f;
+            }
+            if (visible != keyboardVisible) {
+                keyboardVisible = visible;
+                if (web != null) {
+                    web.evaluateJavascript("document.dispatchEvent(new CustomEvent('keyboardStateChange',"
+                            + "{detail:{visibility:" + visible + "}}))", null);
+                }
+            }
+            return v.onApplyWindowInsets(insets);
+        });
+    }
+
+    /** Abre o teclado do sistema no campo que a interface acabou de focar. */
+    private void showKeyboard() {
+        web.requestFocus();
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) imm.showSoftInput(web, 0);
+    }
+
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     private void createWebView() {
         web = new WebView(this);
@@ -215,6 +253,13 @@ public class MainActivity extends Activity {
 
             @JavascriptInterface
             public String lanAddress() { return MainActivity.this.lanAddress(); }
+
+            // Espera o foco do campo chegar ao WebView antes de pedir o teclado.
+            @JavascriptInterface
+            public void showKeyboard() { main.postDelayed(MainActivity.this::showKeyboard, 150); }
+
+            @JavascriptInterface
+            public boolean isKeyboardVisible() { return keyboardVisible; }
         }, "IPTVKZAndroid");
         web.setWebViewClient(new WebViewClient() {
             @Override
