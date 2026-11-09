@@ -55,7 +55,7 @@ const ctx = {
   rerender: () => { current = null; route(); },
   useList,
   refreshList,
-  editList: (l) => openListForm(l, onListSaved),
+  editList: (l) => openListForm(l, onListSaved, deleteList),
   addList: () => openListForm(null, onListSaved),
   deleteList,
 };
@@ -114,7 +114,13 @@ function renderListSwitch() {
   if (!S.lists.length) return;
   const cur = activeList();
   const menu = h('div.list-menu.hidden');
-  const btn = h('button.list-btn', { onclick: (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); } },
+  const btn = h('button.list-btn', {
+    onclick: (e) => {
+      e.stopPropagation();
+      menu.classList.toggle('hidden');
+      if (TV.on && !menu.classList.contains('hidden')) focusEl(menu.querySelector('.cur') || menu.querySelector('button'));
+    },
+  },
     ico(cur.type === 'xtream' ? 'server' : 'link'),
     h('div.meta', h('div.name', cur.name), h('div.sub', cur.type === 'xtream' ? 'Xtream Codes' : 'Lista M3U')),
     ico('chevronDown'));
@@ -403,7 +409,11 @@ function route() {
     appState = 'welcome';
     return showState(welcomeView(() => ctx.addList()), 'IPTVKZ');
   }
-  if (appState === 'loading') return;
+  // A lista carregando não prende o app: Configurações continua aberta para trocar ou excluir.
+  if (appState === 'loading' && name !== 'settings') {
+    if (current && showLoading) showLoading();
+    return;
+  }
   if (appState === 'error' && name !== 'settings') return showError();
   if (!C() && name !== 'settings') return;
 
@@ -448,6 +458,9 @@ function showError() {
 
 // ---------- carregamento de listas ----------
 
+let loadToken = 0;
+let showLoading = null;
+
 async function loadActive(force = false) {
   const list = activeList();
   checkListStatus();
@@ -458,24 +471,31 @@ async function loadActive(force = false) {
   }
   appState = 'loading';
   renderNav();
-  const posters = ['movies', 'series', 'mylist', 'favorites', 'history'].includes(parseHash().name);
-  showState(h('div.page.sk-page',
-    h('div.sk-status', h('div.spinner.small'), h('span', `Carregando ${list.name}…`),
-      force ? h('span.faint', 'Listas grandes podem levar até um minuto.') : null),
-    posters ? h('div.poster-grid', skPosters(18)) : h('div.ch-grid', skChannels(24))), 'IPTVKZ');
+  const token = ++loadToken;
+  showLoading = () => {
+    const posters = ['movies', 'series', 'mylist', 'favorites', 'history'].includes(parseHash().name);
+    showState(h('div.page.sk-page',
+      h('div.sk-status', h('div.spinner.small'), h('span', `Carregando ${list.name}…`),
+        force ? h('span.faint', 'Listas grandes podem levar até um minuto.') : null),
+      posters ? h('div.poster-grid', skPosters(18)) : h('div.ch-grid', skChannels(24))), 'IPTVKZ');
+  };
+  if (parseHash().name === 'settings') route();
+  else showLoading();
   try {
     const r = await loadCatalog(list.id, { force });
+    if (token !== loadToken) return; // trocou ou excluiu a lista enquanto carregava
     appState = 'ready';
     warmSearch();
     renderListSwitch();
-    current = null;
-    route();
+    if (current && current.name === 'settings') renderNav(); // quem está em Configurações não perde o lugar
+    else { current = null; route(); }
     if (r.refreshing) watchRefresh(list.id);
   } catch (e) {
+    if (token !== loadToken) return;
     appState = 'error';
     lastError = e.message;
     renderNav();
-    route();
+    if (!current || current.name !== 'settings') route();
   }
 }
 
@@ -570,6 +590,12 @@ const TOP_LEVEL = new Set(['live', 'movies', 'series', 'guide', 'mylist', 'favor
 
 // Voltar: menu do player > modal > filme/episódio > tela atual > página anterior (TV).
 function handleBack(e) {
+  const listMenu = $('#listSwitch .list-menu:not(.hidden)');
+  if (listMenu) {
+    listMenu.classList.add('hidden');
+    if (TV.on) focusEl($('#listSwitch .list-btn'));
+    return true;
+  }
   if (popOpen) {
     setPop(false);
     return true;

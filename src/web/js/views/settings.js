@@ -5,7 +5,7 @@ import {
   parentalEnabled, adultLocked, pinHash, checkPin, unlockAdult, lockAdult, setCatAdult, adultCatCount,
 } from '../core/store.js';
 import { pinDialog } from './pin.js';
-import { TV, setTvMode, exitApp } from '../tv/tv.js';
+import { TV, setTvMode, exitApp, focusEl } from '../tv/tv.js';
 import { showTermsDialog } from './terms.js';
 
 const TYPE = { xtream: 'Xtream Codes', url: 'Link M3U', file: 'Arquivo M3U' };
@@ -139,6 +139,9 @@ export function settingsView(params, ctx) {
   page.append(tvSec);
 
   function renderTv(info) {
+    // redesenhar não pode tirar o foco do controle remoto da opção que acabou de mudar
+    const focused = TV.on ? [...tvBody.querySelectorAll('.switch')].indexOf(document.activeElement) : -1;
+    if (focused >= 0) setTimeout(() => focusEl(tvBody.querySelectorAll('.switch')[focused]), 0);
     tvBody.replaceChildren();
     if (info.local) {
       const lan = !!S.settings.lanAccess;

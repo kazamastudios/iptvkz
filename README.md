@@ -81,6 +81,10 @@ O computador precisa ficar ligado. No app de computador, com o acesso pela rede 
 
 Atualizações: a cada tag `v*` com a Release publicada, o app baixa sozinho as mudanças de `src/` e aplica na próxima abertura. Mudanças no app Android exigem aumentar `nativeVersion` em `platforms/android/version.properties`, e aí ele oferece o APK novo. As chaves de assinatura ficam nos secrets do GitHub (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_UPDATE_KEY`); sem a mesma chave, a TV não aceita atualizar o app.
 
+### App da LG (webOS)
+
+`npm run ipk` gera `dist/webos/*.ipk`, um app independente: a interface e o servidor rodam dentro da TV, sem computador. Ao abrir, ele verifica, baixa e instala atualizações assinadas publicadas no GitHub Releases. Para instalar sem a loja da LG, use o app Developer Mode e o `ares-install`.
+
 ## Como funciona
 
 ```

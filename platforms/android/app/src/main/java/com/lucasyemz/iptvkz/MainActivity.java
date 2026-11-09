@@ -5,11 +5,18 @@ import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Intent;
+import android.content.res.ColorStateList;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.net.ConnectivityManager;
+import android.net.LinkAddress;
+import android.net.LinkProperties;
+import android.net.Network;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -21,14 +28,22 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import java.io.File;
+import java.io.InputStream;
+import java.net.Inet4Address;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** Inicia o servidor embutido e mostra a interface do IPTVKZ em tela cheia. */
 public class MainActivity extends Activity {
     private static final String TAG = "IPTVKZ";
     private static final long START_TIMEOUT_MS = 45000;
+    private static final long CHECK_LIMIT_MS = 8000;
+    private static final long STALL_LIMIT_MS = 45000;
     private static boolean nodeStarted;
 
     static {
@@ -44,6 +59,9 @@ public class MainActivity extends Activity {
     private View fullscreen;
     private Updater updater;
     private boolean ready;
+    private View splash;
+    private ProgressBar bar;
+    private TextView message;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -53,8 +71,99 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.BLACK);
         setContentView(root);
         createWebView();
+        createSplash();
         updater = new Updater(this);
         new Thread(this::boot, "boot").start();
+    }
+
+    /** Abertura: logo, barra e o que está acontecendo. Sai quando a interface termina de carregar. */
+    private void createSplash() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setBackgroundColor(Color.rgb(6, 6, 9));
+        ImageView logo = new ImageView(this);
+        try (InputStream in = getAssets().open("logo-horizontal.webp")) {
+            logo.setImageBitmap(BitmapFactory.decodeStream(in));
+        } catch (Exception e) {
+            Log.w(TAG, "Logo da abertura indisponível", e);
+        }
+        int width = getResources().getDisplayMetrics().widthPixels;
+        box.addView(logo, new LinearLayout.LayoutParams(width * 2 / 5, width * 2 / 7));
+        ColorStateList red = ColorStateList.valueOf(Color.rgb(255, 42, 42));
+        bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        bar.setIndeterminate(true);
+        bar.setProgressTintList(red);
+        bar.setIndeterminateTintList(red);
+        box.addView(bar, new LinearLayout.LayoutParams(width / 4, 24));
+        message = new TextView(this);
+        message.setTextColor(Color.rgb(201, 201, 216));
+        message.setTextSize(18);
+        message.setGravity(Gravity.CENTER);
+        message.setPadding(0, 24, 0, 0);
+        message.setText("Verificando se há atualizações");
+        box.addView(message);
+        splash = box;
+        root.addView(splash, new ViewGroup.LayoutParams(-1, -1));
+    }
+
+    private void showStep(String text, int percent) {
+        main.post(() -> {
+            if (splash == null) return;
+            message.setText(text);
+            bar.setIndeterminate(percent < 0);
+            if (percent >= 0) bar.setProgress(percent);
+        });
+    }
+
+    private void hideSplash() {
+        if (splash != null) root.removeView(splash);
+        splash = null;
+    }
+
+    /** Sem internet ou com o GitHub fora, desiste logo e abre com a versão que já tem. */
+    private void updateAtBoot() throws InterruptedException {
+        AtomicLong limit = new AtomicLong(System.currentTimeMillis() + CHECK_LIMIT_MS);
+        Thread t = new Thread(() -> {
+            try {
+                updater.atBoot(new Updater.Progress() {
+                    @Override
+                    public void download(int percent) {
+                        limit.set(System.currentTimeMillis() + STALL_LIMIT_MS);
+                        showStep("Baixando atualização " + percent + "%", percent);
+                    }
+
+                    @Override
+                    public void installing() {
+                        limit.set(System.currentTimeMillis() + STALL_LIMIT_MS);
+                        showStep("Instalando atualização", 100);
+                    }
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "Atualização na abertura", e);
+            }
+        }, "boot-update");
+        t.start();
+        while (t.isAlive() && System.currentTimeMillis() < limit.get()) Thread.sleep(100);
+    }
+
+    /** Endereço na rede de casa, para o QR Code. O Node não consegue ler isso no Android 11+. */
+    private String lanAddress() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            Network net = cm.getActiveNetwork();
+            LinkProperties props = net == null ? null : cm.getLinkProperties(net);
+            if (props == null) return "";
+            for (LinkAddress a : props.getLinkAddresses()) {
+                if (a.getAddress() instanceof Inet4Address && a.getAddress().isSiteLocalAddress()) {
+                    return a.getAddress().getHostAddress();
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Endereço de rede indisponível", e);
+        }
+        return "";
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
@@ -70,6 +179,9 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new Object() {
             @JavascriptInterface
             public void exit() { main.post(MainActivity.this::quit); }
+
+            @JavascriptInterface
+            public String lanAddress() { return MainActivity.this.lanAddress(); }
         }, "IPTVKZAndroid");
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -78,6 +190,7 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView v, String url) {
                 v.evaluateJavascript("window.close=function(){IPTVKZAndroid.exit()}", null);
+                hideSplash();
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -103,6 +216,7 @@ public class MainActivity extends Activity {
             synchronized (MainActivity.class) {
                 if (!nodeStarted) {
                     port.delete();
+                    updateAtBoot();
                     Bundles.prepare(this);
                     String entry = new File(Bundles.dir(this), "main.js").getAbsolutePath();
                     String base = getFilesDir().getAbsolutePath();
@@ -117,6 +231,7 @@ public class MainActivity extends Activity {
             while (!port.exists() && System.currentTimeMillis() < limit) Thread.sleep(100);
             if (!port.exists()) throw new IllegalStateException("O servidor não iniciou");
             int p = Bundles.readInt(port);
+            showStep("Abrindo", 100);
             main.post(() -> {
                 ready = true;
                 web.loadUrl("http://127.0.0.1:" + p + "/");
@@ -133,6 +248,7 @@ public class MainActivity extends Activity {
     }
 
     private void showError() {
+        hideSplash();
         TextView t = new TextView(this);
         t.setTextColor(Color.WHITE);
         t.setTextSize(22);

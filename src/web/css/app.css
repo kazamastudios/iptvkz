@@ -938,3 +938,8 @@ input, select, textarea { font: inherit; color: inherit; }
 .no-image { position: absolute; top: 50%; left: 50%; z-index: 3; width: 80%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
 .no-image b { display: block; font: 600 20px var(--font-display); }
 .no-image span { display: block; margin-top: 6px; color: var(--muted); }
+
+/* ---------- QR Code para adicionar lista pelo celular ---------- */
+.pair-box { display: flex; align-items: center; margin-bottom: 16px; padding: 12px; border-radius: 12px; background: var(--card); }
+.pair-qr { flex: none; width: 150px; height: 150px; margin-right: 16px; border-radius: 8px; background: #fff; image-rendering: pixelated; }
+.pair-box p { margin: 4px 0 0; font-size: 13px; }
