@@ -333,6 +333,42 @@ function tvIcon() {
 const tvArt = tvIcon();
 write('platforms/webos/icon.png', encodePng(resize(tvArt, 80)));
 write('platforms/webos/largeIcon.png', encodePng(resize(tvArt, 130)));
+
+// Android TV: banner sem transparência, preenchendo o cartão, com o brilho vermelho do ícone.
+function tvBanner(art, w, h) {
+  const logo = resizeTo(art, Math.min(Math.round(w * 0.74), Math.round((h * 0.8 * art.w) / art.h)));
+  const ox = Math.round((w - logo.w) / 2);
+  const oy = Math.round((h - logo.h) / 2);
+  const data = Buffer.alloc(w * h * 4);
+  const base = [8, 8, 12];
+  const red = [235, 22, 30];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      // soma dos quatro lados: nos cantos o brilho se mistura, sem formar diagonais de moldura
+      const k = h * 0.09;
+      const glow = Math.min(1, 0.85 * (Math.exp(-x / k) + Math.exp(-(w - 1 - x) / k) + Math.exp(-y / k) + Math.exp(-(h - 1 - y) / k)));
+      const lx = x - ox;
+      const ly = y - oy;
+      const inLogo = lx >= 0 && ly >= 0 && lx < logo.w && ly < logo.h;
+      const li = inLogo ? (ly * logo.w + lx) * 4 : 0;
+      const a = inLogo ? logo.data[li + 3] / 255 : 0;
+      const o = (y * w + x) * 4;
+      for (let c = 0; c < 3; c++) {
+        const bg = Math.min(255, base[c] + red[c] * glow);
+        data[o + c] = Math.round(bg * (1 - a) + (inLogo ? logo.data[li + c] : 0) * a);
+      }
+      data[o + 3] = 255;
+    }
+  }
+  return { w, h, data };
+}
+{
+  const art = blackToAlpha(read('logo-horizontal-original.png'));
+  const res = 'platforms/android/app/src/main/res';
+  fs.mkdirSync(path.join(root, res, 'drawable-xxxhdpi'), { recursive: true });
+  write(`${res}/drawable-xhdpi/banner.png`, encodePng(tvBanner(art, 320, 180)));
+  write(`${res}/drawable-xxxhdpi/banner.png`, encodePng(tvBanner(art, 640, 360)));
+}
 if (process.env.ICON_TV_ONLY) process.exit(0);
 
 fs.mkdirSync(path.join(root, 'platforms', 'windows'), { recursive: true });
