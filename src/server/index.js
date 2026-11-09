@@ -15,10 +15,11 @@ const epg = require('./epg');
 const net = require('./network');
 const sessions = require('./sessions');
 const { sendText } = require('./compress');
+const pairing = require('./pairing');
 
 let PORT = Number(process.env.PORT) || 8787; // porta real (pode mudar no app de computador)
 const HOST = process.env.HOST || '0.0.0.0';
-const PUBLIC = path.join(__dirname, '..', 'web');
+const PUBLIC = process.env.IPTVKZ_WEB || path.join(__dirname, '..', 'web');
 const IDLE_MS = 5 * 60 * 1000;
 const KEEPALIVE = (process.env.IPTVKZ_KEEPALIVE || process.env.MINHATV_KEEPALIVE) === '1';
 
@@ -225,6 +226,20 @@ async function handleApi(req, res, url) {
 
   if (p === '/api/ping') return sendJson(res, 200, { ok: true });
 
+  if (p.startsWith('/api/pair/')) {
+    if (!req.isLocal) return sendJson(res, 403, { error: 'Só na própria TV' });
+    if (p === '/api/pair/start' && m === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      return sendJson(res, 200, pairing.begin(PORT, body.address));
+    }
+    if (p === '/api/pair/status' && m === 'GET') return sendJson(res, 200, { list: pairing.take(q.get('token')) });
+    if (p === '/api/pair/end' && m === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      pairing.end(body.token);
+      return sendJson(res, 200, { ok: true });
+    }
+  }
+
   if (p === '/api/state' && m === 'GET') {
     return sendJson(res, 200, { ...store.getState(), dataDir: store.DATA, vlc: req.isLocal && !!findVlc(), local: req.isLocal, host: req.isLocal ? os.hostname() : null });
   }
@@ -401,6 +416,10 @@ const BLOCKED_PAGE = `<!doctype html><meta charset="utf-8"><title>IPTVKZ</title>
 const server = http.createServer((req, res) => {
   const ip = req.socket.remoteAddress;
   req.isLocal = net.isLoopback(ip);
+  // cadastro pelo celular: só esta rota, com chave de uso único, e só de redes domésticas
+  if (pairing.enabled() && net.isPrivate(ip) && req.url.startsWith('/pair/')) {
+    return pairing.handle(req, res, new URL(req.url, 'http://localhost'));
+  }
   if (!req.isLocal && !(net.isPrivate(ip) && net.lanEnabled())) {
     res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(BLOCKED_PAGE);
@@ -426,7 +445,8 @@ const server = http.createServer((req, res) => {
 
 // Inicia o servidor. Rodando direto (`npm start`) usa a porta fixa e encerra se ela já estiver
 // ocupada; no app de computador tenta as próximas portas e não desliga por inatividade.
-function start({ port = PORT, host = HOST, keepAlive = KEEPALIVE, portFallback = false, onQuit, autostart } = {}) {
+function start({ port = PORT, host = HOST, keepAlive = KEEPALIVE, portFallback = false, onQuit, autostart, pairing: withPairing } = {}) {
+  if (withPairing) pairing.enable();
   if (onQuit) hooks.onQuit = onQuit;
   if (autostart) hooks.autostart = autostart;
   return new Promise((resolve, reject) => {

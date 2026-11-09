@@ -357,9 +357,11 @@ input, select, textarea { font: inherit; color: inherit; }
 .player .vol input { width: 0; opacity: 0; transition: width .2s, opacity .2s; accent-color: var(--accent); }
 .player .vol:hover input, .player .vol input:focus { width: 90px; opacity: 1; margin-right: 6px; }
 .player .center {
-  position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; z-index: 5; pointer-events: none;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 5; pointer-events: none;
 }
 .player .center .spinner { width: 54px; height: 54px; border-width: 4px; }
+.player .center .p-logo { display: none; width: 96px; height: 96px; margin-bottom: 24px; border-radius: 24px; }
+.player.awaiting .center .p-logo { display: block; }
 .player .perror {
   position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px; background: rgba(8, 8, 12, .92); text-align: center; padding: 24px;
@@ -567,7 +569,8 @@ input, select, textarea { font: inherit; color: inherit; }
   .nav a, .sidebar-foot a, .list-btn { justify-content: center; }
   .live { grid-template-columns: 200px 1fr; }
   .live.watching { grid-template-columns: 1fr 300px; }
-  .list-menu { width: 260px; }
+  /* a barra lateral estreita cortaria o menu: ele abre ao lado dela */
+  .list-menu { position: fixed; top: 64px; left: calc(var(--sidebar) + 8px); right: auto; width: 260px; max-height: calc(100vh - 80px); overflow-y: auto; }
 }
 @media (max-width: 760px) {
   .live.watching { grid-template-columns: 1fr; }
@@ -938,3 +941,8 @@ input, select, textarea { font: inherit; color: inherit; }
 .no-image { position: absolute; top: 50%; left: 50%; z-index: 3; width: 80%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
 .no-image b { display: block; font: 600 20px var(--font-display); }
 .no-image span { display: block; margin-top: 6px; color: var(--muted); }
+
+/* ---------- QR Code para adicionar lista pelo celular ---------- */
+.pair-box { display: flex; align-items: center; margin-bottom: 16px; padding: 12px; border-radius: 12px; background: var(--card); }
+.pair-qr { flex: none; width: 150px; height: 150px; margin-right: 16px; border-radius: 8px; background: #fff; image-rendering: pixelated; }
+.pair-box p { margin: 4px 0 0; font-size: 13px; }

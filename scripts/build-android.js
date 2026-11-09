@@ -49,6 +49,7 @@ function buildBundle(version) {
   const assets = path.join(android, 'app', 'src', 'main', 'assets');
   fs.mkdirSync(assets, { recursive: true });
   fs.copyFileSync(zip, path.join(assets, 'bundle.zip'));
+  fs.copyFileSync(path.join(root, 'src', 'web', 'img', 'logo-horizontal.webp'), path.join(assets, 'logo-horizontal.webp'));
   return zip;
 }
 

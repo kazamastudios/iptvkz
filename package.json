@@ -23,7 +23,8 @@
     "electron-builder": "^25.1.8",
     "esbuild": "^0.24.0",
     "hls.js": "^1.5.17",
-    "mpegts.js": "^1.7.3"
+    "mpegts.js": "^1.7.3",
+    "qrcode-generator": "^2.0.4"
   },
   "allowScripts": {
     "electron@33.2.1": true,

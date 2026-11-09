@@ -8,6 +8,7 @@ fs.mkdirSync(out, { recursive: true });
 for (const [from, to] of [
   ['hls.js/dist/hls.min.js', 'hls.min.js'],
   ['mpegts.js/dist/mpegts.js', 'mpegts.js'],
+  ['qrcode-generator/dist/qrcode.js', 'qrcode.js'],
 ]) {
   fs.copyFileSync(path.join(root, 'node_modules', from), path.join(out, to));
   console.log('vendor/' + to);

@@ -1,6 +1,56 @@
 // Formulário de lista (M3U link / arquivo / Xtream) e tela de boas-vindas.
-import { h, ico, modal, uid, toast } from '../core/util.js';
+import { h, ico, modal, uid, toast, confirmDialog } from '../core/util.js';
 import { S, saveNow, api } from '../core/store.js';
+import { TV } from '../tv/tv.js';
+
+const loadQrLib = () => new Promise((resolve, reject) => {
+  if (window.qrcode) return resolve();
+  const s = document.createElement('script');
+  s.src = '/vendor/qrcode.js';
+  s.onload = resolve;
+  s.onerror = reject;
+  document.head.append(s);
+});
+
+// TV: QR Code para preencher a lista pelo celular. Sem suporte neste aparelho, não aparece nada.
+function pairingBox(onList) {
+  const box = h('div.pair-box.hidden');
+  let stopped = false;
+  let token = null;
+  let timer = null;
+  const poll = async () => {
+    if (stopped) return;
+    const r = await api(`/api/pair/status?token=${token}`).catch(() => null);
+    if (stopped) return;
+    if (r && r.list) { token = null; onList(r.list); return; }
+    timer = setTimeout(poll, 2000);
+  };
+  (async () => {
+    const native = window.IPTVKZAndroid;
+    const address = native && native.lanAddress ? native.lanAddress() : undefined;
+    const r = await api('/api/pair/start', { method: 'POST', body: JSON.stringify({ address }) }).catch(() => null);
+    if (stopped || !r || !r.available) return;
+    token = r.token;
+    await loadQrLib();
+    if (stopped) return;
+    const qr = window.qrcode(0, 'M');
+    qr.addData(r.url);
+    qr.make();
+    box.replaceChildren(
+      h('img.pair-qr', { src: qr.createDataURL(6, 3), alt: 'QR Code para adicionar a lista pelo celular' }),
+      h('div', h('b', 'Mais rápido pelo celular'), h('p.muted', 'Escaneie com a câmera, no mesmo Wi-Fi da TV, e preencha a lista por lá.')));
+    box.classList.remove('hidden');
+    poll();
+  })().catch(() => {});
+  return {
+    el: box,
+    stop() {
+      stopped = true;
+      clearTimeout(timer);
+      if (token) api('/api/pair/end', { method: 'POST', body: JSON.stringify({ token }) }).catch(() => {});
+    },
+  };
+}
 
 // Links tipo http://host:porta/get.php?username=X&password=Y&type=m3u_plus viram Xtream.
 function xtreamFromUrl(url) {
@@ -36,7 +86,7 @@ function findDuplicate(list) {
   return key ? S.lists.find((l) => l.id !== list.id && listKey(l) === key) : null;
 }
 
-export function openListForm(existing, onSaved) {
+export function openListForm(existing, onSaved, onDelete) {
   const ex = existing || {};
   let tab = ex.type === 'xtream' ? 'xtream' : ex.source === 'file' ? 'file' : existing ? 'url' : 'xtream';
   let pickedFile = null;
@@ -111,7 +161,18 @@ export function openListForm(existing, onSaved) {
   setTab(tab);
 
   const saveBtn = h('button.btn.primary', { type: 'submit' }, existing ? 'Salvar e recarregar' : 'Adicionar lista');
+  const pairing = TV.on && !existing ? pairingBox((list) => {
+    // o que veio do celular entra no mesmo caminho do formulário (validação e lista repetida)
+    const x = list.type === 'm3u' ? xtreamFromUrl(list.url) : xtreamFromUrl(list.server);
+    name.value = list.name;
+    if (x) { server.value = x.server; user.value = x.username; pass.value = x.password; setTab('xtream'); }
+    else if (list.type === 'xtream') { server.value = list.server; user.value = list.username; pass.value = list.password; setTab('xtream'); }
+    else { url.value = list.url; setTab('url'); }
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+  }) : null;
+
   const form = h('form',
+    pairing && pairing.el,
     err,
     h('div.tabs', Object.values(tabBtns)),
     field('Nome', name),
@@ -121,7 +182,17 @@ export function openListForm(existing, onSaved) {
       field('URL do guia (XMLTV)', epgUrl, 'Deixe vazio para usar o guia que vem com a lista, se houver.'),
       field('Corrigir horário do guia', tz, 'Use se a programação aparecer adiantada ou atrasada.')),
     h('p.faint', { style: { fontSize: '12px', margin: '0 0 8px' } }, 'Os dados ficam só neste computador, na pasta data/ do IPTVKZ.'),
-    h('div.form-actions', h('button.btn.ghost', { type: 'button', onclick: () => m.close() }, 'Cancelar'), saveBtn));
+    h('div.form-actions',
+      existing && onDelete ? h('button.btn.danger', {
+        type: 'button',
+        style: { marginRight: 'auto' },
+        onclick: async () => {
+          if (!await confirmDialog('Excluir lista', `Excluir “${ex.name}”? Favoritos e progresso dessa lista também serão apagados.`, 'Excluir', true)) return;
+          m.close();
+          onDelete(ex.id);
+        },
+      }, ico('trash'), 'Excluir lista') : null,
+      h('button.btn.ghost', { type: 'button', onclick: () => m.close() }, 'Cancelar'), saveBtn));
 
   const showErr = (msg) => {
     err.textContent = msg;
@@ -178,7 +249,7 @@ export function openListForm(existing, onSaved) {
     }
   });
 
-  const m = modal(existing ? 'Editar lista' : 'Adicionar lista', form, { wide: true });
+  const m = modal(existing ? 'Editar lista' : 'Adicionar lista', form, { wide: true, onClose: () => pairing && pairing.stop() });
   setTimeout(() => (tab === 'xtream' ? server : tab === 'url' ? url : name).focus(), 50);
   return m;
 }

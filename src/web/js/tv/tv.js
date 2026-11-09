@@ -63,17 +63,18 @@ export function exitApp() {
 
 const FOCUSABLE = [
   'button:not([disabled])', 'a[href]', 'input', 'select', 'textarea',
-  '.ch-card', '.poster', '.cat-item', '.ep', '.g-prog', '.g-ch', '[data-focus]',
+  '.ch-card', '.poster', '.cat-item', '.ep', '.g-prog', '.g-ch', '.switch', '[data-focus]',
 ].join(',');
 
 const NATIVE = /^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/;
-const CARD = '.ch-card, .poster, .ep, .list-card, .g-ch';
+const CARD = '.ch-card, .poster, .ep, .g-ch';
 
 // Onde a navegação acontece: menu do player > modal > player de filme > gaveta de canais > app.
 export function navScope() {
   return (
     document.querySelector('.tvkb') ||
     document.querySelector('.status-pop') ||
+    document.querySelector('.list-menu:not(.hidden)') ||
     document.querySelector('.pmenu:not(.hidden)') ||
     [...document.querySelectorAll('.modal-back .modal')].pop() ||
     document.querySelector('.vod-overlay') ||
@@ -147,6 +148,7 @@ export function endNativeInput() {
 // O sistema da TV consegue dizer se o teclado abriu? undefined = não sabe dizer.
 function systemKeyboardVisible() {
   try {
+    if (androidKeyboard()) return !!window.IPTVKZAndroid.isKeyboardVisible();
     const sys = window.webOSSystem || window.PalmSystem;
     const v = sys && sys.isKeyboardVisible;
     return typeof v === 'function' ? v.call(sys) : v;
@@ -157,7 +159,14 @@ function systemKeyboardVisible() {
 
 // TVs com teclado próprio para páginas. onFail: abrir o teclado do app quando o nativo não apareceu.
 export function hasNativeKeyboard() {
-  return /web0s|webos|tizen/i.test(navigator.userAgent);
+  return /web0s|webos|tizen/i.test(navigator.userAgent) || androidKeyboard();
+}
+
+// O app Android abre o teclado do sistema (com voz) a partir do APK que traz showKeyboard.
+// Os APKs anteriores continuam com o teclado do app.
+function androidKeyboard() {
+  const a = window.IPTVKZAndroid;
+  return !!a && typeof a.showKeyboard === 'function' && typeof a.isKeyboardVisible === 'function';
 }
 
 export function startNativeInput(input, onFail) {
@@ -172,6 +181,7 @@ export function startNativeInput(input, onFail) {
   input.addEventListener('blur', endNativeInput, { once: true });
   input.focus({ preventScroll: true });
   syncFocus(input);
+  if (androidKeyboard()) window.IPTVKZAndroid.showKeyboard(); // no Android, focar o campo não basta
   setTimeout(() => {
     if (nativeInput !== input || systemKeyboardVisible() !== false) return;
     endNativeInput();
@@ -259,8 +269,13 @@ export function move(dir) {
     else if (dir === 'left') { if (r.right > a.left + 4 && cx >= ax - 2) continue; primary = Math.max(0, a.left - r.right); overlap = Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top); }
     else if (dir === 'down') { if (r.top < a.bottom - 4 && cy <= ay + 2) continue; primary = Math.max(0, r.top - a.bottom); overlap = Math.min(a.right, r.right) - Math.max(a.left, r.left); }
     else { if (r.bottom > a.top + 4 && cy >= ay - 2) continue; primary = Math.max(0, a.top - r.bottom); overlap = Math.min(a.right, r.right) - Math.max(a.left, r.left); }
-    const side = dir === 'left' || dir === 'right' ? Math.abs(cy - ay) : Math.abs(cx - ax);
-    const score = primary + (overlap > 0 ? 0 : side * 2) + side * 0.1;
+    const across = dir === 'left' || dir === 'right';
+    // ↑/↓ não escolhem quem está ao lado, na mesma altura (ex.: o cartão vizinho)
+    if (!across && overlap <= 0 && Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top) > 4) continue;
+    const side = across ? Math.abs(cy - ay) : Math.abs(cx - ax);
+    // sem alinhamento, pesa o vão entre as bordas: um item largo não pode perder para outro bem mais distante
+    const gap = across ? Math.max(0, r.top - a.bottom, a.top - r.bottom) : Math.max(0, r.left - a.right, a.left - r.right);
+    const score = primary + (overlap > 0 ? 0 : gap * 2) + side * 0.1;
     if (score >= bestScore) continue;
     // as checagens que sobem pela árvore ficam por último: só para quem pode ganhar
     if ((cur.contains(el) && !cur.matches(CARD)) || el.closest('.hidden') || !reachable(el, cur)) continue;
