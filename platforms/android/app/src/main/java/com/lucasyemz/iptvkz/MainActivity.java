@@ -6,8 +6,13 @@ import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
@@ -76,34 +81,62 @@ public class MainActivity extends Activity {
         new Thread(this::boot, "boot").start();
     }
 
-    /** Abertura: logo, barra e o que está acontecendo. Sai quando a interface termina de carregar. */
+    /** Fundo igual ao da splash da interface (.tv #splash em app.css). */
+    private Drawable splashBackground(int width) {
+        GradientDrawable top = new GradientDrawable();
+        top.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        top.setColors(new int[] {Color.rgb(77, 13, 18), Color.argb(0, 77, 13, 18)});
+        top.setGradientCenter(0.2f, 0f);
+        top.setGradientRadius(width * 0.55f);
+        GradientDrawable bottom = new GradientDrawable();
+        bottom.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        bottom.setColors(new int[] {Color.rgb(58, 7, 22), Color.argb(0, 58, 7, 22)});
+        bottom.setGradientCenter(0.9f, 1f);
+        bottom.setGradientRadius(width * 0.5f);
+        return new LayerDrawable(new Drawable[] {new ColorDrawable(Color.rgb(6, 6, 9)), top, bottom});
+    }
+
+    /**
+     * Abertura: mesma logo, barra e posição da splash da interface, para a troca não aparecer.
+     * Sai quando a interface termina de carregar.
+     */
     private void createSplash() {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
-        box.setBackgroundColor(Color.rgb(6, 6, 9));
+        float dp = getResources().getDisplayMetrics().density;
+        int width = getResources().getDisplayMetrics().widthPixels;
+        box.setBackground(splashBackground(width));
+        // o texto fica abaixo da barra; este espaço equivalente mantém logo e barra no centro exato
+        int textHeight = (int) (56 * dp);
+        box.addView(new View(this), new LinearLayout.LayoutParams(1, textHeight));
         ImageView logo = new ImageView(this);
+        int logoWidth = Math.max(Math.min(width * 34 / 100, (int) (560 * dp)), (int) (260 * dp));
+        int logoHeight = logoWidth / 3;
         try (InputStream in = getAssets().open("logo-horizontal.webp")) {
-            logo.setImageBitmap(BitmapFactory.decodeStream(in));
+            Bitmap image = BitmapFactory.decodeStream(in);
+            logo.setImageBitmap(image);
+            logoHeight = logoWidth * image.getHeight() / image.getWidth();
         } catch (Exception e) {
             Log.w(TAG, "Logo da abertura indisponível", e);
         }
-        int width = getResources().getDisplayMetrics().widthPixels;
-        box.addView(logo, new LinearLayout.LayoutParams(width * 2 / 5, width * 2 / 7));
+        box.addView(logo, new LinearLayout.LayoutParams(logoWidth, logoHeight));
         ColorStateList red = ColorStateList.valueOf(Color.rgb(255, 42, 42));
         bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         bar.setMax(100);
         bar.setIndeterminate(true);
         bar.setProgressTintList(red);
         bar.setIndeterminateTintList(red);
-        box.addView(bar, new LinearLayout.LayoutParams(width / 4, 24));
+        bar.setProgressBackgroundTintList(ColorStateList.valueOf(Color.argb(31, 255, 255, 255)));
+        LinearLayout.LayoutParams barSize = new LinearLayout.LayoutParams((int) (180 * dp), Math.max(2, (int) (3 * dp)));
+        barSize.topMargin = (int) (44 * dp);
+        box.addView(bar, barSize);
         message = new TextView(this);
         message.setTextColor(Color.rgb(201, 201, 216));
-        message.setTextSize(18);
+        message.setTextSize(16);
         message.setGravity(Gravity.CENTER);
-        message.setPadding(0, 24, 0, 0);
         message.setText("Verificando se há atualizações");
-        box.addView(message);
+        box.addView(message, new LinearLayout.LayoutParams(-1, textHeight));
         splash = box;
         root.addView(splash, new ViewGroup.LayoutParams(-1, -1));
     }

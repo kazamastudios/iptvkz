@@ -65,7 +65,8 @@ export class Player {
   // ---------- DOM ----------
   _build() {
     const o = this.opts;
-    this.video = h('video', { playsinline: true, preload: 'auto' });
+    // pôster transparente: sem ele, o WebView do Android mostra um botão de play gigante
+    this.video = h('video', { playsinline: true, preload: 'auto', poster: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' });
     this.video.volume = S.settings.volume ?? 1;
     this.subsEl = h('div.subs');
     this.subSpan = h('span');
@@ -126,7 +127,7 @@ export class Player {
     top.push(this.titleEl);
     this.top = h('div.ptop', top);
 
-    this.center = h('div.center', h('div.spinner'));
+    this.center = h('div.center', h('img.p-logo', { src: '/img/icon-192.png', alt: '' }), h('div.spinner'));
     this.errorEl = h('div.perror.hidden');
     this.menu = h('div.pmenu.hidden');
     this.nextCard = null;
@@ -181,7 +182,7 @@ export class Player {
     on('play', () => this._setIcon(this.btnPlay, 'pause'));
     on('pause', () => { this._setIcon(this.btnPlay, 'play'); this._showCtrl(); this._report(); });
     on('waiting', () => this._spin(true));
-    on('playing', () => { this._spin(false); this.attempts = 0; this._hideError(); });
+    on('playing', () => { this._spin(false); this.root.classList.remove('awaiting'); this.attempts = 0; this._hideError(); });
     on('canplay', () => this._spin(false));
     on('volumechange', () => {
       this._setIcon(this.btnMute, v.muted || v.volume === 0 ? 'mute' : 'volume');
@@ -305,6 +306,7 @@ export class Player {
   // Confere o limite de telas da conta antes de abrir o vídeo.
   async _claimAndStart(src) {
     const token = (this._loadToken = (this._loadToken || 0) + 1);
+    this.root.classList.add('awaiting'); // a logo só aparece até o primeiro quadro, não nas travadinhas
     this._spin(true);
     const ok = await claimScreen();
     if (this.destroyed || token !== this._loadToken) return;
