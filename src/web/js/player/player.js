@@ -379,8 +379,12 @@ export class Player {
     if (engine === 'hls') {
       const hls = new Hls({
         enableWorker: true,
-        backBufferLength: live ? 30 : 90,
+        // na TV a memória de vídeo é curta: guarda pouco do que já passou para sobrar reserva à frente
+        backBufferLength: TV.on ? (live ? 8 : 30) : (live ? 30 : 90),
         maxBufferLength: 30,
+        liveSyncDurationCount: 4, // um segmento a mais de reserva no ao vivo
+        maxBufferHole: 0.5,
+        nudgeMaxRetry: 6,
         manifestLoadingMaxRetry: 2,
         levelLoadingMaxRetry: 3,
         fragLoadingMaxRetry: 4,
@@ -408,7 +412,17 @@ export class Player {
     } else if (engine === 'mpegts') {
       const p = mpegts.createPlayer(
         { type: 'mpegts', isLive: true, url: new URL(purl, location.href).href },
-        { enableWorker: true, lazyLoad: false, liveBufferLatencyChasing: true, liveBufferLatencyMaxLatency: 6, liveBufferLatencyMinRemain: 1.5 },
+        {
+          enableWorker: true,
+          lazyLoad: false,
+          // folga maior: em bitrate alto, pular para perto do ao vivo esvazia a reserva e causa novas travadas
+          liveBufferLatencyChasing: true,
+          liveBufferLatencyMaxLatency: 20,
+          liveBufferLatencyMinRemain: 8,
+          autoCleanupSourceBuffer: true,
+          autoCleanupMaxBackwardDuration: 20,
+          autoCleanupMinBackwardDuration: 8,
+        },
       );
       this.mts = p;
       p.on(mpegts.Events.ERROR, (type, detail) => {
