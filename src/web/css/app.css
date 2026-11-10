@@ -360,8 +360,12 @@ input, select, textarea { font: inherit; color: inherit; }
   position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 5; pointer-events: none;
 }
 .player .center .spinner { width: 54px; height: 54px; border-width: 4px; }
-.player .center .p-logo { display: none; width: 96px; height: 96px; margin-bottom: 24px; border-radius: 24px; }
-.player.awaiting .center .p-logo { display: block; }
+/* até o primeiro quadro, o carregamento é a splash (fundo, logo e barra); depois, só o spinner nas travadinhas */
+.player .center .sp-logo, .player .center .sp-bar { display: none; }
+.player.awaiting .center { z-index: 3; }
+.player.awaiting .center .spinner { display: none; }
+.player.awaiting .center .sp-logo { display: block; width: 34%; max-width: 420px; min-width: 0; }
+.player.awaiting .center .sp-bar { display: block; }
 .player .perror {
   position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px; background: rgba(8, 8, 12, .92); text-align: center; padding: 24px;
@@ -814,7 +818,8 @@ input, select, textarea { font: inherit; color: inherit; }
 /* splash na TV: fundo fixo (camadas grandes em movimento travam), só a barra e o fade animam */
 .tv .sp-glow { animation: none; will-change: auto; }
 .tv .sp-sweep { display: none; }
-.tv #splash { background: radial-gradient(ellipse at 20% 0%, #4d0d12 0%, rgba(77, 13, 18, 0) 60%), radial-gradient(ellipse at 90% 100%, #3a0716 0%, rgba(58, 7, 22, 0) 55%), #060609; transition: opacity .7s ease; will-change: opacity; }
+.tv #splash, .player.awaiting .center { background: radial-gradient(ellipse at 20% 0%, #4d0d12 0%, rgba(77, 13, 18, 0) 60%), radial-gradient(ellipse at 90% 100%, #3a0716 0%, rgba(58, 7, 22, 0) 55%), #060609; }
+.tv #splash { transition: opacity .7s ease; will-change: opacity; }
 .tv .sp-glow { display: none; }
 .tv .sp-bar i { will-change: transform; }
 

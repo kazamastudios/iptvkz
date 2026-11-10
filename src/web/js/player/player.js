@@ -44,6 +44,10 @@ async function sourceRefused(src) {
   }
 }
 
+// Quanto esperar pelo primeiro quadro de cada tentativa (a TV demora mais para abrir o decodificador).
+const START_TIMEOUT = 20000;
+const START_TIMEOUT_TV = 25000;
+
 export function proxyUrl(url) {
   return '/proxy?url=' + encodeURIComponent(url);
 }
@@ -144,7 +148,8 @@ export class Player {
     top.push(this.titleEl);
     this.top = h('div.ptop', top);
 
-    this.center = h('div.center', h('img.p-logo', { src: '/img/icon-192.png', alt: '' }), h('div.spinner'));
+    // antes do primeiro quadro, a mesma cara da splash (classes .sp-* do app.css); depois, só o spinner
+    this.center = h('div.center', h('img.sp-logo', { src: '/img/logo-horizontal.webp', alt: '' }), h('div.sp-bar', h('i')), h('div.spinner'));
     this.errorEl = h('div.perror.hidden');
     this.menu = h('div.pmenu.hidden');
     this.nextCard = null;
@@ -199,7 +204,14 @@ export class Player {
     on('play', () => this._setIcon(this.btnPlay, 'pause'));
     on('pause', () => { this._setIcon(this.btnPlay, 'play'); this._showCtrl(); this._report(); });
     on('waiting', () => this._spin(true));
-    on('playing', () => { this._spin(false); this.root.classList.remove('awaiting'); this.attempts = 0; this._hideError(); });
+    on('playing', () => {
+      this._spin(false);
+      this.root.classList.remove('awaiting');
+      this._clearStartTimer();
+      if (this.playFrom == null) this.playFrom = v.currentTime;
+      this.hadFrame = true;
+      this._hideError();
+    });
     on('canplay', () => this._spin(false));
     on('volumechange', () => {
       this._setIcon(this.btnMute, v.muted || v.volume === 0 ? 'mute' : 'volume');
@@ -262,6 +274,7 @@ export class Player {
   // ---------- carregamento ----------
   load(src) {
     this.src = src;
+    this.hadFrame = false;
     this.attempts = 0;
     this.usingAlt = false;
     this.resumeAt = src.startAt || 0;
@@ -394,6 +407,8 @@ export class Player {
     this.lastTime = -1;
     this.noImgTicks = 0;
     this.noImgTime = -1;
+    this.playFrom = null;
+    this._armStartTimer(gen);
     const live = !!this.opts.live;
     let engine = detectEngine(url, live);
     if (engine === 'hls' && !(window.Hls && Hls.isSupported())) engine = 'native';
@@ -465,16 +480,35 @@ export class Player {
     }
   }
 
+  // O servidor da lista pode aceitar a conexão e nunca mandar o vídeo (sobrecarga, link travado).
+  // Sem isso o carregamento girava sem fim: o vigia de travadas não age com o vídeo ainda pausado.
+  _armStartTimer(gen) {
+    this._clearStartTimer();
+    this._startT = setTimeout(() => {
+      this._startT = null;
+      const v = this.video;
+      if (this.destroyed || gen !== this.gen || this.playFrom != null) return;
+      if (v.paused && v.readyState >= 2) return; // já tem imagem, só está pausado
+      this._fail('timeout', gen);
+    }, TV.on ? START_TIMEOUT_TV : START_TIMEOUT);
+  }
+
+  _clearStartTimer() {
+    clearTimeout(this._startT);
+    this._startT = null;
+  }
+
   _fail(kind, gen) {
     // Cada _start() tem uma geração; erros atrasados de uma tentativa antiga são ignorados,
     // e cada tentativa só é tratada uma vez.
     if (this.destroyed || gen !== this.gen || this.failedGen === gen) return;
     this.failedGen = gen;
+    this._clearStartTimer();
     if (this.imgTrying) return this._nextImageRoute(); // a tentativa de recuperar a imagem falhou: próxima
     const t = this.video.currentTime;
     if (!this.opts.live && t > 1) this.resumeAt = t;
 
-    if (kind !== 'format' && this.attempts < 2) {
+    if (kind !== 'format' && this.attempts < (kind === 'timeout' ? 1 : 2)) {
       this.attempts++;
       this._spin(true);
       clearTimeout(this._retryT);
@@ -494,7 +528,7 @@ export class Player {
 
   _checkStall() {
     const v = this.video;
-    if (this.destroyed || v.paused || !this.errorEl.classList.contains('hidden')) {
+    if (this.destroyed || v.paused || this._startT || !this.errorEl.classList.contains('hidden')) {
       this.lastProgressAt = Date.now();
       return;
     }
@@ -513,10 +547,13 @@ export class Player {
     const fmt = kind === 'format';
     // TV e celular não têm VLC para oferecer: o botão abriria no computador
     const vlc = S.vlc && !TV.on && !isTouch();
-    const title = fmt ? (vlc ? 'O navegador não toca este formato' : 'Este aparelho não toca este formato') : this.opts.live ? 'Canal indisponível' : 'Não foi possível carregar';
+    const slow = kind === 'timeout';
+    const title = fmt ? (vlc ? 'O navegador não toca este formato' : 'Este aparelho não toca este formato') : this.opts.live ? 'Canal indisponível' : slow ? 'O servidor da lista não mandou o vídeo' : 'Não foi possível carregar';
     const text = fmt
       ? (vlc ? 'Isso é comum com MKV, áudio AC3/E-AC3 ou vídeo H.265. O VLC toca normalmente.' : 'Isso é comum em arquivos MKV. Tente outra versão do título, se houver, ou assista em outro aparelho.')
-      : 'O canal pode estar fora do ar, ou o servidor da lista recusou a conexão. Tente de novo em instantes.';
+      : slow
+        ? 'O servidor aceitou o pedido, mas o vídeo não chegou. Costuma ser sobrecarga do provedor ou link fora do ar. Tente de novo em instantes.'
+        : 'O canal pode estar fora do ar, ou o servidor da lista recusou a conexão. Tente de novo em instantes.';
     this.errorEl.replaceChildren(
       ico('alert'),
       h('h3', title),
@@ -526,6 +563,7 @@ export class Player {
         vlc ? h('button.btn.primary', { onclick: () => this.openVlc() }, ico('external'), 'Abrir no VLC') : null),
     );
     this.errorEl.classList.remove('hidden');
+    if (TV.on) focusEl(this.errorEl.querySelector('.btn')); // senão o controle fica preso atrás do player
   }
 
   _hideError() {
@@ -534,6 +572,7 @@ export class Player {
 
   retry() {
     this._hideError();
+    if (!this.hadFrame) this.root.classList.add('awaiting');
     this._resetImage();
     this.attempts = 0;
     this.usingAlt = false;
@@ -701,6 +740,8 @@ export class Player {
 
   _onTime() {
     const v = this.video;
+    // só depois de tocar de verdade (10s) as tentativas voltam a zero; antes, contam para desistir
+    if (this.attempts && this.playFrom != null && v.currentTime - this.playFrom > 10) this.attempts = 0;
     if (!this.opts.live) {
       this.preview.capture();
       if (!this.scrub) this.timeEl.textContent = `${fmtTime(v.currentTime)} / ${fmtTime(v.duration)}`;
@@ -1064,6 +1105,7 @@ export class Player {
     clearInterval(this._subTimer);
     clearInterval(this._watchdog);
     clearTimeout(this._retryT);
+    this._clearStartTimer();
     clearTimeout(this._hideT);
     this._removeNextCard();
     document.removeEventListener('fullscreenchange', this._onFs);
