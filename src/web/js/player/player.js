@@ -27,6 +27,23 @@ function trackLabel(t, i) {
 // Celular/tablet: sem mouse; o toque mostra ou esconde os controles.
 const isTouch = () => !TV.on && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 
+// Pede só o primeiro byte do vídeo: erro HTTP ou página no lugar do vídeo é recusa do servidor, não formato.
+async function sourceRefused(src) {
+  if (!src) return false;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const r = await fetch(src, { headers: { Range: 'bytes=0-0' }, signal: ctl.signal, cache: 'no-store' });
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
+    return !r.ok || /text\/html|application\/json/.test(ct);
+  } catch {
+    return true;
+  } finally {
+    clearTimeout(timer);
+    ctl.abort(); // não mantém a conexão com a lista aberta
+  }
+}
+
 export function proxyUrl(url) {
   return '/proxy?url=' + encodeURIComponent(url);
 }
@@ -200,7 +217,12 @@ export class Player {
     on('error', () => {
       if (this.engine !== 'native') return;
       const code = v.error && v.error.code;
-      this._fail(code === 4 || code === 3 ? 'format' : 'network', this.gen);
+      const gen = this.gen;
+      if (code === 3) return this._fail('format', gen);
+      if (code !== 4) return this._fail('network', gen);
+      // O navegador dá o mesmo código para "formato não suportado" e "o servidor recusou"
+      // (limite de conexões da lista, link expirado). Pergunta ao servidor antes de culpar o formato.
+      sourceRefused(v.currentSrc || v.src).then((refused) => this._fail(refused ? 'network' : 'format', gen));
     });
     v.addEventListener('click', () => {
       if (!this.menu.classList.contains('hidden')) return this.closeMenu();
@@ -589,7 +611,7 @@ export class Player {
     try {
       await api('/api/vlc', { method: 'POST', body: JSON.stringify({ url: this.currentUrl(), title: this.titleEl.textContent }) });
       this.video.pause();
-      toast('Abrindo no VLC…', 'ok');
+      toast('Abrindo no VLC...', 'ok');
     } catch (e) {
       toast(e.message, 'error');
     }
@@ -912,7 +934,7 @@ export class Player {
       m.append(opt(s.label, cur && cur.type === 'hls' && cur.index === s.i, () => { this.setSub({ type: 'hls', index: s.i }); this._renderMenu(); }));
     }
     if (cur && cur.type === 'ext') m.append(opt(cur.name, true, () => {}));
-    m.append(h('button.opt', { onclick: () => this._pickSubFile() }, h('span.ck', ico('upload')), h('span', 'Carregar arquivo .srt / .vtt…')));
+    m.append(h('button.opt', { onclick: () => this._pickSubFile() }, h('span.ck', ico('upload')), h('span', 'Carregar arquivo .srt / .vtt...')));
     if (!this.hls && this.engine !== 'mpegts') {
       m.append(h('div.note', 'Legendas embutidas em MP4/MKV não aparecem no navegador; use um arquivo .srt ou o VLC.'));
     }

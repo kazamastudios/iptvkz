@@ -331,7 +331,7 @@ function versionChips(container, labels, current, onPick) {
 async function openVlc(url, title) {
   try {
     await api('/api/vlc', { method: 'POST', body: JSON.stringify({ url, title }) });
-    toast('Abrindo no VLC…', 'ok');
+    toast('Abrindo no VLC...', 'ok');
   } catch (e) {
     toast(e.message, 'error');
   }

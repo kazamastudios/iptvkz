@@ -87,7 +87,7 @@ export async function claimScreen() {
       resolve(v);
     };
     const choose = async (s, box) => {
-      box.replaceChildren(h('div.row', h('div.spinner.small'), h('span.muted', `Parando em ${s.name}…`)));
+      box.replaceChildren(h('div.row', h('div.spinner.small'), h('span.muted', `Parando em ${s.name}...`)));
       await replaceScreen(s.device).catch(() => {});
       finish(true);
     };

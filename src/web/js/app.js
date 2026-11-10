@@ -98,8 +98,8 @@ function renderNav() {
     link('favorites', 'Favoritos', 'star', lists(favItems, ['live', 'movies', 'series'])),
   );
   const status = h('div.status');
-  if (appState === 'loading') status.append(h('div.spinner.small'), h('span', 'Carregando lista…'));
-  else if (pollTimer) status.append(h('div.spinner.small'), h('span', 'Atualizando lista…'));
+  if (appState === 'loading') status.append(h('div.spinner.small'), h('span', 'Carregando lista...'));
+  else if (pollTimer) status.append(h('div.spinner.small'), h('span', 'Atualizando lista...'));
   else if (c) status.append(h('span', `Lista atualizada ${fmtAgo(c.updatedAt)}`));
   $('#sideFoot').replaceChildren(link('settings', 'Configurações', 'settings'), status);
   if (refocus) {
@@ -183,7 +183,7 @@ function isPlaying() {
 
 function statusModel() {
   const n = {
-    checking: { tone: 'idle', label: 'Verificando…', detail: '' },
+    checking: { tone: 'idle', label: 'Verificando...', detail: '' },
     online: { tone: 'ok', label: 'Conectada', detail: net.ms != null ? `${net.ms} ms` : '' },
     offline: { tone: 'bad', label: 'Sem internet', detail: 'Confira o Wi-Fi ou o cabo do computador.' },
     noserver: { tone: 'bad', label: 'Sem conexão', detail: 'Este aparelho não está falando com o computador do IPTVKZ.' },
@@ -192,7 +192,7 @@ function statusModel() {
   const al = activeList();
   if (al) {
     const d = status.data;
-    const [tone, label] = !d ? ['idle', 'Verificando…'] : STATUS_INFO[d.state] || ['idle', 'Desconhecido'];
+    const [tone, label] = !d ? ['idle', 'Verificando...'] : STATUS_INFO[d.state] || ['idle', 'Desconhecido'];
     let sub = '';
     if (d && d.expires) {
       const days = Math.ceil((d.expires - Date.now()) / 86400000);
@@ -209,7 +209,7 @@ function statusModel() {
   const pill = netBad ? n : listLoud ? list : null;
   const allGood = n.tone === 'ok' && (!list || list.tone === 'ok' || list.state === 'local');
   const tone = pill ? pill.tone : allGood ? 'ok' : 'idle';
-  return { net: n, list, tone, loud: !!pill, text: pill ? pill.label : allGood ? 'Conectado' : 'Verificando…' };
+  return { net: n, list, tone, loud: !!pill, text: pill ? pill.label : allGood ? 'Conectado' : 'Verificando...' };
 }
 
 function verifyNow() {
@@ -256,7 +256,7 @@ function renderListStatus() {
   const refresh = box.querySelector('.status-refresh');
   if (refresh) {
     refresh.classList.toggle('spin', status.checking);
-    refresh.querySelector('.status-refresh-label').textContent = status.checking ? 'Verificando…' : 'Verificar agora';
+    refresh.querySelector('.status-refresh-label').textContent = status.checking ? 'Verificando...' : 'Verificar agora';
     box.querySelector('.status-when').textContent = status.at
       ? `Verificado às ${new Date(status.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : '';
   }
@@ -475,7 +475,7 @@ async function loadActive(force = false) {
   showLoading = () => {
     const posters = ['movies', 'series', 'mylist', 'favorites', 'history'].includes(parseHash().name);
     showState(h('div.page.sk-page',
-      h('div.sk-status', h('div.spinner.small'), h('span', `Carregando ${list.name}…`),
+      h('div.sk-status', h('div.spinner.small'), h('span', `Carregando ${list.name}...`),
         force ? h('span.faint', 'Listas grandes podem levar até um minuto.') : null),
       posters ? h('div.poster-grid', skPosters(18)) : h('div.ch-grid', skChannels(24))), 'IPTVKZ');
   };

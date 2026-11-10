@@ -285,7 +285,7 @@ export function liveView(params, ctx) {
         }
         if (p[3]) el.append(h('div.d', p[3]));
       } else {
-        el.append(h('div.d', st === 'loading' ? 'Carregando guia…' : st === 'none' ? 'Esta lista não tem guia de programação.' : 'Sem informação de programação.'));
+        el.append(h('div.d', st === 'loading' ? 'Carregando guia...' : st === 'none' ? 'Esta lista não tem guia de programação.' : 'Sem informação de programação.'));
       }
     };
     card(watchEls.nowCard, 'Agora', now, true);
