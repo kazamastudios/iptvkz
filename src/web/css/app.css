@@ -98,6 +98,15 @@ input, select, textarea { font: inherit; color: inherit; }
 .nav .count { margin-left: auto; font-size: 11px; color: var(--faint); }
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
 .sidebar-foot .status { font-size: 12px; color: var(--faint); padding: 8px 12px 0; display: flex; align-items: center; gap: 6px; }
+/* versão, build e modo (Produção / Desenvolvimento) */
+.build-tag { font-size: 11px; color: var(--faint); padding: 6px 12px 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.build-mode { font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; padding: 1px 6px; border-radius: 999px;
+  color: #9ff0c9; background: rgba(61, 220, 151, .12); border: 1px solid rgba(61, 220, 151, .3); }
+.build-mode.dev { color: #ffd38a; background: rgba(255, 181, 71, .12); border-color: rgba(255, 181, 71, .35); }
+.build-info { margin: 0 0 12px; }
+.build-info .build-mode { font-size: 11px; padding: 2px 8px; }
+.build-info .small { font-size: 12px; margin-top: 4px; }
+.no-flexgap .build-tag > * + * { margin-left: 6px; }
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .topbar {
@@ -702,7 +711,7 @@ input, select, textarea { font: inherit; color: inherit; }
 
 @media (max-width: 1100px) {
   :root { --sidebar: 76px; }
-  .brand span, .nav a span:not(.ico), .sidebar-foot a span:not(.ico), .nav .count, .list-btn .meta, .list-btn > .ico:last-child, .sidebar-foot .status span { display: none; }
+  .brand span, .nav a span:not(.ico), .sidebar-foot a span:not(.ico), .nav .count, .list-btn .meta, .list-btn > .ico:last-child, .sidebar-foot .status span, .build-tag > span:first-child { display: none; }
   .nav a, .sidebar-foot a, .list-btn { justify-content: center; }
   .live { grid-template-columns: 200px 1fr; }
   .live.watching { grid-template-columns: 1fr 300px; }
@@ -1074,7 +1083,7 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
   .nav { flex-direction: row; flex: 1 0 auto; justify-content: space-around; gap: 0; }
   .nav a, .sidebar-foot a { flex: none; width: 40px; height: 44px; padding: 0; justify-content: center; }
   .sidebar-foot { flex-direction: row; margin: 0; flex: none; gap: 0; }
-  .sidebar-foot .status { display: none; }
+  .sidebar-foot .status, .build-tag { display: none; }
   .list-switch { order: 3; flex: none; margin: 0; }
   .list-btn { width: 40px; height: 44px; padding: 0; justify-content: center; background: none; border: 0; }
   .list-menu { position: fixed; top: auto; left: 8px; right: 8px; bottom: 64px; width: auto; max-height: 60vh; overflow: auto; }

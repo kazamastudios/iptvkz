@@ -20,6 +20,22 @@ const backup = require('./backup');
 let PORT = Number(process.env.PORT) || 8787; // porta real (pode mudar no app de computador)
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC = process.env.IPTVKZ_WEB || path.join(__dirname, '..', 'web');
+
+// Versão, número da build e modo (produção/desenvolvimento), mostrados em Configurações → Sobre.
+// scripts/build-info.js grava o arquivo na pasta da interface ao gerar cada pacote; rodando pelo código não há
+// arquivo, e aí é desenvolvimento com a versão do package.json. Lido uma vez: uma atualização reinicia o app.
+let buildCache = null;
+function buildInfo() {
+  if (buildCache) return buildCache;
+  try {
+    buildCache = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'build-info.json'), 'utf8'));
+  } catch {
+    let version = null;
+    try { version = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8')).version; } catch {}
+    buildCache = { version, build: null, channel: 'desenvolvimento', source: 'codigo', commit: null, date: null };
+  }
+  return buildCache;
+}
 const IDLE_MS = 5 * 60 * 1000;
 const KEEPALIVE = (process.env.IPTVKZ_KEEPALIVE || process.env.MINHATV_KEEPALIVE) === '1';
 
@@ -251,7 +267,7 @@ async function handleApi(req, res, url) {
   }
 
   if (p === '/api/state' && m === 'GET') {
-    return sendJson(res, 200, { ...store.getState(), dataDir: store.DATA, local: req.isLocal, host: req.isLocal ? os.hostname() : null });
+    return sendJson(res, 200, { ...store.getState(), dataDir: store.DATA, local: req.isLocal, host: req.isLocal ? os.hostname() : null, build: buildInfo() });
   }
 
   if (p === '/api/info' && m === 'GET') {

@@ -66,6 +66,7 @@ fs.cpSync(path.join(root, 'src', 'web'), path.join(bundleDir, 'web'), {
   filter: (f) => !f.endsWith('.map') && path.basename(f) !== 'logo-horizontal.png', // a abertura usa o WebP
 });
 fs.writeFileSync(path.join(bundleDir, 'version.txt'), String(bundleVersion));
+require('./build-info').writeBuildInfo(path.join(bundleDir, 'web'), { build: bundleVersion }); // versão e modo no app
 
 const files = {};
 for (const rel of walk(bundleDir)) files[rel] = fs.readFileSync(path.join(bundleDir, rel)).toString('base64');

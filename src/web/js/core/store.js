@@ -7,7 +7,23 @@ export const S = {
   progress: {},
   catPrefs: {},
   dataDir: '',
+  build: null, // { version, build, channel, commit, date, source } — ver scripts/build-info.js
 };
+
+// Versão, build e modo para mostrar: no rodapé do menu (curto) e em Configurações → Sobre (completo).
+export function buildLabel() {
+  const b = S.build || {};
+  const dev = b.channel !== 'producao';
+  const parts = [b.version ? `v${b.version}` : null, b.build ? `build ${b.build}` : b.source === 'codigo' ? 'código local' : null].filter(Boolean);
+  let when = '';
+  if (b.date) { try { when = new Date(b.date).toLocaleDateString('pt-BR'); } catch {} }
+  return {
+    dev,
+    mode: dev ? 'Desenvolvimento' : 'Produção',
+    short: parts.join(' · '),
+    detail: [b.commit ? `commit ${b.commit}` : null, when ? `gerada em ${when}` : null].filter(Boolean).join(' · '),
+  };
+}
 
 export const DEFAULT_SETTINGS = {
   activeList: null,

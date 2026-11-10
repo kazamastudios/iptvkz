@@ -3,7 +3,7 @@ import { $, h, ico, debounce, toast, fmtAgo, isBack, closeTopModal, confirmDialo
 import { TV, KB, setKbNav, detectTv, applyTv, move, DIRS, focusFirst, focusEl, isNative, normKey, syncFocus, initKeyDebug, exitApp } from './tv/tv.js';
 import { icon } from './core/icons.js';
 import {
-  S, C, api, favItems, laterItems, watchHistory, loadState, loadCatalog, clearCatalog, catalogStatus, activeList, saveNow, save, flushSaves, setSetting,
+  S, C, api, favItems, laterItems, watchHistory, loadState, loadCatalog, clearCatalog, catalogStatus, activeList, saveNow, save, flushSaves, setSetting, buildLabel,
 } from './core/store.js';
 import { liveView } from './views/live.js';
 import { vodHome, movieView, serieView } from './views/vod.js';
@@ -110,7 +110,11 @@ function renderNav() {
   if (appState === 'loading') status.append(h('div.spinner.small'), h('span', 'Carregando lista…'));
   else if (pollTimer) status.append(h('div.spinner.small'), h('span', 'Atualizando lista…'));
   else if (c) status.append(h('span', `Lista atualizada ${fmtAgo(c.updatedAt)}`));
-  $('#sideFoot').replaceChildren(link('settings', 'Configurações', 'settings'), status);
+  // versão, build e modo no rodapé (o completo, com commit e data, fica em Configurações → Sobre)
+  const b = buildLabel();
+  const ver = h('div.build-tag', { title: `${b.mode}${b.detail ? ' · ' + b.detail : ''}` },
+    h('span', b.short), h('span.build-mode' + (b.dev ? '.dev' : ''), b.dev ? 'Dev' : 'Prod'));
+  $('#sideFoot').replaceChildren(link('settings', 'Configurações', 'settings'), status, ver);
   if (refocus) {
     const again = document.querySelector(`#nav a[href="${refocus}"], #sideFoot a[href="${refocus}"]`);
     if (again) again.focus({ preventScroll: true });
