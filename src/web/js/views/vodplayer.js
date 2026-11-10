@@ -57,7 +57,7 @@ function open({ title, versions, version, startAt, onTime, next, onNext, onVersi
 
 function resumePoint(id) {
   const p = getProgress(id);
-  return p && p.d && p.t / p.d < 0.95 ? p.t : 0;
+  return p && p.t > 1 && (!p.d || p.t / p.d < 0.95) ? p.t : 0;
 }
 
 export function playMovie(movie, version, { fromStart = false, onClose } = {}) {
