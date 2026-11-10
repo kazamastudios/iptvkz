@@ -16,6 +16,7 @@ const net = require('./network');
 const sessions = require('./sessions');
 const { sendText } = require('./compress');
 const pairing = require('./pairing');
+const backup = require('./backup');
 
 let PORT = Number(process.env.PORT) || 8787; // porta real (pode mudar no app de computador)
 const HOST = process.env.HOST || '0.0.0.0';
@@ -226,13 +227,47 @@ async function handleApi(req, res, url) {
 
   if (p === '/api/ping') return sendJson(res, 200, { ok: true });
 
+  // Baixar lista / Carregar lista direto no navegador (computador), sem celular.
+  if (p === '/api/list-export' && m === 'GET') {
+    const data = backup.build(q.get('list'));
+    if (!data) return sendJson(res, 404, { error: 'Lista não encontrada.' });
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="iptvkz-lista-${backup.slug(data.state.lists[0].name)}.json"`,
+      'Cache-Control': 'no-store',
+    });
+    return res.end(JSON.stringify(data));
+  }
+  if (p === '/api/list-import' && m === 'POST') {
+    let data;
+    try { data = backup.parse((await readBody(req, 60 * 1024 * 1024)).toString('utf8')); } catch (err) { return sendJson(res, 400, { error: err.message }); }
+    if (q.get('dry') === '1') return sendJson(res, 200, { summary: backup.summary(data) });
+    for (const id of backup.apply(data)) {
+      catalogs.forget(id);
+      epg.forget(id);
+    }
+    catalogText.clear();
+    return sendJson(res, 200, { ok: true });
+  }
+
   if (p.startsWith('/api/pair/')) {
     if (!req.isLocal) return sendJson(res, 403, { error: 'Só na própria TV' });
     if (p === '/api/pair/start' && m === 'POST') {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
       return sendJson(res, 200, pairing.begin(PORT, body.address));
     }
-    if (p === '/api/pair/status' && m === 'GET') return sendJson(res, 200, { list: pairing.take(q.get('token')) });
+    if (p === '/api/pair/status' && m === 'GET') return sendJson(res, 200, pairing.status(q.get('token')));
+    if (p === '/api/pair/restore' && m === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const data = pairing.takeRestore(body.token);
+      if (!data) return sendJson(res, 410, { error: 'O backup não está mais disponível. Envie de novo pelo celular.' });
+      for (const id of backup.apply(data)) {
+        catalogs.forget(id);
+        epg.forget(id);
+      }
+      catalogText.clear();
+      return sendJson(res, 200, { ok: true });
+    }
     if (p === '/api/pair/end' && m === 'POST') {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
       pairing.end(body.token);
