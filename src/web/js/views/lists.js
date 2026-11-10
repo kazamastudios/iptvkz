@@ -12,8 +12,8 @@ const loadQrLib = () => new Promise((resolve, reject) => {
   document.head.append(s);
 });
 
-// TV: QR Code para preencher a lista pelo celular. Sem suporte neste aparelho, não aparece nada.
-function pairingBox(onList) {
+// TV: QR Code para preencher a lista (ou restaurar um backup) pelo celular. Sem suporte neste aparelho, não aparece nada.
+function pairingBox(onList, onRestore, onReady) {
   const box = h('div.pair-box.hidden');
   let stopped = false;
   let token = null;
@@ -23,6 +23,7 @@ function pairingBox(onList) {
     const r = await api(`/api/pair/status?token=${token}`).catch(() => null);
     if (stopped) return;
     if (r && r.list) { token = null; onList(r.list); return; }
+    if (r && r.restore) { const t = token; token = null; onRestore(r.restore, t); return; }
     timer = setTimeout(poll, 2000);
   };
   (async () => {
@@ -38,8 +39,9 @@ function pairingBox(onList) {
     qr.make();
     box.replaceChildren(
       h('img.pair-qr', { src: qr.createDataURL(6, 3), alt: 'QR Code para adicionar a lista pelo celular' }),
-      h('div', h('b', 'Mais rápido pelo celular'), h('p.muted', 'Escaneie com a câmera, no mesmo Wi-Fi da TV, e preencha a lista por lá.')));
+      h('div', h('b', 'Mais rápido pelo celular'), h('p.muted', 'Escaneie com a câmera, no mesmo Wi-Fi da TV, e preencha a lista por lá. Uma lista baixada no celular entra por “Carregar lista”.')));
     box.classList.remove('hidden');
+    if (onReady) onReady();
     poll();
   })().catch(() => {});
   return {
@@ -50,6 +52,98 @@ function pairingBox(onList) {
       if (token) api('/api/pair/end', { method: 'POST', body: JSON.stringify({ token }) }).catch(() => {});
     },
   };
+}
+
+// App da TV (Android TV ou LG): sem seletor de arquivos nem downloads.
+const nativeTvApp = () => !!(window.IPTVKZAndroid || window.webOSSystem || window.PalmSystem);
+
+// Baixa o arquivo da lista direto no aparelho (computador, celular, navegador).
+export function downloadList(list) {
+  h('a', { href: `/api/list-export?list=${encodeURIComponent(list.id)}`, download: '' }).click();
+}
+
+// Resumo do arquivo de lista baixada, mostrado antes de carregar.
+function loadText(s) {
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const when = s.createdAt ? ` em ${new Date(s.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : '';
+  const text = `${s.names.join(', ') || plural(s.lists, 'lista', 'listas')}, baixada${when}, com `
+    + `${plural(s.favorites, 'favorito', 'favoritos')} e ${plural(s.history, 'item', 'itens')} no histórico. `
+    + 'Ela entra junto com as listas que já estão aqui.';
+  return text;
+}
+
+// Confirma e aplica: apply faz a chamada que junta a lista nesta TV/computador.
+async function confirmLoad(s, apply) {
+  if (!await confirmDialog('Carregar lista?', loadText(s), 'Carregar lista')) return false;
+  try {
+    await apply();
+    toast('Lista carregada', 'ok');
+    setTimeout(() => location.reload(), 800);
+    return true;
+  } catch (e) {
+    toast(e.message, 'error');
+    return false;
+  }
+}
+
+// Lista baixada enviada pelo celular: só aplica depois do OK na TV.
+async function confirmRestore(s, token, closeForm) {
+  closeForm();
+  const ok = await confirmLoad(s, () => api('/api/pair/restore', { method: 'POST', body: JSON.stringify({ token }) }));
+  if (!ok) api('/api/pair/end', { method: 'POST', body: JSON.stringify({ token }) }).catch(() => {});
+}
+
+// TV: QR Code para baixar uma lista no celular (com favoritos e histórico dela).
+export function openListSave(list) {
+  const status = h('p.muted', 'Preparando o QR Code…');
+  const qrBox = h('div.pair-box.hidden');
+  let token = null;
+  let timer = null;
+  let stopped = false;
+  const m = modal(`Baixar “${list.name}” no celular`, h('div', qrBox, status), {
+    onClose() {
+      stopped = true;
+      clearTimeout(timer);
+      if (token) api('/api/pair/end', { method: 'POST', body: JSON.stringify({ token }) }).catch(() => {});
+    },
+  });
+  const poll = async () => {
+    if (stopped) return;
+    const r = await api(`/api/pair/status?token=${token}`).catch(() => null);
+    if (stopped) return;
+    if (r && r.downloaded) {
+      status.replaceChildren(h('b', 'Lista baixada no celular.'), h('br'),
+        'Para usar em outro aparelho, abra “Adicionar lista” nele, escaneie o QR Code e escolha “Carregar lista” no celular.');
+    }
+    timer = setTimeout(poll, 2000);
+  };
+  (async () => {
+    const native = window.IPTVKZAndroid;
+    const address = native && native.lanAddress ? native.lanAddress() : undefined;
+    const r = await api('/api/pair/start', { method: 'POST', body: JSON.stringify({ address }) }).catch(() => null);
+    if (stopped) return;
+    if (!r || !r.available) {
+      if (nativeTvApp()) {
+        status.textContent = 'Não foi possível mostrar o QR Code. Confira se a TV está conectada à rede de casa e tente de novo.';
+        return;
+      }
+      m.close();
+      downloadList(list);
+      return;
+    }
+    token = r.token;
+    await loadQrLib();
+    if (stopped) return;
+    const qr = window.qrcode(0, 'M');
+    qr.addData(`${r.url}?lista=${encodeURIComponent(list.id)}`);
+    qr.make();
+    qrBox.replaceChildren(
+      h('img.pair-qr', { src: qr.createDataURL(6, 3), alt: 'QR Code para baixar a lista no celular' }),
+      h('div', h('b', 'Pelo celular'), h('p.muted', 'Escaneie com a câmera, no mesmo Wi-Fi da TV, e toque em “Baixar lista”. O arquivo leva a lista, os favoritos e o histórico dela, com a senha da lista: guarde com cuidado.')));
+    qrBox.classList.remove('hidden');
+    status.textContent = 'Aguardando o download no celular…';
+    poll();
+  })().catch(() => { status.textContent = 'Não foi possível preparar o QR Code. Tente de novo.'; });
 }
 
 // Links tipo http://host:porta/get.php?username=X&password=Y&type=m3u_plus viram Xtream.
@@ -103,6 +197,16 @@ export function openListForm(existing, onSaved, onDelete) {
   const tz = h('select.input');
   for (let i = -12; i <= 12; i++) tz.append(h('option', { value: i, selected: Number(ex.tzOffset || 0) === i }, i === 0 ? 'Sem ajuste' : `${i > 0 ? '+' : ''}${i} h`));
   const fileInput = h('input', { type: 'file', accept: '.m3u,.m3u8,.txt', style: { display: 'none' } });
+  // só aparece quando o QR Code do celular estiver na tela
+  const phoneHint = h('div.hint.hidden', 'Pelo celular: escaneie o QR Code acima e escolha “Carregar lista”.');
+  // Carregar lista: arquivo baixado pelo botão “Baixar lista” (aqui ou em outro aparelho)
+  let loadFile = null;
+  const loadInput = h('input', { type: 'file', accept: '.json,application/json', style: { display: 'none' } });
+  const loadLabel = h('span.muted', 'Nenhum arquivo escolhido');
+  loadInput.addEventListener('change', () => {
+    loadFile = loadInput.files[0] || null;
+    if (loadFile) loadLabel.textContent = loadFile.name;
+  });
   const fileLabel = h('span.muted', ex.source === 'file' ? 'Arquivo já enviado. Escolha outro só se quiser trocar.' : 'Nenhum arquivo escolhido');
   fileInput.addEventListener('change', () => {
     pickedFile = fileInput.files[0] || null;
@@ -146,21 +250,29 @@ export function openListForm(existing, onSaved, onDelete) {
     url: h('div', field('Link da lista (M3U/M3U8)', url), xtHint),
     file: h('div', h('div.field', h('label', 'Arquivo da lista'),
       h('div.row', h('button.btn', { type: 'button', onclick: () => fileInput.click() }, ico('upload'), 'Escolher arquivo'), fileLabel), fileInput)),
+    load: h('div', h('div.field', h('label', 'Arquivo da lista baixada'),
+      // os apps da TV não abrem seletor de arquivos: lá o arquivo vem pelo celular
+      nativeTvApp() ? null : h('div.row', h('button.btn', { type: 'button', onclick: () => loadInput.click() }, ico('upload'), 'Escolher arquivo'), loadLabel), loadInput,
+      phoneHint,
+      h('div.hint', 'O arquivo começa com “iptvkz-lista” e é gerado pelo botão “Baixar lista”. A lista entra com favoritos e histórico; as outras continuam.'))),
   };
   const tabBtns = {
     xtream: h('button', { type: 'button', onclick: () => setTab('xtream') }, ico('server'), 'Xtream Codes'),
     url: h('button', { type: 'button', onclick: () => setTab('url') }, ico('link'), 'Link M3U'),
     file: h('button', { type: 'button', onclick: () => setTab('file') }, ico('file'), 'Arquivo M3U'),
   };
+  if (!existing) tabBtns.load = h('button', { type: 'button', onclick: () => setTab('load') }, ico('download'), 'Carregar lista');
+  const extras = h('div');
   const paneBox = h('div');
   function setTab(t) {
     tab = t;
     for (const [k, b] of Object.entries(tabBtns)) b.classList.toggle('on', k === t);
     paneBox.replaceChildren(panes[t]);
+    extras.classList.toggle('hidden', t === 'load');
+    saveBtn.textContent = t === 'load' ? 'Carregar lista' : existing ? 'Salvar e recarregar' : 'Adicionar lista';
   }
-  setTab(tab);
-
   const saveBtn = h('button.btn.primary', { type: 'submit' }, existing ? 'Salvar e recarregar' : 'Adicionar lista');
+  setTab(tab);
   const pairing = TV.on && !existing ? pairingBox((list) => {
     // o que veio do celular entra no mesmo caminho do formulário (validação e lista repetida)
     const x = list.type === 'm3u' ? xtreamFromUrl(list.url) : xtreamFromUrl(list.server);
@@ -169,18 +281,14 @@ export function openListForm(existing, onSaved, onDelete) {
     else if (list.type === 'xtream') { server.value = list.server; user.value = list.username; pass.value = list.password; setTab('xtream'); }
     else { url.value = list.url; setTab('url'); }
     form.dispatchEvent(new Event('submit', { cancelable: true }));
-  }) : null;
+  }, (summary, token) => confirmRestore(summary, token, () => m.close()), () => phoneHint.classList.remove('hidden')) : null;
 
   const form = h('form',
     pairing && pairing.el,
     err,
     h('div.tabs', Object.values(tabBtns)),
-    field('Nome', name),
     paneBox,
-    h('details', { style: { margin: '4px 0 12px' } },
-      h('summary.muted', { style: { cursor: 'pointer', marginBottom: '12px' } }, 'Guia de programação (EPG)'),
-      field('URL do guia (XMLTV)', epgUrl, 'Deixe vazio para usar o guia que vem com a lista, se houver.'),
-      field('Corrigir horário do guia', tz, 'Use se a programação aparecer adiantada ou atrasada.')),
+    extras,
     h('p.faint', { style: { fontSize: '12px', margin: '0 0 8px' } }, 'Os dados ficam só neste computador, na pasta data/ do IPTVKZ.'),
     h('div.form-actions',
       existing && onDelete ? h('button.btn.danger', {
@@ -194,6 +302,12 @@ export function openListForm(existing, onSaved, onDelete) {
       }, ico('trash'), 'Excluir lista') : null,
       h('button.btn.ghost', { type: 'button', onclick: () => m.close() }, 'Cancelar'), saveBtn));
 
+  extras.append(field('Nome', name),
+    h('details', { style: { margin: '4px 0 12px' } },
+      h('summary.muted', { style: { cursor: 'pointer', marginBottom: '12px' } }, 'Guia de programação (EPG)'),
+      field('URL do guia (XMLTV)', epgUrl, 'Deixe vazio para usar o guia que vem com a lista, se houver.'),
+      field('Corrigir horário do guia', tz, 'Use se a programação aparecer adiantada ou atrasada.')));
+
   const showErr = (msg) => {
     err.textContent = msg;
     err.classList.toggle('hidden', !msg);
@@ -202,6 +316,18 @@ export function openListForm(existing, onSaved, onDelete) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     showErr('');
+    if (tab === 'load') {
+      if (!loadFile) return showErr(nativeTvApp() ? 'Use o QR Code acima com o celular e escolha “Carregar lista”.' : 'Escolha o arquivo da lista baixada.');
+      try {
+        const body = await loadFile.text();
+        const { summary } = await api('/api/list-import?dry=1', { method: 'POST', body });
+        m.close();
+        await confirmLoad(summary, () => api('/api/list-import', { method: 'POST', body }));
+      } catch (e2) {
+        showErr(e2.message || String(e2));
+      }
+      return;
+    }
     const list = {
       id: listId,
       name: name.value.trim(),

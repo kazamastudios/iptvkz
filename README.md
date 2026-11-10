@@ -80,6 +80,7 @@ Letras maiores e navegação pelas setas, OK e Voltar do controle remoto.
 - **Player:** HLS (hls.js), MPEG-TS (mpegts.js) e nativo. Troca de **áudio**, **legendas** (do stream ou arquivo `.srt`/`.vtt`, com atraso, tamanho e fundo), qualidade, picture-in-picture e **“Abrir no VLC”** para formatos que o navegador não toca.
 - **Modo TV:** navegação pelo controle remoto, zapping em tela cheia, busca por voz com o teclado do sistema na LG e no Android. Compatível com TVs antigas (webOS 4+).
 - **Lista pelo celular:** nos apps da LG e do Android TV, a TV mostra um QR Code e você preenche a lista no celular, pela rede de casa, sem digitar com o controle.
+- **Levar uma lista para outro aparelho:** em Configurações, o botão “Baixar lista” de cada lista gera um arquivo (`iptvkz-lista-….json`) com a lista, os favoritos e o histórico dela; na TV, ele mostra um QR Code para baixar no celular. Para usar em outro aparelho (ou depois de reinstalar), abra “Adicionar lista”: na TV, escaneie o QR Code e use “Carregar lista” no celular; no computador, use a aba “Carregar lista”. A lista entra junto com as que já estão lá. O arquivo contém a senha da lista: guarde com cuidado.
 - **Controle dos pais:** PIN de 4 dígitos que esconde canais, filmes e séries adultos (detectados pelo nome ou marcados por você) em todos os aparelhos.
 - **Leve:** interface em JavaScript puro, sem framework, e servidor Node sem dependências. Nada de conversão de vídeo no aparelho.
 

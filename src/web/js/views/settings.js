@@ -7,6 +7,7 @@ import {
 import { pinDialog } from './pin.js';
 import { TV, setTvMode, exitApp, focusEl } from '../tv/tv.js';
 import { showTermsDialog } from './terms.js';
+import { openListSave, downloadList } from './lists.js';
 
 const TYPE = { xtream: 'Xtream Codes', url: 'Link M3U', file: 'Arquivo M3U' };
 
@@ -48,6 +49,10 @@ export function settingsView(params, ctx) {
         !isActive ? h('button.btn.small.primary', { onclick: () => ctx.useList(l.id) }, 'Usar esta') : null,
         h('button.btn.small', { onclick: () => ctx.refreshList(l.id) }, ico('refresh'), 'Atualizar'),
         h('button.btn.small', { onclick: () => ctx.editList(l) }, ico('edit'), 'Editar'),
+        h('button.btn.small', {
+          title: TV.on ? 'Baixar esta lista no celular, para usar em outro aparelho' : 'Baixar esta lista num arquivo, para usar em outro aparelho',
+          onclick: () => (TV.on ? openListSave(l) : downloadList(l)),
+        }, ico('download'), 'Baixar lista'),
         h('button.btn.small.ghost', {
           onclick: async () => {
             if (await confirmDialog('Excluir lista', `Excluir “${l.name}”? Favoritos e progresso dessa lista também serão apagados.`, 'Excluir', true)) {
