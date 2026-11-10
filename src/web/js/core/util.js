@@ -1,6 +1,6 @@
 // Helpers de DOM e formatação.
 import { icon } from './icons.js';
-import { TV, focusEl } from '../tv/tv.js';
+import { TV, focusEl, navIdle } from '../tv/tv.js';
 
 // TVs antigas (Chromium < 86) não têm replaceChildren.
 if (!Element.prototype.replaceChildren) {
@@ -130,6 +130,22 @@ export function initials(name) {
   return ((words[0] || '?')[0] + (words[1] ? words[1][0] : '')).toUpperCase();
 }
 
+// Com o controle (ou as setas do teclado) segurado, as capas novas esperam a pessoa parar: cada fileira que passava trazia
+// dezenas de imagens para decodificar em 4K, mais rápido do que a placa de vídeo dava conta, e o app travava.
+// Enquanto isso o cartão mostra o fundo de carregamento.
+const heldBack = [];
+let tHeld = 0;
+function releaseHeld() {
+  tHeld = 0;
+  if (!navIdle()) { tHeld = setTimeout(releaseHeld, 120); return; }
+  for (const go of heldBack.splice(0)) go();
+}
+function setSrcWhenIdle(im, src) {
+  if (navIdle()) { im.src = src; return; } // mouse e toque não mexem em navIdle: só controle e teclado esperam
+  heldBack.push(() => { if (im.isConnected) im.src = src; });
+  if (!tHeld) tHeld = setTimeout(releaseHeld, 120);
+}
+
 // Imagem com carregamento preguiçoso e fallback com iniciais.
 export function img(src, name, cls = '') {
   const box = h('div.thumb' + (cls ? '.' + cls.split(' ').join('.') : ''));
@@ -153,7 +169,7 @@ export function img(src, name, cls = '') {
     im.remove();
     fallback();
   };
-  im.src = src;
+  setSrcWhenIdle(im, src);
   box.append(im);
   return box;
 }
@@ -380,9 +396,9 @@ export function closeTopModal() {
 
 // Modal genérico. Retorna { el, close }.
 // locked: sem botão de fechar, sem Esc/Voltar e sem clique fora (ex.: aceite dos termos).
-export function modal(title, body, { wide = false, onClose, locked = false } = {}) {
+export function modal(title, body, { wide = false, cls = '', onClose, locked = false } = {}) {
   const root = $('#overlayRoot');
-  const box = h('div.modal' + (wide ? '.wide' : ''),
+  const box = h('div.modal' + (wide ? '.wide' : '') + (cls ? '.' + cls : ''),
     h('div.modal-head', h('h2', title), locked ? null : h('button.icon-btn', { title: 'Fechar', onclick: () => close() }, ico('close'))),
     h('div.modal-body', body));
   const back = h('div.modal-back', box);

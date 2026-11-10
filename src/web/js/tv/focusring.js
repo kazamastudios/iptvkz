@@ -1,40 +1,52 @@
 // Moldura de foco que desliza de um cartão para o outro na TV (como na Apple TV), em vez de cada cartão
-// acender a própria borda. É um elemento só, movido por transform: a placa de vídeo faz o trabalho.
-// Vale para capas, canais e episódios; botões e menus seguem com o destaque próprio.
+// acender a própria borda. É um elemento só, movido por transform com transição do CSS: a placa de vídeo
+// faz o movimento. Vale para capas, canais e episódios; botões e menus seguem com o destaque próprio.
+//
+// Leveza: a posição é medida uma vez por troca de foco, já descontando o quanto as áreas ainda vão rolar
+// (o deslize do foco, core/smoothscroll.js). Medir o cartão a cada quadro enquanto a página rola obrigava a TV
+// a refazer o layout 60 vezes por segundo, e era isso que travava o ↑/↓.
+
+import { glideLeft, gliding, onGlideEnd } from '../core/smoothscroll.js';
 
 const CARDS = '.poster, .ch-card, .ep';
-const EASE = 0.3; // fração da distância por quadro a 60 Hz: chega em ~130 ms
 
 let ring = null;
 let target = null; // elemento que a moldura contorna
 let clips = []; // áreas com rolagem em volta do alvo: a moldura não aparece fora delas
 let covers = []; // elementos fixos por cima da área (ex.: o destaque do Streaming): a moldura passa por baixo deles
-let cur = null; // posição atual { x, y, w, h }
 let zoom = 0; // px na tela por px do CSS (a TV usa zoom no html); 0 = medir de novo
 let frame = 0;
-let last = 0;
+let shown = false;
+let size = '';
 
 function ensure() {
   if (ring) return;
   ring = document.createElement('div');
   ring.className = 'tv-ring';
   document.body.appendChild(ring);
-  // a rolagem de qualquer área (inclusive o deslize do foco) e o redimensionamento movem o alvo
-  document.addEventListener('scroll', kick, { capture: true, passive: true });
+  // rolagem que não é o deslize do foco (rodinha, arrastar) e redimensionamento: mede de novo, uma vez por quadro
+  document.addEventListener('scroll', () => { if (!gliding()) kick(); }, { capture: true, passive: true });
   window.addEventListener('resize', () => { zoom = 0; kick(); });
+  // fim do deslize: confere a posição real (uma medida só)
+  onGlideEnd(() => kick());
 }
 
-// Mede quanto 1px do CSS vale na tela, pela própria moldura (vale para os dois jeitos de zoom do Chromium).
+// Mede quanto 1px do CSS vale na tela (vale para os dois jeitos de zoom do Chromium). Usa um elemento próprio,
+// invisível e sem transição: medir a moldura pegava o tamanho dela no meio da animação, e com o zoom errado
+// ela parava fora do lugar (um quadrado vermelho solto na tela).
+let probe = null;
 function measureZoom() {
-  ring.style.transform = 'none';
-  ring.style.width = '100px';
-  ring.style.height = '100px';
-  return ring.getBoundingClientRect().width / 100 || 1;
+  if (!probe) {
+    probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:0;top:0;width:100px;height:1px;visibility:hidden;pointer-events:none;transition:none;transform:none';
+    document.body.appendChild(probe);
+  }
+  return probe.getBoundingClientRect().width / 100 || 1;
 }
 
 function hide() {
   target = null;
-  cur = null;
+  shown = false;
   zoom = 0; // o modo TV pode ter mudado o zoom enquanto a moldura estava apagada
   if (ring) ring.classList.remove('on');
   document.documentElement.classList.remove('tv-ring-on');
@@ -58,47 +70,54 @@ export function ringTo(el) {
 
 function kick() {
   if (!target || frame) return;
-  last = performance.now() - 16.7;
-  frame = requestAnimationFrame(tick);
+  frame = requestAnimationFrame(place);
 }
 
-function tick(now) {
+// Quanto um elemento ainda vai se mover na tela (px do CSS) porque as áreas em volta dele ainda estão rolando.
+function pending(el) {
+  let x = 0;
+  let y = 0;
+  for (const c of clips) {
+    if (c === el || !c.contains(el)) continue;
+    const d = glideLeft(c);
+    x += d.x;
+    y += d.y;
+  }
+  return { x, y };
+}
+
+function place() {
   frame = 0;
   if (!target || !target.isConnected) return hide();
   if (!zoom) zoom = measureZoom();
+  // onde o cartão vai estar quando a rolagem terminar
   const r = target.getBoundingClientRect();
-  const goal = { x: r.left / zoom, y: r.top / zoom, w: r.width / zoom, h: r.height / zoom };
-  let moving = false;
-  if (!cur || !ring.classList.contains('on')) {
-    cur = goal; // primeira aparição: nasce no lugar e só acende
-  } else {
-    const dt = Math.min(64, now - last);
-    const k = 1 - Math.pow(1 - EASE, dt / 16.7);
-    for (const p of ['x', 'y', 'w', 'h']) {
-      const d = goal[p] - cur[p];
-      if (Math.abs(d) < 0.3) cur[p] = goal[p];
-      else { cur[p] += d * k; moving = true; }
-    }
-  }
-  last = now;
-  ring.style.transform = `translate3d(${cur.x}px, ${cur.y}px, 0)`;
-  ring.style.width = cur.w + 'px';
-  ring.style.height = cur.h + 'px';
-  // corta o que passar das áreas com rolagem (ex.: o cartão saindo pela borda da fileira)
+  const p = pending(target);
+  const x = r.left / zoom - p.x;
+  const y = r.top / zoom - p.y;
+  const w = r.width / zoom;
+  const h = r.height / zoom;
+  // corta o que passar das áreas com rolagem (ex.: o cartão saindo pela borda da fileira), também no lugar final
   let top = -1e4, left = -1e4, right = 1e4, bottom = 1e4;
   for (const c of clips) {
     const b = c.getBoundingClientRect();
-    top = Math.max(top, b.top / zoom); left = Math.max(left, b.left / zoom);
-    right = Math.min(right, b.right / zoom); bottom = Math.min(bottom, b.bottom / zoom);
+    const q = pending(c);
+    top = Math.max(top, b.top / zoom - q.y); left = Math.max(left, b.left / zoom - q.x);
+    right = Math.min(right, b.right / zoom - q.x); bottom = Math.min(bottom, b.bottom / zoom - q.y);
   }
   // um elemento fixo no topo (destaque) tampa a parte de cima da área: a moldura começa abaixo dele
   for (const c of covers) {
     const b = c.getBoundingClientRect();
     if (b.top / zoom <= top + 1 && b.bottom / zoom > top) top = b.bottom / zoom;
   }
+  // primeira aparição: nasce no lugar, sem deslizar
+  ring.classList.toggle('instant', !shown);
+  ring.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+  const s = `${w}|${h}`;
+  if (s !== size) { size = s; ring.style.width = w + 'px'; ring.style.height = h + 'px'; }
   // valor negativo deixa o brilho da moldura sair até 12px quando o cartão está inteiro à vista
   const cut = (v) => Math.max(-12, v);
-  ring.style.clipPath = `inset(${cut(top - cur.y)}px ${cut(cur.x + cur.w - right)}px ${cut(cur.y + cur.h - bottom)}px ${cut(left - cur.x)}px)`;
+  ring.style.clipPath = `inset(${cut(top - y)}px ${cut(x + w - right)}px ${cut(y + h - bottom)}px ${cut(left - x)}px)`;
   ring.classList.add('on');
-  if (moving) frame = requestAnimationFrame(tick);
+  shown = true;
 }

@@ -48,8 +48,15 @@ export function whereStopped(section, item) {
   return ep && ep.d ? `${code} · parou em ${fmtTime(ep.t)}` : code;
 }
 
-export function posterCard(section, item, ctx, { where = false, onOpen = null } = {}) {
-  const th = img(item.poster, item.name, 'cover');
+// Capas do TMDB vêm em 600×900, mas o cartão normal mostra ~156px de largura. A versão de 342px tem um terço
+// dos pixels: bem menos para baixar e, principalmente, para decodificar (era o que travava a TV ao rolar).
+// O cartão largo do Streaming mostra a capa maior e continua com a original.
+function smallPoster(src) {
+  return String(src || '').replace(/(image\.tmdb\.org\/t\/p\/)(?:w\d+_and_h\d+_[a-z0-9]+|w(?:500|600|780)|original)\//, '$1w342/');
+}
+
+export function posterCard(section, item, ctx, { where = false, onOpen = null, wide = false } = {}) {
+  const th = img(wide ? item.poster : smallPoster(item.poster), item.name, 'cover');
   const tags = versionTags(item);
   if (tags) th.append(tags);
   if (item.rating) th.append(h('span.badge.gold.rating', '★ ' + Number(item.rating).toFixed(1)));
@@ -269,7 +276,7 @@ export function wideCardFor(hero) {
         if (box) glideTo(box, null, 0);
       }
     };
-    const el = posterCard(section, item, ctx, { ...opts, onOpen });
+    const el = posterCard(section, item, ctx, { ...opts, onOpen, wide: true });
     el.classList.add('wide');
     el._item = item;
     el._section = section;
@@ -289,26 +296,17 @@ export function streamHero(ctx) {
   const versions = h('div.versions.hero-versions');
   const plot = h('p.hero-plot');
   const acts = h('div.hero-acts');
-  // Som do trailer de fundo: começa mudo (como nos apps de streaming) e este botão liga sem interromper o vídeo.
-  const soundBtn = h('button.hero-sound', { type: 'button', onclick: () => setMuted(!muted) });
-  // Modo trailer: os textos somem, o vídeo de fundo continua do ponto em que estava, agora com som.
-  const watchPlay = h('button.btn.primary.big', { type: 'button' });
-  const watchClose = h('button.btn.big', { type: 'button', onclick: () => exitWatch() }, ico('close'), 'Fechar trailer');
-  const bar = h('div.hero-trailer-bar', watchPlay, watchClose);
   // data-ring-cover: a moldura do foco não é desenhada por cima do destaque (tv/focusring.js)
+  // Sem trailer de fundo: o player do YouTube pesava demais na TV e travava a navegação. O botão Trailer
+  // abre o vídeo numa janela quase do tamanho da tela, igual no PC, na TV e no celular.
   const el = h('section.hero-stream', { 'data-ring-cover': '' }, arts[0], arts[1], h('div.hero-shade'),
-    h('div.hero-info', title, meta, versions, plot, acts), bar, soundBtn);
+    h('div.hero-info', title, meta, versions, plot, acts));
   let cur = null;
   let curSection = 'movies';
   let version = null;
   let trailer = '';
   let tShow = 0;
   let tDetail = 0;
-  let tTrailer = 0;
-  let video = null; // { box, frame, id }: um trailer por vez, removido (não só pausado) ao trocar de título
-  let trailerId = null; // id do YouTube do título atual, se houver
-  let muted = true; // vale para os próximos trailers também: quem ligou o som continua ouvindo
-  let watching = false; // modo trailer
 
   // Preso no título clicado: o hover nos cards não troca o destaque até o ponteiro passar pelo destaque e sair
   // dele (ou 2,5 s sem chegar lá). O controle e o teclado continuam trocando normalmente.
@@ -318,106 +316,6 @@ export function streamHero(ctx) {
   el.addEventListener('pointerenter', () => { inHero = true; });
   el.addEventListener('pointerleave', () => { inHero = false; pinned = false; });
 
-  // Trailer de fundo (YouTube, sem som). Só depois que o foco descansa no título; aparece quando o YouTube
-  // avisa que está tocando, e some se o vídeo não puder ser incorporado.
-  // comandos para o player do YouTube (API por postMessage do iframe)
-  const yt = (func, args = []) => {
-    try { video.frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch {}
-  };
-  const paintSound = () => {
-    soundBtn.replaceChildren(ico(muted ? 'mute' : 'volume'));
-    soundBtn.title = muted ? 'Ligar o som do trailer' : 'Desligar o som do trailer';
-  };
-  // Volume do trailer: trailers vêm mixados bem alto. Liga baixo e sobe aos poucos até um nível moderado,
-  // para não dar susto; quem quiser mais alto aumenta no aparelho.
-  const TRAILER_VOLUME = 30; // % do volume do YouTube
-  let tVol = 0;
-  const setMuted = (m) => {
-    muted = m;
-    paintSound();
-    clearInterval(tVol);
-    if (!video) return;
-    if (m) return yt('mute');
-    let v = 5;
-    yt('setVolume', [v]);
-    yt('unMute');
-    tVol = setInterval(() => {
-      v = Math.min(TRAILER_VOLUME, v + 5);
-      yt('setVolume', [v]);
-      if (v >= TRAILER_VOLUME) clearInterval(tVol);
-    }, 180);
-  };
-  paintSound();
-
-  const stopTrailer = () => {
-    clearTimeout(tTrailer);
-    if (watching) exitWatch(false);
-    if (!video) return;
-    video.box.remove();
-    video = null;
-    el.classList.remove('trailer-on');
-  };
-  const startTrailer = (item, id) => {
-    stopTrailer();
-    const origin = encodeURIComponent(location.origin);
-    // sempre começa mudo (o navegador só deixa tocar sozinho assim); o som entra por comando, se for o caso
-    const frame = h('iframe', {
-      src: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&controls=0&loop=1&playlist=${id}&rel=0` +
-        `&playsinline=1&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0&enablejsapi=1&origin=${origin}`,
-      title: `Trailer de ${item.name}`, allow: 'autoplay; encrypted-media', tabindex: '-1', 'aria-hidden': 'true',
-    });
-    const box = h('div.hero-video', frame);
-    video = { box, frame, id };
-    // pede ao player do YouTube para avisar o estado (tocando, erro) por postMessage
-    frame.addEventListener('load', () => {
-      try { frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'hero', channel: 'widget' }), '*'); } catch {}
-    });
-    el.insertBefore(box, el.querySelector('.hero-shade'));
-  };
-  const onYoutube = (e) => {
-    let host = '';
-    try { host = new URL(e.origin).hostname; } catch {}
-    if (!video || !/(^|\.)youtube(-nocookie)?\.com$/.test(host)) return;
-    let msg;
-    try { msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
-    if (!msg) return;
-    if (msg.event === 'onError') return stopTrailer();
-    const state = msg.info && msg.info.playerState;
-    if (state === 1 && !el.classList.contains('trailer-on')) {
-      el.classList.add('trailer-on'); // tocando: o vídeo aparece por cima da imagem
-      if (!muted) setMuted(false); // som ligado antes (botão de som ou modo trailer): aplica agora
-    }
-  };
-  window.addEventListener('message', onYoutube);
-
-  // Modo trailer: assiste o trailer de fundo com som, sem recomeçar. Se ele ainda não começou, começa agora.
-  const enterWatch = () => {
-    if (!cur || !trailerId) return;
-    clearTimeout(tTrailer);
-    if (!video) startTrailer(cur, trailerId);
-    watching = true;
-    pinned = true; // o hover nos cards não troca o destaque no meio do trailer
-    el.classList.add('watching');
-    watchPlay.replaceChildren(ico('play'), curSection === 'movies' ? (isStarted(getProgress(cur.id)) ? 'Continuar' : 'Assistir') : 'Ver episódios');
-    watchPlay.onclick = () => {
-      const item = cur;
-      const section = curSection;
-      exitWatch();
-      if (section === 'movies') playMovie(item, version, { onClose: renderActs });
-      else ctx.navigate(`#/${cfg.series.detail}?id=${encodeURIComponent(item.id)}`);
-    };
-    setMuted(false);
-    if (TV.on || KB.on) focusEl(watchPlay);
-  };
-  // Sai do modo trailer: os textos voltam e o trailer segue de fundo, mudo.
-  function exitWatch(refocus = true) {
-    if (!watching) return;
-    watching = false;
-    pinned = inHero;
-    el.classList.remove('watching');
-    setMuted(true);
-    if (refocus && (TV.on || KB.on)) focusEl(acts.querySelector('[title="Ver o trailer com som"]') || acts.querySelector('.btn.primary'));
-  }
   // Aberto pelo controle/teclado, o destaque é a "página" do título: as setas ficam presas nos botões dele
   // (data-nav-trap) e ↓ ou Voltar devolvem o foco exatamente ao card de onde se veio.
   let origin = null;
@@ -432,15 +330,12 @@ export function streamHero(ctx) {
     if (o && o.isConnected && (TV.on || KB.on)) focusEl(o);
   };
   el._navExit = (dir) => {
-    if (dir !== 'down') return;
-    if (watching) exitWatch(); // no trailer, ↓ primeiro fecha o trailer
-    else closeOpen();
+    if (dir === 'down') closeOpen();
   };
-  // Voltar (controle) ou Esc: fecha o modo trailer; senão, sai do título aberto e volta ao card
+  // Voltar (controle) ou Esc: sai do título aberto e volta ao card
   const onKey = (e) => {
     if (!isBack(e)) return;
-    if (watching) exitWatch();
-    else if (origin && el.contains(document.activeElement)) closeOpen();
+    if (origin && el.contains(document.activeElement)) closeOpen();
     else return;
     e.preventDefault();
     e.stopPropagation();
@@ -482,12 +377,12 @@ export function streamHero(ctx) {
         setSetting('versionPref', l);
         renderActs();
       });
-      acts.replaceChildren(...movieActions(item, version, trailer, renderActs, acts, { onTrailer: enterWatch }));
+      acts.replaceChildren(...movieActions(item, version, trailer, renderActs, acts));
     } else {
       versions.replaceChildren();
       acts.replaceChildren(
         h('button.btn.primary.big', { onclick: () => ctx.navigate(`#/${cfg.series.detail}?id=${encodeURIComponent(item.id)}`) }, ico('play'), 'Ver episódios'),
-        heroTrailerButton(trailer, enterWatch), laterButton(section, item), favButton(section, item));
+        trailerButton(item.name, trailer), laterButton(section, item), favButton(section, item));
     }
     if (at >= 0) {
       const now = acts.querySelectorAll('button');
@@ -511,13 +406,9 @@ export function streamHero(ctx) {
       plot.classList.toggle('none', !text);
       if (!d) return;
       if (d.genre) meta.append(h('span', d.genre.split(/[,/]/)[0].trim()));
-      const id = youtubeId(d.trailer);
-      if (!id) return;
+      if (!youtubeId(d.trailer)) return;
       trailer = d.trailer;
-      trailerId = id;
-      renderActs(); // aparece o botão Trailer (com som)
-      // a TV espera mais: o vídeo pesa mais lá, então só para quem realmente parou no título
-      tTrailer = setTimeout(() => cur === item && startTrailer(item, id), TV.on ? 3000 : 2000);
+      renderActs(); // aparece o botão Trailer
     });
   };
 
@@ -531,7 +422,6 @@ export function streamHero(ctx) {
     else plot.replaceChildren(...skLines(3));
     version = section === 'movies' ? preferredVersion(item.versions) : null;
     trailer = '';
-    trailerId = null;
     renderActs();
     // a imagem anterior some (fundo escuro) e entra uma só quando o detalhe decidir qual; se ele demorar, a capa
     artFor = null;
@@ -549,7 +439,6 @@ export function streamHero(ctx) {
       cur = item;
       curSection = section;
       unopen();
-      stopTrailer();
       clearTimeout(tShow);
       if (now) fill(item, section);
       else tShow = setTimeout(() => cur === item && fill(item, section), 220);
@@ -567,11 +456,9 @@ export function streamHero(ctx) {
       origin = card || null;
     },
     // Volta ao tamanho normal quando o foco volta para os cards (senão o destaque maior cobriria a fileira).
-    collapse() { if (!watching) unopen(); },
+    collapse() { unopen(); },
     destroy() {
-      clearTimeout(tShow); clearTimeout(tDetail); clearTimeout(tArt); clearTimeout(tPin); clearInterval(tVol);
-      stopTrailer();
-      window.removeEventListener('message', onYoutube);
+      clearTimeout(tShow); clearTimeout(tDetail); clearTimeout(tArt); clearTimeout(tPin);
       window.removeEventListener('keydown', onKey, true);
     },
   };
@@ -654,19 +541,39 @@ function homeContent(section, ctx, scroller, { card = posterCard } = {}) {
   }, { root: scroller, rootMargin: '600px' });
 
   const syncs = new WeakMap();
-  for (const c of visibleCats(section)) {
-    const nav = rowControls(h('div.shelf-row.sk-row', skPosters(Math.min(8, c.count))));
-    const el = h('div.shelf',
-      h('div.shelf-head', h('h3', c.name), h('span.faint', c.count.toLocaleString('pt-BR')),
-        h('a', { href: `#/${section}?cat=${encodeURIComponent(c.id)}`, onclick: (e) => { e.preventDefault(); ctx.navigate(`#/${section}?cat=${encodeURIComponent(c.id)}`); } }, 'Ver tudo →'),
-        nav.pager),
-      nav.body);
-    syncs.set(el, nav.sync);
-    el.dataset.cat = c.id;
-    page.append(el);
-    io.observe(el);
-  }
-  return { el: page, destroy: () => io.disconnect() };
+  // As fileiras de categoria entram aos poucos: as primeiras já, e mais algumas sempre que a rolagem chega perto
+  // do fim. Montar todas de uma vez (são 100+ em listas grandes, com os cartões de carregamento) deixava a página
+  // com milhares de elementos que o navegador acompanha a cada quadro de rolagem; era o que travava o ↑/↓ na TV.
+  const cats = visibleCats(section);
+  let next = 0;
+  const sentinel = h('div.sentinel');
+  const addShelves = (n) => {
+    for (const c of cats.slice(next, next + n)) {
+      const nav = rowControls(h('div.shelf-row.sk-row', skPosters(Math.min(8, c.count))));
+      const el = h('div.shelf',
+        h('div.shelf-head', h('h3', c.name), h('span.faint', c.count.toLocaleString('pt-BR')),
+          h('a', { href: `#/${section}?cat=${encodeURIComponent(c.id)}`, onclick: (e) => { e.preventDefault(); ctx.navigate(`#/${section}?cat=${encodeURIComponent(c.id)}`); } }, 'Ver tudo →'),
+          nav.pager),
+        nav.body);
+      syncs.set(el, nav.sync);
+      el.dataset.cat = c.id;
+      sentinel.before(el);
+      io.observe(el);
+    }
+    next += n;
+    if (next >= cats.length) { moreIo.disconnect(); sentinel.remove(); }
+  };
+  const moreIo = new IntersectionObserver((entries) => {
+    if (!entries.some((e) => e.isIntersecting)) return;
+    // observa de novo: se o marcador continuar perto da tela, o aviso volta e entram mais fileiras
+    moreIo.unobserve(sentinel);
+    addShelves(6);
+    if (next < cats.length) moreIo.observe(sentinel);
+  }, { root: scroller, rootMargin: '1200px' });
+  page.append(sentinel);
+  addShelves(8);
+  if (next < cats.length) moreIo.observe(sentinel);
+  return { el: page, destroy: () => { io.disconnect(); moreIo.disconnect(); } };
 }
 
 function gridContent(section, cat, ctx, scroller) {
@@ -748,16 +655,14 @@ function laterButton(section, item) {
 
 // Todos os botões de um filme, usados pela página do filme e pelo destaque do Streaming (que a substitui).
 // refresh: redesenha os botões (o progresso muda ao fechar o player, ao marcar como assistido...).
-// onTrailer: no destaque do Streaming, o botão Trailer assiste o trailer que já roda de fundo (com som);
-// sem ele (página do filme), abre o trailer numa janela.
-function movieActions(movie, version, trailer, refresh, box, { onTrailer = null } = {}) {
+function movieActions(movie, version, trailer, refresh, box) {
   const p = getProgress(movie.id);
   const resumable = isStarted(p);
   return [
     h('button.btn.primary.big', { onclick: () => playMovie(movie, version, { onClose: refresh }) }, ico('play'),
       resumable ? `Continuar de ${p.t < 3600 ? fmtTime(p.t) : fmtClockSec(p.t)}` : 'Assistir'),
     resumable ? h('button.btn.big', { onclick: () => playMovie(movie, version, { fromStart: true, onClose: refresh }) }, ico('refresh'), 'Do início') : null,
-    onTrailer ? heroTrailerButton(trailer, onTrailer) : trailerButton(movie.name, trailer),
+    trailerButton(movie.name, trailer),
     laterButton('movies', movie),
     favButton('movies', movie),
     h('button.btn' + (isWatched(movie.id) ? '.seen-on' : ''), {
@@ -833,27 +738,45 @@ function youtubeId(v) {
   return m ? m[1] : null;
 }
 
-// Só aparece quando o provedor informa o trailer, que toca dentro do app.
+// Só aparece quando o provedor informa o trailer, que toca dentro do app, numa janela quase do tamanho da tela.
+// O player do YouTube só é carregado quando a pessoa pede (ele é pesado, sobretudo na TV).
 function trailerButton(name, value) {
   const id = youtubeId(value);
   if (!id) return null;
-  return h('button.btn', {
-    title: 'Ver o trailer',
-    onclick: () => {
-      modal(`Trailer · ${name}`, h('div.trailer-box', h('iframe', {
-        src: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`,
-        title: `Trailer de ${name}`,
-        allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen',
-        allowfullscreen: true,
-      })), { wide: true });
-    },
-  }, ico('play'), 'Trailer');
+  return h('button.btn', { title: 'Ver o trailer', onclick: () => openTrailer(name, id) }, ico('play'), 'Trailer');
 }
 
-// Botão Trailer do destaque: assiste o trailer de fundo, com som, sem recomeçar.
-function heroTrailerButton(value, onTrailer) {
-  if (!youtubeId(value)) return null;
-  return h('button.btn', { title: 'Ver o trailer com som', onclick: onTrailer }, ico('play'), 'Trailer');
+// Trailers vêm mixados bem alto: começam mudos e, quando o player responde, o som entra num nível moderado.
+const TRAILER_VOLUME = 30; // % do volume do YouTube
+function openTrailer(name, id) {
+  const origin = encodeURIComponent(location.origin);
+  const frame = h('iframe', {
+    src: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&rel=0&playsinline=1&modestbranding=1` +
+      `&iv_load_policy=3&enablejsapi=1&origin=${origin}`,
+    title: `Trailer de ${name}`,
+    allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen',
+    allowfullscreen: true,
+  });
+  const yt = (func, args = []) => {
+    try { frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch {}
+  };
+  let sound = false;
+  const onMsg = (e) => {
+    if (sound || e.source !== frame.contentWindow) return;
+    sound = true; // o player respondeu: liga o som baixo
+    yt('setVolume', [TRAILER_VOLUME]);
+    yt('unMute');
+  };
+  window.addEventListener('message', onMsg);
+  // pede ao player para conversar por postMessage
+  frame.addEventListener('load', () => {
+    try { frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'trailer', channel: 'widget' }), '*'); } catch {}
+  });
+  // fechar remove o iframe: o vídeo para e o player sai da memória
+  modal(`Trailer · ${name}`, h('div.trailer-box', frame), {
+    cls: 'trailer',
+    onClose: () => { window.removeEventListener('message', onMsg); frame.remove(); },
+  });
 }
 
 function versionChips(container, labels, current, onPick) {

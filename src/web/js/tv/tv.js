@@ -277,7 +277,7 @@ function revealSmooth(el, center) {
       parseFloat(cs.scrollPaddingLeft) || 0, parseFloat(cs.scrollPaddingRight) || 0) : null;
     const y = canY ? axis((r.top - br.top) / z - box.clientTop + box.scrollTop, r.height / z, box.clientHeight, at.y,
       parseFloat(cs.scrollPaddingTop) || 0, parseFloat(cs.scrollPaddingBottom) || 0, start) : null;
-    if (x != null || y != null) glideTo(box, x, y);
+    if (x != null || y != null) glideTo(box, x, y, holding);
   }
 }
 
@@ -323,6 +323,13 @@ function reachable(el, cur) {
 }
 
 let lastMove = 0;
+let holding = false; // a seta está sendo segurada (repetições seguidas)
+
+// Navegação parada há pelo menos ms (o controle/teclado não está sendo segurado). Usado para adiar trabalho
+// pesado, como encher as fileiras de capas, enquanto a pessoa passa por elas.
+export function navIdle(ms = 350) {
+  return Date.now() - lastMove >= ms;
+}
 
 // Cabeçalho das fileiras (título, "Ver tudo", setas de página): fica fora do caminho normal do controle,
 // para ↑/↓ pularem direto de uma fileira de capas para a outra.
@@ -375,9 +382,15 @@ function declaredJump(dir, cur) {
 
 // dir: 'left' | 'right' | 'up' | 'down'. Retorna true se mudou o foco.
 export function move(dir) {
-  // tecla segurada: repetir mais rápido que a TV desenha só acumula atraso
+  // tecla segurada: repetir mais rápido que a TV desenha só acumula atraso. Na vertical da TV o limite é maior:
+  // cada fileira nova traz capas para decodificar em 4K, e segurando ↓ elas chegavam mais rápido do que a placa
+  // de vídeo dava conta, até o app travar por segundos.
   const now = Date.now();
-  if (now - lastMove < 90) return true;
+  const gap = dir === 'up' || dir === 'down' ? 260 : 90; // TV, Android TV e teclado do PC
+  if (now - lastMove < gap) return true;
+  // seta segurada (a anterior foi há pouco): a tela pula direto, sem deslizar. Cada deslize faz a TV redesenhar
+  // a tela em 4K quadro a quadro; com a tecla segurada, um atrás do outro, ela não dava conta.
+  holding = now - lastMove < 450;
   lastMove = now;
   const scope = navScope();
   const cur = document.activeElement;
@@ -396,6 +409,22 @@ export function move(dir) {
     trail.length = 0; // usado: o próximo acesso ao cabeçalho pede o gesto de novo
     focusEl(jump);
     return true;
+  }
+  // ←/→ numa fileira de capas: a vizinha é a próxima capa da própria fileira. Sem medir nada: medir todos os
+  // itens da tela a cada tecla custava 60–120 ms na TV. Na primeira capa, ← segue a busca normal (vai ao menu).
+  if (!trap && (dir === 'left' || dir === 'right') && cur.matches(CARD)) {
+    const row = zoneOf(cur);
+    if (row) {
+      const cards = row.querySelectorAll(CARD);
+      const i = Array.prototype.indexOf.call(cards, cur);
+      const next = i >= 0 ? cards[i + (dir === 'right' ? 1 : -1)] : null;
+      if (next) {
+        remember(dir, cur, next);
+        focusEl(next);
+        return true;
+      }
+      if (i >= 0 && dir === 'right') return true; // última capa: fica onde está
+    }
   }
   // ↑/↓ numa fileira de capas: vai sempre para a fileira vizinha (na capa mais próxima na horizontal), mesmo que
   // ela tenha poucas capas e fora do alinhamento. Só da primeira/última fileira o foco sai para o resto da tela.

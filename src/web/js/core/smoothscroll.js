@@ -77,14 +77,16 @@ function onWheel(e) {
   }
 }
 
-// ---------- deslizar até uma posição (usado pelo foco da TV) ----------
-// Mesmo princípio da rodinha, em qualquer eixo e em várias áreas ao mesmo tempo (ex.: a fileira anda para
-// o lado enquanto a página desce). Um novo destino no meio do caminho só muda o alvo: o movimento não quebra.
+// ---------- deslizar até uma posição (usado pelo foco do controle e do teclado) ----------
+// Usa a rolagem suave do próprio navegador (scrollTo com behavior: 'smooth'). Ela roda na placa de vídeo, fora
+// do código do app: continua lisa mesmo quando a página está montando as fileiras que entram na tela. Antes o
+// app movia a rolagem a cada quadro, e na TV cada passo esperava o layout da página inteira.
+// Várias áreas ao mesmo tempo (a fileira anda para o lado enquanto a página desce); um novo destino no meio do
+// caminho só muda o alvo, o movimento não quebra.
 
-const GLIDE = 0.22; // por quadro a 60 Hz: chega em ~200 ms
-const glides = new Map(); // área → { x, y, snap }
-let glideFrame = 0;
-let glideLast = 0;
+const glides = new Map(); // área → { x, y, snap, timer }
+const glideEndFns = new Set();
+const SETTLE = 160; // ms sem eventos de rolagem = chegou
 
 // Para onde a área está indo (ou onde está, se parada).
 export function glideTarget(box) {
@@ -92,56 +94,57 @@ export function glideTarget(box) {
   return { x: g && g.x != null ? g.x : box.scrollLeft, y: g && g.y != null ? g.y : box.scrollTop };
 }
 
-export function glideTo(box, x, y) {
+function finish(box) {
+  const g = glides.get(box);
+  if (!g) return;
+  clearTimeout(g.timer);
+  box.removeEventListener('scroll', g.onScroll);
+  box.style.scrollSnapType = g.snap;
+  glides.delete(box);
+  if (!glides.size) glideEndFns.forEach((fn) => fn());
+}
+
+// instant: pula direto (ex.: seta segurada na TV), sem a animação.
+export function glideTo(box, x, y, instant = false) {
   let g = glides.get(box);
   if (!g) {
-    // o encaixe dos cartões puxaria cada passo de volta; volta quando o deslize termina
-    g = { x: null, y: null, snap: box.style.scrollSnapType };
+    // o encaixe dos cartões puxaria o movimento para outro lugar; volta quando o deslize termina
+    g = { x: null, y: null, snap: box.style.scrollSnapType, timer: 0 };
+    g.onScroll = () => {
+      if (!TV.on) scrolling(); // no PC, o hover das capas fica desligado enquanto a área anda
+      clearTimeout(g.timer);
+      g.timer = setTimeout(() => finish(box), SETTLE);
+    };
     box.style.scrollSnapType = 'none';
+    box.addEventListener('scroll', g.onScroll, { passive: true });
     glides.set(box, g);
   }
   if (x != null) g.x = Math.max(0, Math.min(box.scrollWidth - box.clientWidth, x));
   if (y != null) g.y = Math.max(0, Math.min(box.scrollHeight - box.clientHeight, y));
-  if (!glideFrame) {
-    glideLast = performance.now() - 16.7;
-    glideFrame = requestAnimationFrame(glideTick);
-  }
+  const opts = { behavior: instant ? 'instant' : 'smooth' };
+  if (g.x != null) opts.left = g.x;
+  if (g.y != null) opts.top = g.y;
+  try { box.scrollTo(opts); } catch { if (g.x != null) box.scrollLeft = g.x; if (g.y != null) box.scrollTop = g.y; }
+  // se nada rolar (já estava no lugar), termina sozinho
+  clearTimeout(g.timer);
+  g.timer = setTimeout(() => finish(box), SETTLE + 140);
 }
+
+// Quanto a área ainda vai andar até parar ({ x, y } em px do CSS). Usado pela moldura de foco para ir direto
+// ao lugar final, sem medir a tela a cada quadro.
+export function glideLeft(box) {
+  const g = glides.get(box);
+  if (!g) return { x: 0, y: 0 };
+  return { x: g.x != null ? g.x - box.scrollLeft : 0, y: g.y != null ? g.y - box.scrollTop : 0 };
+}
+export const gliding = () => glides.size > 0;
+export function onGlideEnd(fn) { glideEndFns.add(fn); }
 
 // Para o deslize de uma área onde ela estiver (ex.: a pessoa agarrou a fileira com o mouse).
 export function stopGlide(box) {
-  const g = glides.get(box);
-  if (!g) return;
-  box.style.scrollSnapType = g.snap;
-  glides.delete(box);
-}
-
-// Anda um eixo; devolve true quando chegou (ou não consegue andar mais).
-function stepAxis(box, prop, goal, k) {
-  if (goal == null) return true;
-  const now = box[prop];
-  const d = goal - now;
-  if (Math.abs(d) < 1) { box[prop] = goal; return true; }
-  box[prop] = now + d * k;
-  if (box[prop] !== now) return false;
-  box[prop] = goal; // arredondou para o mesmo pixel: termina no destino
-  return true;
-}
-
-function glideTick(now) {
-  const dt = Math.min(64, now - glideLast);
-  glideLast = now;
-  const k = 1 - Math.pow(1 - GLIDE, dt / 16.7);
-  scrolling();
-  for (const [box, g] of glides) {
-    const doneX = stepAxis(box, 'scrollLeft', g.x, k);
-    const doneY = stepAxis(box, 'scrollTop', g.y, k);
-    if ((doneX && doneY) || !box.isConnected) {
-      box.style.scrollSnapType = g.snap;
-      glides.delete(box);
-    }
-  }
-  glideFrame = glides.size ? requestAnimationFrame(glideTick) : 0;
+  if (!glides.has(box)) return;
+  try { box.scrollTo({ left: box.scrollLeft, top: box.scrollTop, behavior: 'auto' }); } catch {}
+  finish(box);
 }
 
 export function initSmoothScroll() {

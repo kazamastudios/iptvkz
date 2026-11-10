@@ -311,40 +311,12 @@ input, select, textarea { font: inherit; color: inherit; }
 .hero-art { position: absolute; top: 0; right: 0; width: 68%; height: 100%; object-fit: cover; object-position: center 20%; opacity: 0; transition: opacity .45s ease; }
 .hero-art.on { opacity: 1; }
 .hero-stream.wide-art .hero-art { width: 100%; object-position: center 30%; }
-/* trailer de fundo: cobre o destaque como a imagem (16:9 recortado), sem som e sem clique; aparece quando toca */
-.hero-video { position: absolute; top: 0; right: 0; bottom: 0; left: 0; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .6s ease; }
-.hero-video iframe {
-  position: absolute; left: 50%; top: 50%; border: 0; width: 100%; height: 100%;
-  transform: translate(-50%, -50%) scale(1.18); /* corta as bordas onde o YouTube põe título e logo */
-}
-@supports (aspect-ratio: 1 / 1) and (width: max(1px, 2px)) {
-  .hero-video iframe { width: max(100%, calc(var(--hero-h) * 1.7778)); height: auto; aspect-ratio: 16 / 9; }
-}
-.trailer-on .hero-video { opacity: 1; }
+/* altura fixa: trocar o título, a sinopse e a imagem não refaz o layout do resto da página */
+.hero-stream:not(.open) { contain: strict; }
 /* aberto (título clicado): descrição inteira; o destaque cresce para caber */
 .hero-stream.open { height: auto; max-height: none; min-height: var(--hero-h); }
 .hero-stream.open .hero-info { height: auto; min-height: var(--hero-h); }
 .hero-stream.open .hero-plot { height: auto; display: block; -webkit-line-clamp: unset; max-width: 720px; overflow: visible; }
-/* som do trailer de fundo: aparece quando ele está tocando */
-.hero-sound {
-  position: absolute; right: 24px; bottom: 28px; z-index: 2; width: 44px; height: 44px; border-radius: 50%; padding: 0;
-  display: none; align-items: center; justify-content: center; cursor: pointer;
-  background: rgba(8, 8, 11, .45); border: 1px solid rgba(255, 255, 255, .5); color: #fff;
-}
-.hero-sound .i { width: 20px; height: 20px; }
-.hero-sound:hover { background: rgba(255, 255, 255, .16); }
-.trailer-on .hero-sound { display: flex; }
-/* modo trailer: só o vídeo (com som), a barra com Assistir / Fechar e o botão de som */
-.hero-trailer-bar { position: absolute; left: 24px; bottom: 28px; z-index: 2; display: none; gap: 10px; flex-wrap: wrap; }
-.hero-trailer-bar > .btn { height: 48px; padding: 0 20px; font-size: 15px; white-space: nowrap; }
-.hero-stream.watching .hero-trailer-bar { display: flex; }
-/* os textos ficam invisíveis mas ocupando o mesmo espaço: o destaque não muda de tamanho no modo trailer */
-.hero-stream.watching .hero-info { visibility: hidden; }
-.hero-stream.watching .hero-shade { opacity: .25; }
-.hero-stream.watching .hero-video { opacity: 1; }
-.hero-stream.watching .hero-video iframe { transform: translate(-50%, -50%) scale(1.05); } /* menos corte: é para assistir */
-.no-flexgap .hero-trailer-bar > * + * { margin-left: 10px; }
-.tv .hero-video:not(#splash) { transition: opacity .5s ease !important; }
 .hero-shade {
   position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background: linear-gradient(90deg, var(--bg) 0%, var(--bg) 28%, rgba(8, 8, 11, .65) 50%, rgba(8, 8, 11, 0) 74%),
@@ -474,12 +446,16 @@ input, select, textarea { font: inherit; color: inherit; }
   position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 5; pointer-events: none;
 }
 .player .center .spinner { width: 54px; height: 54px; border-width: 4px; }
-/* até o primeiro quadro, o carregamento é a splash (fundo, logo e barra); depois, só o spinner nas travadinhas */
-.player .center .sp-logo, .player .center .sp-bar { display: none; }
-.player.awaiting .center { z-index: 3; }
-.player.awaiting .center .spinner { display: none; }
-.player.awaiting .center .sp-logo { display: block; width: 34%; max-width: 420px; min-width: 0; }
-.player.awaiting .center .sp-bar { display: block; }
+/* até o primeiro quadro: fundo escuro, a logo pequena do menu e o anel girando; some com fade quando o vídeo começa */
+.player .pl-cover {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 3; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; background: #060609;
+  opacity: 0; visibility: hidden; transition: opacity .5s ease, visibility 0s linear .5s;
+}
+.player .pl-cover img { width: 168px; height: auto; display: block; margin-bottom: 26px; }
+.player .pl-cover .spinner { width: 40px; height: 40px; border-width: 3px; }
+.player.awaiting .pl-cover { opacity: 1; visibility: visible; transition: none; }
+.player.awaiting .center .spinner { display: none; } /* o anel da capa já está girando */
 .player .perror {
   position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px; background: rgba(8, 8, 12, .92); text-align: center; padding: 24px;
@@ -960,6 +936,9 @@ input, select, textarea { font: inherit; color: inherit; }
 /* ---------- trailer ---------- */
 .trailer-box { position: relative; padding-top: 56.25%; border-radius: 10px; overflow: hidden; background: #000; }
 .trailer-box iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+/* janela do trailer: quase a tela toda, mantendo 16:9 (largura limitada pela altura disponível) */
+.modal.trailer { width: min(94vw, calc((var(--app-h, 100vh) * .92 - 70px) * 1.7778)); max-height: none; overflow: hidden; }
+.modal.trailer .modal-body { padding: 0 12px 12px; }
 
 /* ---------- barra de tempo selecionável na TV ---------- */
 .tv .player .seek:focus { outline: none; }
@@ -969,7 +948,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* splash na TV: fundo fixo (camadas grandes em movimento travam), só a barra e o fade animam */
 .tv .sp-glow { animation: none; will-change: auto; }
 .tv .sp-sweep { display: none; }
-.tv #splash, .player.awaiting .center { background: radial-gradient(ellipse at 20% 0%, #4d0d12 0%, rgba(77, 13, 18, 0) 60%), radial-gradient(ellipse at 90% 100%, #3a0716 0%, rgba(58, 7, 22, 0) 55%), #060609; }
+.tv #splash { background: radial-gradient(ellipse at 20% 0%, #4d0d12 0%, rgba(77, 13, 18, 0) 60%), radial-gradient(ellipse at 90% 100%, #3a0716 0%, rgba(58, 7, 22, 0) 55%), #060609; }
 .tv #splash { transition: opacity .7s ease; will-change: opacity; }
 .tv .sp-glow { display: none; }
 .tv .sp-bar i { will-change: transform; }
@@ -1052,10 +1031,16 @@ input, select, textarea { font: inherit; color: inherit; }
 .tv-ring {
   position: fixed; left: 0; top: 0; z-index: 6; pointer-events: none; box-sizing: border-box;
   border: 3px solid var(--accent); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 0 14px rgba(255, 42, 42, .35);
-  opacity: 0; transition: opacity .15s; will-change: transform;
+  opacity: 0; will-change: transform;
+  /* o deslize da moldura é uma transição de transform (placa de vídeo); o tamanho só muda entre tipos de cartão */
+  transition: opacity .15s, transform .2s cubic-bezier(.2, .7, .3, 1), width .2s, height .2s;
 }
 .tv-ring.on { opacity: 1; }
-.tv .tv-ring:not(#splash) { transition: opacity .12s !important; } /* exceção ao "sem transições" da TV: só a opacidade de um elemento */
+.tv-ring.instant { transition: opacity .15s; }
+.tv .player:not(.awaiting) .pl-cover:not(#splash) { transition: opacity .5s ease, visibility 0s linear .5s !important; } /* o fade de saída do carregamento: um elemento, só opacidade */
+/* exceção ao "sem transições" da TV: um elemento só, opacidade e transform */
+.tv .tv-ring:not(#splash) { transition: opacity .12s, transform .2s cubic-bezier(.2, .7, .3, 1), width .2s, height .2s !important; }
+.tv .tv-ring.instant:not(#splash) { transition: opacity .12s !important; }
 html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
 .tv-ring-on .poster.tv-focus .thumb::after, .tv-ring-on .poster:focus .thumb::after { box-shadow: none; }
 .tv-ring-on .ch-card.tv-focus, .tv-ring-on .ch-card:focus, .tv-ring-on .ep.tv-focus, .tv-ring-on .ep:focus { border-color: transparent; }

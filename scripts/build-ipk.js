@@ -56,7 +56,10 @@ esbuild.buildSync({
   entryPoints: [path.join(service, 'main.js')],
   outfile: path.join(serviceDir, 'main.js'),
   external: ['webos-service'],
-  define: { __UPDATE_BASE__: JSON.stringify(UPDATE_BASE), __UPDATE_KEY__: JSON.stringify(publicKey()) },
+  define: {
+    __UPDATE_BASE__: JSON.stringify(UPDATE_BASE), __UPDATE_KEY__: JSON.stringify(publicKey()),
+    __LOCAL_BUILD__: JSON.stringify(!bundleVersion), // sem BUNDLE_VERSION (build no PC): não se atualiza sozinho
+  },
 });
 
 // ---------- pacote atualizável: servidor compilado + interface ----------

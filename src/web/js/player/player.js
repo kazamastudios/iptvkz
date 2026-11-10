@@ -130,8 +130,10 @@ export class Player {
     top.push(this.titleEl);
     this.top = h('div.ptop', top);
 
-    // antes do primeiro quadro, a mesma cara da splash (classes .sp-* do app.css); depois, só o spinner
-    this.center = h('div.center', h('img.sp-logo', { src: '/img/logo-horizontal.webp', alt: '' }), h('div.sp-bar', h('i')), h('div.spinner'));
+    // Antes do primeiro quadro: fundo escuro com a logo pequena do menu e o anel girando (diferente da splash,
+    // para não parecer que o app reabriu). Some com um fade quando o vídeo começa. Depois, nas travadinhas, só o anel.
+    this.cover = h('div.pl-cover', h('img', { src: '/img/logo-sidebar.png', alt: '' }), h('div.spinner'));
+    this.center = h('div.center', h('div.spinner'));
     this.errorEl = h('div.perror.hidden');
     this.menu = h('div.pmenu.hidden');
     this.nextCard = null;
@@ -139,7 +141,7 @@ export class Player {
     this.flashEl = h('div.seek-flash');
     this.ppEl = h('div.pp-flash'); // ícone de play/pause no centro, só ao apertar
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
-    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.noImageEl, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
+    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
     this.host.append(this.root);
   }
 
