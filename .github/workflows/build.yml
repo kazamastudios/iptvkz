@@ -1,4 +1,5 @@
-# Gera os instaladores do IPTVKZ para Windows, macOS e Linux.
+# Gera os instaladores do IPTVKZ para Windows, macOS e Linux, o IPK da LG e o APK Android do canal Developer.
+# A versão da Google Play (AAB) tem um fluxo separado: play.yml.
 # - Em pull requests e no botão "Run workflow": compila e guarda os arquivos como artefatos.
 # - Ao enviar uma tag "v*" (ex.: v1.0.0): compila e anexa tudo a um rascunho de Release.
 name: Build
@@ -13,6 +14,21 @@ permissions:
   contents: write
 
 jobs:
+  # Testes do servidor. Nenhum job depende deste: se falhar, avisa sem travar os instaladores.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
   build:
     strategy:
       fail-fast: false
@@ -154,13 +170,16 @@ jobs:
 
       - name: Anexar à Release
         if: startsWith(github.ref, 'refs/tags/v')
-        run: gh release upload "$GITHUB_REF_NAME" dist/android/* --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/android/IPTVKZ-android.apk dist/android/IPTVKZ-android-bundle.zip dist/android/android-update.json dist/android/android-update.json.sig --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: IPTVKZ-Android
-          path: dist/android/*
+          path: |
+            dist/android/*.apk
+            dist/android/*.zip
+            dist/android/android-update.json*
           if-no-files-found: error
           retention-days: 14

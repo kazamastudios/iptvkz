@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Só a versão da Google Play: publicada apenas para Android TV / Google TV. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-feature android:name="android.software.leanback" android:required="true" tools:replace="android:required" />
+</manifest>

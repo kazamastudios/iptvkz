@@ -135,7 +135,8 @@ async function handleProxy(req, res, query) {
 
   const ct = upstream.headers.get('content-type') || '';
   const finalUrl = upstream.url || target.href;
-  const out = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' };
+  // Sem Access-Control-Allow-Origin: só a própria interface (mesma origem) lê o que o proxy traz.
+  const out = { 'Cache-Control': 'no-store' };
 
   if (upstream.ok && looksLikeManifest(finalUrl, ct) && !ct.includes('video/mp2t')) {
     const text = await upstream.text();
@@ -408,10 +409,12 @@ async function handleApi(req, res, url) {
 const staticGz = new Map();
 
 function serveStatic(req, res, pathname) {
-  let rel = decodeURIComponent(pathname);
+  let rel;
+  try { rel = decodeURIComponent(pathname); } catch { rel = null; }
   if (rel === '/') rel = '/index.html';
-  const file = path.normalize(path.join(PUBLIC, rel));
-  if (!file.startsWith(PUBLIC)) {
+  const file = rel && !rel.includes('\0') ? path.normalize(path.join(PUBLIC, rel)) : '';
+  // com o separador no fim, "src/web-outra" não passa por "src/web"
+  if (!file.startsWith(path.join(PUBLIC, path.sep))) {
     res.writeHead(403);
     return res.end();
   }
@@ -448,9 +451,18 @@ const BLOCKED_PAGE = `<!doctype html><meta charset="utf-8"><title>IPTVKZ</title>
 <div><h1 style="color:#ff2a2a">IPTVKZ</h1><p>O acesso pela rede está desligado.</p>
 <p style="color:#999">No computador, abra Configurações → TV e outros aparelhos → ligue “Permitir acesso pela rede”.</p></div>`;
 
+const FORBIDDEN = (res, text) => {
+  res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(text);
+};
+
 const server = http.createServer((req, res) => {
   const ip = req.socket.remoteAddress;
   req.isLocal = net.isLoopback(ip);
+  // Um site aberto no navegador não pode usar o servidor: nem por um domínio apontado para cá
+  // (DNS rebinding) nem mandando pedidos de outra origem (CSRF).
+  if (!net.allowedHost(req.headers.host)) return FORBIDDEN(res, 'Endereço não permitido. Use o IP do aparelho.');
+  if (!net.sameOrigin(req.headers.origin, req.headers.host)) return FORBIDDEN(res, 'Origem não permitida.');
   // cadastro pelo celular: só esta rota, com chave de uso único, e só de redes domésticas
   if (pairing.enabled() && net.isPrivate(ip) && req.url.startsWith('/pair/')) {
     return pairing.handle(req, res, new URL(req.url, 'http://localhost'));
