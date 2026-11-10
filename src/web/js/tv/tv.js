@@ -60,9 +60,17 @@ export function setTvMode(on) {
 export function applyTv() {
   const html = document.documentElement;
   html.classList.toggle('tv', TV.on);
-  // Tela de TV vista do sofá: tudo ~35% maior em 1080p.
-  const zoom = TV.on ? Math.max(1, Math.min(2, window.innerWidth / 1420)) : 1;
+  // Toda TV com o mesmo layout, de ~1420px de largura: a LG (1920px) amplia ~35%; o Android TV, que mostra
+  // 1080p com densidade 2 (o app vê só 960px), reduz. Antes só ampliava, e no Android TV tudo saía grande
+  // demais: título do destaque cortado, nomes dos filmes fora da tela.
+  // Com toque (o APK num celular também liga o modo TV) não reduz: lá vale o layout de celular.
+  const touch = navigator.maxTouchPoints > 0;
+  const fit = window.innerWidth / 1420;
+  const zoom = TV.on ? Math.min(2, touch ? Math.max(1, fit) : Math.max(0.5, fit)) : 1;
   html.style.zoom = TV.on ? zoom.toFixed(2) : '';
+  // as regras de tela estreita do CSS (@media max-width) olham a largura real, não a com zoom: na TV
+  // sem toque o layout já é o largo, então elas ficam desligadas (html.tv-wide no app.css)
+  html.classList.toggle('tv-wide', TV.on && !touch);
   // Com zoom, 100vh passa da tela e corta o rodapé; a altura real vem daqui.
   html.style.setProperty('--app-h', `${window.innerHeight / Number(zoom.toFixed(2))}px`);
 }
