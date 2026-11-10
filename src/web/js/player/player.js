@@ -2,7 +2,7 @@
 // controla áudio, legenda (renderizada pelo app), qualidade, versão e "Abrir no VLC".
 import { h, ico, fmtTime, toast } from '../core/util.js';
 import { icon } from '../core/icons.js';
-import { S, C, setSetting, api } from '../core/store.js';
+import { flushSaves, S, C, setSetting, api } from '../core/store.js';
 import { SeekPreview } from './seekpreview.js';
 import { claimScreen, heartbeat, endScreen } from './sessions.js';
 import { readSubFile, cuesAt, subHtml } from './subs.js';
@@ -228,6 +228,9 @@ export class Player {
       this._scrubT = setTimeout(() => this._commitScrub(), 220);
     };
     document.addEventListener('keyup', this._onKeyUp);
+    // Home ou outro app na frente: grava o ponto na hora, a TV pode fechar o app depois
+    this._onHide = () => { if (document.hidden) { this._report(); flushSaves(); } };
+    document.addEventListener('visibilitychange', this._onHide);
 
     this._subTimer = setInterval(() => this._renderSubs(), 100);
     this._watchdog = setInterval(() => { this._checkStall(); this._checkImage(); }, 5000);
@@ -691,8 +694,9 @@ export class Player {
   _report() {
     this._lastReport = Date.now();
     const v = this.video;
-    if (this.opts.onTime && !this.opts.live && Number.isFinite(v.duration) && v.currentTime > 0) {
-      this.opts.onTime(v.currentTime, v.duration);
+    // sem duração conhecida (alguns MKV e streams), salva só o ponto, com duração 0
+    if (this.opts.onTime && !this.opts.live && v.currentTime > 0) {
+      this.opts.onTime(v.currentTime, Number.isFinite(v.duration) ? v.duration : 0);
     }
   }
 
@@ -1043,6 +1047,7 @@ export class Player {
     document.removeEventListener('fullscreenchange', this._onFs);
     document.removeEventListener('mousedown', this._onDocClick);
     document.removeEventListener('keyup', this._onKeyUp);
+    document.removeEventListener('visibilitychange', this._onHide);
     clearTimeout(this._scrubT);
     if (document.pictureInPictureElement === this.video) document.exitPictureInPicture().catch(() => {});
     if (document.fullscreenElement === this.root) document.exitFullscreen().catch(() => {});

@@ -625,7 +625,7 @@ function handleBack(e) {
       return true;
     }
     // sem para onde voltar: pergunta antes de sair
-    confirmDialog('Sair do IPTVKZ?', 'O aplicativo será fechado nesta TV.', 'Sair').then((yes) => { if (yes) exitApp(); });
+    confirmDialog('Sair do IPTVKZ?', 'O aplicativo será fechado nesta TV.', 'Sair').then((yes) => { if (yes) { flushSaves(); exitApp(); } });
     return true;
   }
   return false;

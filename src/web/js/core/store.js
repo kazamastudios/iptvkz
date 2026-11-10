@@ -347,7 +347,7 @@ export function clearContinue(section) {
   const removed = {};
   for (const [k, p] of Object.entries(m)) {
     const hit = section === 'movies'
-      ? p.kind === 'movie' && p.d && p.t / p.d < 0.95
+      ? p.kind === 'movie' && isStarted(p)
       : k.startsWith('s:') && p.kind === 'serie-last';
     if (hit) {
       removed[k] = p;
@@ -378,6 +378,14 @@ export function setProgress(id, data) {
   m[id] = { ...data, at: Date.now() };
   if (watched) m[id].w = true;
   save('progress');
+}
+
+// Começado e não terminado: 30 segundos já contam, mesmo sem saber a duração do vídeo.
+export function isStarted(p) {
+  if (!p || !(p.t > 0)) return false;
+  if (!p.d) return p.t >= 30;
+  const r = p.t / p.d;
+  return r < 0.95 && (r > 0.02 || p.t >= 30);
 }
 
 export function isWatched(id) {
@@ -411,9 +419,8 @@ export function watchHistory() {
     if (p.kind === 'movie') {
       const item = current.movies.byId.get(k);
       if (!item || (adultLocked() && isAdultItem('movies', k))) continue;
-      const r = p.d ? p.t / p.d : 0;
       const entry = { section: 'movies', item, at: p.at };
-      if (r > 0.02 && r < 0.95) inProgress.push(entry);
+      if (isStarted(p)) inProgress.push(entry);
       else if (isWatched(k)) done.push(entry);
     } else if (p.kind === 'serie-last') {
       const id = k.slice(2);
@@ -435,7 +442,7 @@ export function clearProgress(id) {
 export function continueMovies() {
   const sec = current?.movies;
   return Object.entries(progMap())
-    .filter(([, p]) => p.kind === 'movie' && p.d && p.t / p.d > 0.02 && p.t / p.d < 0.95)
+    .filter(([, p]) => p.kind === 'movie' && isStarted(p))
     .sort((a, b) => b[1].at - a[1].at)
     .map(([id]) => sec.byId.get(id))
     .filter((it) => it && !(adultLocked() && isAdultItem('movies', it.id)));

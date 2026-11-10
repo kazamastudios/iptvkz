@@ -2,7 +2,7 @@
 import { h, ico, img, windowed, matcher, debounce, fmtDur, fmtTime, toast, modal, skPosters, skEpisodes, skLines } from '../core/util.js';
 import { starIcon } from '../core/icons.js';
 import {
-  C, S, visibleCats, visibleItems, favItems, isFav, toggleFav, getProgress, setProgress, clearProgress, isWatched,
+  C, S, visibleCats, visibleItems, favItems, isFav, toggleFav, getProgress, setProgress, clearProgress, isWatched, isStarted,
   continueMovies, continueSeries, clearContinue, catItems, isLater, toggleLater, laterItems, adultLocked, isAdultItem, seriesDetail, movieDetail, preferredVersion, setSetting, api,
 } from '../core/store.js';
 import { playMovie, playEpisode } from './vodplayer.js';
@@ -34,7 +34,7 @@ function progressRatio(section, item) {
 export function whereStopped(section, item) {
   if (section === 'movies') {
     const p = getProgress(item.id);
-    if (p && p.d && p.t / p.d > 0.02 && p.t / p.d < 0.95) return `Parou em ${fmtTime(p.t)}`;
+    if (isStarted(p)) return `Parou em ${fmtTime(p.t)}`;
     return isWatched(item.id) ? 'Assistido' : '';
   }
   const last = getProgress('s:' + item.id);
@@ -358,7 +358,7 @@ export function movieView(params, ctx) {
       renderActs();
     });
     const p = getProgress(movie.id);
-    const resumable = p && p.d && p.t / p.d > 0.02 && p.t / p.d < 0.95;
+    const resumable = isStarted(p);
     d.acts.replaceChildren(
       h('button.btn.primary.big', { onclick: () => playMovie(movie, version, { onClose: renderActs }) }, ico('play'),
         resumable ? `Continuar de ${p.t < 3600 ? fmtTime(p.t) : fmtClockSec(p.t)}` : 'Assistir'),
@@ -510,7 +510,7 @@ export function serieView(params, ctx) {
       const p = getProgress(ep.id);
       const watched = isWatched(ep.id);
       const r = p && p.d ? p.t / p.d : 0;
-      const stopped = r > 0.02 && r < 0.95;
+      const stopped = isStarted(p);
       const th = img(ep.img || serie.poster, ep.title, 'cover');
       th.append(h('div.play', ico('play')));
       if (watched && !stopped) th.append(h('span.badge.seen.seen-mark', '✓ Assistido'));
