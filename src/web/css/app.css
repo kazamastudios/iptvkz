@@ -286,6 +286,111 @@ input, select, textarea { font: inherit; color: inherit; }
 /* modo assistindo */
 .live.watching { grid-template-columns: 1fr 360px; }
 .live.watching .cats { display: none; }
+
+/* ---------- seletor de visualização (ao lado da busca) ---------- */
+.view-switch { display: flex; gap: 2px; padding: 3px; flex: none; background: var(--card); border: 1px solid var(--line); border-radius: 999px; }
+.vs-btn { width: 34px; height: 34px; border-radius: 50%; border: 0; padding: 0; background: none; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background-color .15s, color .15s; }
+.vs-btn .i { width: 18px; height: 18px; }
+.vs-btn:hover { color: var(--text); background: rgba(255, 255, 255, .06); }
+.vs-btn.on { background: var(--accent-soft); color: var(--text); }
+.no-flexgap .view-switch > * + * { margin-left: 2px; }
+
+/* ---------- visualização Streaming: destaque + fileiras de cards deitados ---------- */
+.vod-browse.stream { grid-template-columns: minmax(0, 1fr); }
+.vod-browse.stream > .cats { display: none; }
+.hero-stream { --hero-h: calc(var(--app-h, 100vh) * .52); position: relative; height: var(--hero-h); min-height: 300px; max-height: 560px; overflow: hidden; background: var(--bg); }
+.hero-art { position: absolute; top: 0; right: 0; width: 68%; height: 100%; object-fit: cover; object-position: center 20%; opacity: 0; transition: opacity .45s ease; }
+.hero-art.on { opacity: 1; }
+.hero-stream.wide-art .hero-art { width: 100%; object-position: center 30%; }
+/* trailer de fundo: cobre o destaque como a imagem (16:9 recortado), sem som e sem clique; aparece quando toca */
+.hero-video { position: absolute; top: 0; right: 0; bottom: 0; left: 0; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .6s ease; }
+.hero-video iframe {
+  position: absolute; left: 50%; top: 50%; border: 0; width: 100%; height: 100%;
+  transform: translate(-50%, -50%) scale(1.18); /* corta as bordas onde o YouTube põe título e logo */
+}
+@supports (aspect-ratio: 1 / 1) and (width: max(1px, 2px)) {
+  .hero-video iframe { width: max(100%, calc(var(--hero-h) * 1.7778)); height: auto; aspect-ratio: 16 / 9; }
+}
+.trailer-on .hero-video { opacity: 1; }
+/* aberto (título clicado): descrição inteira; o destaque cresce para caber */
+.hero-stream.open { height: auto; max-height: none; min-height: var(--hero-h); }
+.hero-stream.open .hero-info { height: auto; min-height: var(--hero-h); }
+.hero-stream.open .hero-plot { height: auto; display: block; -webkit-line-clamp: unset; max-width: 720px; overflow: visible; }
+/* som do trailer de fundo: aparece quando ele está tocando */
+.hero-sound {
+  position: absolute; right: 24px; bottom: 28px; z-index: 2; width: 44px; height: 44px; border-radius: 50%; padding: 0;
+  display: none; align-items: center; justify-content: center; cursor: pointer;
+  background: rgba(8, 8, 11, .45); border: 1px solid rgba(255, 255, 255, .5); color: #fff;
+}
+.hero-sound .i { width: 20px; height: 20px; }
+.hero-sound:hover { background: rgba(255, 255, 255, .16); }
+.trailer-on .hero-sound { display: flex; }
+/* modo trailer: só o vídeo (com som), a barra com Assistir / Fechar e o botão de som */
+.hero-trailer-bar { position: absolute; left: 24px; bottom: 28px; z-index: 2; display: none; gap: 10px; flex-wrap: wrap; }
+.hero-trailer-bar > .btn { height: 48px; padding: 0 20px; font-size: 15px; white-space: nowrap; }
+.hero-stream.watching .hero-trailer-bar { display: flex; }
+/* os textos ficam invisíveis mas ocupando o mesmo espaço: o destaque não muda de tamanho no modo trailer */
+.hero-stream.watching .hero-info { visibility: hidden; }
+.hero-stream.watching .hero-shade { opacity: .25; }
+.hero-stream.watching .hero-video { opacity: 1; }
+.hero-stream.watching .hero-video iframe { transform: translate(-50%, -50%) scale(1.05); } /* menos corte: é para assistir */
+.no-flexgap .hero-trailer-bar > * + * { margin-left: 10px; }
+.tv .hero-video:not(#splash) { transition: opacity .5s ease !important; }
+.hero-shade {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
+  background: linear-gradient(90deg, var(--bg) 0%, var(--bg) 28%, rgba(8, 8, 11, .65) 50%, rgba(8, 8, 11, 0) 74%),
+    linear-gradient(0deg, var(--bg) 0%, rgba(8, 8, 11, 0) 42%);
+}
+.hero-info { position: relative; z-index: 1; height: 100%; padding: 32px 24px 28px; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; }
+/* o texto fica estreito (legível sobre a imagem); os botões usam a largura toda */
+.hero-title, .hero-meta, .hero-versions { max-width: 560px; max-width: max(48%, 520px); } /* 560px: TVs sem max() */
+.hero-title { margin: 0; font: 700 40px/1.1 var(--font-display); letter-spacing: -0.5px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 14px; font-weight: 600; }
+.hero-plot { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.5; max-width: 560px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+/* altura fixa de 3 linhas, com ou sem texto: a sinopse chegando (ou faltando) não empurra o resto */
+.hero-plot { height: 4.5em; }
+.hero-plot .sk-text { height: 12px; margin: 7px 0 0; }
+.hero-plot .sk-text:first-child { margin-top: 4px; }
+.hero-plot.none { display: none; } /* o título não tem sinopse: o espaço reservado some e o título desce */
+/* Botões de ação: alinhados à esquerda, descendo de linha quando não cabem. Mesma regra no destaque do
+   Streaming e na página do filme/série (os botões são os mesmos): todos com a mesma altura e o mesmo respiro
+   nas laterais; a largura acompanha o texto. */
+.hero-acts { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.hero-acts > .btn, .detail .acts > .btn { height: 48px; padding: 0 20px; font-size: 15px; white-space: nowrap; }
+.hero-more { background: rgba(255, 255, 255, .14); border-color: transparent; }
+.hero-more:hover { background: rgba(255, 255, 255, .22); }
+.no-flexgap .hero-acts > * + *, .no-flexgap .hero-meta > * + * { margin-left: 10px; }
+.stream-home .page { padding-top: 0; }
+/* cards deitados (16:9): o mesmo cartão das capas, com a capa enquadrada perto do topo */
+.poster.wide .thumb { aspect-ratio: 16 / 9; }
+.poster.wide .thumb img { object-position: center 22%; }
+.shelf-row .poster.wide { width: 280px; }
+.poster.wide .thumb.noimg { font-size: 22px; }
+.stream-home .shelf { contain-intrinsic-size: auto 250px; }
+@supports not (aspect-ratio: 1 / 1) {
+  .poster.wide .thumb { padding-top: 56.25%; }
+  .poster.wide .thumb.noimg { padding-top: 0; height: 158px; }
+}
+/* PC e TV: o destaque fica preso no topo e as fileiras passam por baixo, como nos apps de streaming; assim ele
+   mostra o título em foco ou sob o mouse em qualquer ponto da página. O scroll-padding faz o foco parar abaixo dele. */
+.stream-home .hero-stream { --hero-h: calc(var(--app-h, 100vh) * .46); min-height: 260px; position: -webkit-sticky; position: sticky; top: 0; z-index: 3; }
+.tv .stream-home .hero-stream { min-height: 0; }
+/* o card em foco para a ~58px do destaque: cabe o título da fileira dele, e a fileira de cima some atrás do destaque */
+.stream-scroll { scroll-padding-top: calc(var(--app-h, 100vh) * .46 + 58px); }
+/* celular: destaque ocupa a largura, texto por cima da imagem, cards menores */
+@media (max-width: 760px) {
+  /* no celular não há mouse nem foco para mudar o destaque, e preso ele tomaria metade da tela: rola junto */
+  .stream-home .hero-stream { --hero-h: calc(var(--app-h, 100vh) * .5); min-height: 280px; position: relative; }
+  .stream-scroll { scroll-padding-top: 0; }
+  .hero-art { width: 100%; }
+  .hero-shade { background: linear-gradient(0deg, var(--bg) 6%, rgba(8, 8, 11, .6) 50%, rgba(8, 8, 11, .05) 100%); }
+  .hero-info { max-width: none; padding: 0 14px 16px; gap: 8px; }
+  .hero-title { font-size: 26px; }
+  .hero-plot { font-size: 14px; -webkit-line-clamp: 2; height: 3em; }
+  .hero-acts > .btn, .detail .acts > .btn { height: 42px; padding: 0 14px; font-size: 14px; }
+  .shelf-row .poster.wide { width: 200px; }
+}
+.tv .hero-art:not(#splash) { transition: opacity .35s ease !important; } /* exceção leve: uma imagem por vez */
 .watch { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; padding: 0 20px 24px 28px; }
 .watch-top { display: flex; align-items: center; gap: 10px; padding: 0 0 12px; }
 .watch-top .title { font: 600 16px var(--font-display); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -413,12 +518,35 @@ input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------- filmes / séries ---------- */
 .shelf { margin: 6px 0 26px; }
+/* Com dezenas de categorias, o navegador nem desenha (nem anima) as fileiras fora da tela. Isso também corta o
+   que passa da borda da fileira: a folga de 8px (compensada na margem) deixa o contorno do foco das setas inteiro. */
+.shelf { content-visibility: auto; contain-intrinsic-size: auto 340px; padding: 8px 8px 0; margin-left: -8px; margin-right: -8px; }
 .shelf-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
-.shelf-head h3 { margin: 0; font: 600 18px var(--font-display); }
-.shelf-head a { color: var(--muted); font-size: 13px; cursor: pointer; }
+.shelf-head h3 { margin: 0; font: 600 18px var(--font-display); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shelf-head a { color: var(--muted); font-size: 13px; cursor: pointer; white-space: nowrap; flex: none; }
+.shelf-head > .faint, .shelf-head .link-btn { flex: none; }
 .shelf-head a:hover { color: var(--accent); }
 .shelf-row { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 12px; scroll-snap-type: x proximity; }
 .shelf-row::-webkit-scrollbar { height: 8px; }
+/* setas de página no canto direito do título: em todas as plataformas (clique, toque ou OK do controle) */
+.shelf-pager { margin-left: auto; align-self: center; display: flex; gap: 8px; }
+.pager-btn {
+  width: 34px; height: 34px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--card); border: 1px solid var(--line-2); color: var(--text); cursor: pointer;
+  transition: background-color .15s, border-color .15s, opacity .15s;
+}
+.pager-btn .i { width: 18px; height: 18px; }
+.pager-btn:hover, .tv .pager-btn.tv-focus, .tv .pager-btn:focus { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pager-btn.off { opacity: .35; cursor: default; }
+.pager-btn.off:hover { background: var(--card); border-color: var(--line-2); }
+.no-flexgap .shelf-pager > * + * { margin-left: 8px; }
+.shelf-body { position: relative; }
+/* arrastando com o mouse: sem seleção de texto nem efeito de hover nos cartões pelo caminho */
+.shelf-body .shelf-row.dragging { cursor: grabbing; user-select: none; }
+.shelf-body .shelf-row img { -webkit-user-drag: none; user-drag: none; } /* senão o navegador "arrasta a imagem" e cancela o nosso arraste */
+.shelf-body .shelf-row.dragging .poster { pointer-events: none; }
+/* deslizando (rodinha, setas, foco da TV): os cartões não reagem ao mouse até parar (core/smoothscroll.js) */
+.is-scrolling .poster, .is-scrolling .ch-card, .is-scrolling .ep { pointer-events: none; }
 .shelf-row .poster { width: 156px; flex: none; scroll-snap-align: start; }
 .poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 22px 16px; }
 .poster { cursor: pointer; min-width: 0; }
@@ -447,6 +575,8 @@ input, select, textarea { font: inherit; color: inherit; }
 .detail .backdrop.sharp img { filter: none; opacity: .35; transform: none; }
 .detail .backdrop::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: linear-gradient(180deg, rgba(10,10,15,.2), var(--bg) 92%), linear-gradient(90deg, var(--bg) 0%, transparent 60%); }
 .detail .inner { position: relative; padding: 8px 28px 40px; }
+.detail-back { margin: 4px 0 16px; background: rgba(8, 8, 11, .45); }
+.detail-back:hover { background: rgba(255, 255, 255, .12); }
 .detail .hero { display: flex; gap: 28px; align-items: flex-end; }
 .detail .hero .thumb { width: 220px; aspect-ratio: 2/3; border-radius: 14px; box-shadow: var(--shadow); }
 .detail .hero .thumb img { object-fit: cover; }
@@ -455,8 +585,11 @@ input, select, textarea { font: inherit; color: inherit; }
 .detail .plot { max-width: 760px; color: #d6d6e2; margin: 0 0 16px; }
 .detail .credits { font-size: 13px; color: var(--muted); max-width: 760px; margin: -6px 0 16px; }
 .detail .acts { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.detail .versions { display: flex; gap: 8px; align-items: center; margin: 0 0 16px; flex-wrap: wrap; }
-.detail .versions .lbl { color: var(--faint); font-size: 13px; margin-right: 4px; }
+.detail .versions, .hero-versions { display: flex; gap: 8px; align-items: center; margin: 0 0 16px; flex-wrap: wrap; }
+.detail .versions .lbl, .hero-versions .lbl { color: var(--faint); font-size: 13px; margin-right: 4px; }
+.hero-versions { margin: 2px 0; }
+.hero-versions:empty { display: none; }
+.no-flexgap .hero-versions > * + * { margin-left: 8px; }
 .seasons { display: flex; gap: 8px; margin: 34px 0 16px; flex-wrap: wrap; }
 .episodes { display: flex; flex-direction: column; gap: 8px; max-width: 980px; }
 .ep { display: flex; gap: 16px; align-items: center; padding: 10px; border-radius: 12px; cursor: pointer; background: var(--card); border: 1px solid transparent; }
@@ -758,8 +891,16 @@ input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------- skeleton e fallback de imagem ---------- */
 @keyframes sk-shine { to { background-position: -200% 0; } }
-.sk-box, .thumb.loading, .sk-now::before { background-image: linear-gradient(90deg, #181822 0%, #262634 50%, #181822 100%); background-size: 200% 100%; animation: sk-shine 1.3s linear infinite; }
-.tv .sk-box, .tv .thumb.loading, .tv .sk-now::before { animation: none; background-image: none; background-color: #1d1d29; }
+.sk-now::before { background-image: linear-gradient(90deg, #181822 0%, #262634 50%, #181822 100%); background-size: 200% 100%; animation: sk-shine 1.3s linear infinite; }
+.tv .sk-now::before { animation: none; background-image: none; background-color: #1d1d29; }
+/* Blocos que carregam: degradê parado nas cores do app. Animar cada bloco (centenas por página) derrubava a
+   rolagem para 15 quadros/s; quem pulsa é a fileira ou grade inteira, uma animação de opacidade só. */
+.sk-box, .thumb.loading { background-color: #1d1d29; background-image: linear-gradient(135deg, #1d1d29 0%, #262435 55%, #2a1d26 100%); }
+@keyframes sk-pulse { 50% { opacity: .45; } }
+/* Só a grade da tela "Carregando lista" pulsa (uma por vez). As fileiras do Início, não: são dezenas, a maioria
+   longe da tela, e cada uma recebe as capas assim que chega perto. Pulsar todas era trabalho à toa. */
+.sk-page .poster-grid, .sk-page .ch-grid { animation: sk-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .sk-page .poster-grid, .sk-page .ch-grid { animation: none; } }
 .thumb img { transition: opacity .2s; }
 .thumb.loading img { opacity: 0; }
 .sk-box { border-radius: 8px; }
@@ -803,8 +944,9 @@ input, select, textarea { font: inherit; color: inherit; }
 .poster .thumb::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: inherit; box-shadow: inset 0 0 0 3px transparent; pointer-events: none; z-index: 2; transition: box-shadow .15s; }
 .poster .thumb img { transition: transform .25s ease, opacity .2s; }
 .poster:hover .thumb, .poster:focus .thumb, .tv .poster:focus .thumb { transform: none; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); }
-.poster:hover .thumb::after, .poster:focus .thumb::after { box-shadow: inset 0 0 0 3px var(--accent); }
-.poster:hover .thumb img, .poster:focus .thumb img { transform: scale(1.07); }
+/* mouse: hover; teclado/controle: foco (no PC só no modo teclado, senão a última capa focada ficaria acesa sozinha) */
+.poster:hover .thumb::after, .kb-nav .poster:focus .thumb::after, .tv .poster:focus .thumb::after { box-shadow: inset 0 0 0 3px var(--accent); }
+.poster:hover .thumb img, .kb-nav .poster:focus .thumb img, .tv .poster:focus .thumb img { transform: scale(1.07); }
 
 /* ---------- trailer ---------- */
 .trailer-box { position: relative; padding-top: 56.25%; border-radius: 10px; overflow: hidden; background: #000; }
@@ -839,6 +981,30 @@ input, select, textarea { font: inherit; color: inherit; }
 .tv .player .seek.tv-focus .knob { transform: translateX(-50%) scale(1.25); }
 .tv .pmenu .opt.tv-focus { background: rgba(255, 42, 42, .25); box-shadow: none; }
 .tv .tvkb-key.tv-focus { background: var(--accent); border-color: #fff; color: #fff; box-shadow: 0 0 0 2px #fff; }
+/* Foco em quem já é vermelho: contorno vermelho sobre fundo vermelho some. Anel branco por dentro e brilho
+   vermelho por fora. No PC, o mesmo vale para o foco do teclado (:focus-visible). */
+.tv .btn.primary:focus, .tv .btn.primary.tv-focus, .tv .pager-btn:focus, .tv .pager-btn.tv-focus,
+.btn.primary:focus-visible, .pager-btn:focus-visible {
+  outline: none; box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(255, 42, 42, .5);
+}
+/* Campo dentro de uma caixa (busca, filtros): acende a caixa inteira, com o mesmo arredondado, e não o campo. */
+.tv .search:focus-within, .tv .filter:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent); }
+.tv .search input:focus, .tv .search input.tv-focus, .tv .filter input:focus, .tv .filter input.tv-focus { box-shadow: none; }
+
+/* ---------- modo teclado no PC (setas/Tab): o mesmo destaque do controle da TV ----------
+   Seletores repetidos de propósito em vez de :is(), que TVs antigas não entendem (descartariam a regra toda). */
+.kb-nav .tv-focus { outline: none; box-shadow: 0 0 0 3px var(--accent); }
+.kb-nav .nav a.tv-focus, .kb-nav .cat-item.tv-focus { background: var(--accent-soft); color: var(--text); }
+.kb-nav .ch-card.tv-focus { border-color: var(--accent); background: #2a1a20; }
+.kb-nav .poster.tv-focus { box-shadow: none; }
+.kb-nav .poster.tv-focus .thumb img { transform: scale(1.07); }
+.kb-nav .poster.tv-focus .pt { color: var(--accent); }
+.kb-nav .ep.tv-focus { border-color: var(--accent); background: var(--card-2); box-shadow: none; }
+.kb-nav .g-prog.tv-focus { border-color: var(--accent); background: #3a1d25; z-index: 1; }
+.kb-nav .pmenu .opt.tv-focus { background: rgba(255, 42, 42, .25); box-shadow: none; }
+.kb-nav .btn.primary.tv-focus, .kb-nav .pager-btn.tv-focus { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(255, 42, 42, .5); }
+.kb-nav .search:focus-within, .kb-nav .filter:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent); }
+.kb-nav .search input.tv-focus, .kb-nav .filter input.tv-focus { box-shadow: none; }
 
 /* ---------- limite de telas ---------- */
 .screen-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
@@ -855,11 +1021,39 @@ input, select, textarea { font: inherit; color: inherit; }
 @keyframes seek-flash { 0% { opacity: 0; } 12% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
 .tv .seek-flash.on { animation: none; }
 
+/* ---------- aviso de play/pause no centro (igual em PC, TV e celular) ----------
+   Um elemento só, animando transform e opacity: leve também na TV. */
+.pp-flash {
+  position: absolute; left: 50%; top: 50%; z-index: 5; width: 96px; height: 96px; margin: -48px 0 0 -48px;
+  border-radius: 50%; background: rgba(0, 0, 0, .55); color: #fff; display: flex; align-items: center; justify-content: center;
+  pointer-events: none; opacity: 0;
+}
+.pp-flash .i { width: 44px; height: 44px; }
+.pp-flash.on { animation: pp-flash .65s ease-out both; }
+@keyframes pp-flash { 0% { opacity: 0; transform: scale(.8); } 20% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.3); } }
+@media (prefers-reduced-motion: reduce) { .pp-flash.on { animation: pp-fade .65s ease-out both; } }
+@keyframes pp-fade { 0%, 40% { opacity: 1; } 100% { opacity: 0; } }
+@container (max-width: 520px) { .pp-flash { width: 64px; height: 64px; margin: -32px 0 0 -32px; } .pp-flash .i { width: 30px; height: 30px; } }
+
 /* ---------- desempenho na TV: troca de estado seca, sem desfoques nem sombras grandes ---------- */
 .tv *:not(#splash), .tv *::before, .tv *::after { transition: none !important; backdrop-filter: none !important; }
 .tv .detail .backdrop img { filter: none; }
 .tv .poster .thumb, .tv .poster:focus .thumb, .tv .poster.tv-focus .thumb { box-shadow: none; transform: none; }
-.tv .poster:focus .thumb img, .tv .poster.tv-focus .thumb img { transform: none; }
+/* Moldura de foco que desliza entre cartões (tv/focusring.js). Com ela ativa, o cartão não desenha a própria borda. */
+.tv-ring {
+  position: fixed; left: 0; top: 0; z-index: 6; pointer-events: none; box-sizing: border-box;
+  border: 3px solid var(--accent); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 0 14px rgba(255, 42, 42, .35);
+  opacity: 0; transition: opacity .15s; will-change: transform;
+}
+.tv-ring.on { opacity: 1; }
+.tv .tv-ring:not(#splash) { transition: opacity .12s !important; } /* exceção ao "sem transições" da TV: só a opacidade de um elemento */
+html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
+.tv-ring-on .poster.tv-focus .thumb::after, .tv-ring-on .poster:focus .thumb::after { box-shadow: none; }
+.tv-ring-on .ch-card.tv-focus, .tv-ring-on .ch-card:focus, .tv-ring-on .ep.tv-focus, .tv-ring-on .ep:focus { border-color: transparent; }
+/* O mesmo zoom do hover do PC aparece no foco da TV. É a única transição liberada aqui: uma imagem por vez,
+   por transform, que a placa de vídeo faz sem redesenhar a tela. */
+.tv .poster .thumb img:not(#splash) { transition: transform .22s ease-out !important; } /* :not(#splash) para pesar mais que a regra geral */
+.tv .poster:focus .thumb img, .tv .poster.tv-focus .thumb img { transform: scale(1.07); }
 .tv .ch-card:focus, .tv .ch-card.tv-focus { transform: none; box-shadow: none; }
 .tv .sp-logo { animation: none; }
 .tv #splash { transition: opacity .35s linear; }

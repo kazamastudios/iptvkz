@@ -7,7 +7,6 @@ export const S = {
   progress: {},
   catPrefs: {},
   dataDir: '',
-  vlc: false,
 };
 
 export const DEFAULT_SETTINGS = {

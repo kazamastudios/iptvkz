@@ -296,7 +296,6 @@ export function settingsView(params, ctx) {
     h('p.muted', 'O IPTVKZ é só um player: não fornece listas nem conteúdo, e cada usuário responde pelo que adiciona e assiste.'),
     h('div.row', { style: { marginBottom: '12px' } },
       h('button.btn.small', { onclick: () => showTermsDialog() }, ico('file'), 'Termos de uso')),
-    h('p.muted', S.vlc ? 'VLC encontrado: o botão “Abrir no VLC” está ativo.' : 'VLC não encontrado. Instale o VLC para abrir formatos que o navegador não toca.'),
     TV.on ? h('button.btn.small.ghost', {
       onclick: async () => {
         if (await confirmDialog('Sair do IPTVKZ?', 'O aplicativo será fechado nesta TV.', 'Sair')) exitApp();

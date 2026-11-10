@@ -1,6 +1,8 @@
 // Ícones SVG em traço (24x24), coloridos via currentColor.
 const P = {
   tv: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M8 3l4 3 4-3"/>',
+  viewGrid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  viewStream: '<rect x="2" y="3" width="20" height="11" rx="2"/><path d="M2 19h5M9.5 19h5M17 19h5"/>',
   film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4M3 12h18"/>',
   series: '<rect x="2" y="7" width="16" height="13" rx="2"/><path d="M6 4h12a2 2 0 0 1 2 2v10M10 11l4 2.5-4 2.5z"/>',
   guide: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 4v5M8 13h9M8 17h5"/>',

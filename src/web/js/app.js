@@ -1,6 +1,6 @@
 // IPTVKZ — casca do app: barra lateral, rotas, carregamento da lista ativa e teclado.
 import { $, h, ico, debounce, toast, fmtAgo, isBack, closeTopModal, confirmDialog, skPosters, skChannels } from './core/util.js';
-import { TV, detectTv, applyTv, move, DIRS, focusFirst, focusEl, isNative, normKey, syncFocus, initKeyDebug, exitApp } from './tv/tv.js';
+import { TV, KB, setKbNav, detectTv, applyTv, move, DIRS, focusFirst, focusEl, isNative, normKey, syncFocus, initKeyDebug, exitApp } from './tv/tv.js';
 import { icon } from './core/icons.js';
 import {
   S, C, api, favItems, laterItems, watchHistory, loadState, loadCatalog, clearCatalog, catalogStatus, activeList, saveNow, save, flushSaves, setSetting,
@@ -17,6 +17,8 @@ import { openListForm, welcomeView } from './views/lists.js';
 import { overlayKey, isOverlayOpen } from './views/vodplayer.js';
 import { ensureTerms, termsAccepted } from './views/terms.js';
 import { initTvKeyboard } from './tv/tvkeyboard.js';
+import { initSmoothScroll } from './core/smoothscroll.js';
+import { VIEW_MODES, viewMode, setViewMode, applyViewMode } from './core/viewmode.js';
 import { initSearchBox, warmSearch } from './core/searchbox.js';
 
 const view = $('#view');
@@ -53,6 +55,13 @@ const ctx = {
   },
   refreshNav: () => renderNav(),
   rerender: () => { current = null; route(); },
+  // o mesmo que a tecla Voltar: volta uma tela e devolve o foco ao item de onde se saiu
+  back(fallback) {
+    if (history.length > 1) {
+      restoreNext = true;
+      history.back();
+    } else location.hash = fallback;
+  },
   useList,
   refreshList,
   editList: (l) => openListForm(l, onListSaved, deleteList),
@@ -369,35 +378,69 @@ function showState(el, title) {
   if (title) ctx.setTitle(title);
 }
 
-// ---------- TV: ao voltar, o foco reaparece no item de onde se saiu ----------
+// ---------- ao voltar: a tela reaparece onde estava, com o mesmo item selecionado (PC, TV e celular) ----------
 const FOCUS_ITEM = '.poster, .ch-card, .ep, .g-ch';
 const SCROLLER = '.vod-content, .ch-scroll';
-const focusMemory = new Map(); // hash -> item que estava em foco
+const focusMemory = new Map(); // hash -> item selecionado e posições de rolagem
 let restoreNext = false;
 let routeHash = location.hash;
+// No PC o clique não dá foco ao card: guarda o último card clicado/tocado para lembrar dele ao sair da tela.
+let lastPicked = null;
+view.addEventListener('click', (e) => {
+  const it = e.target.closest && e.target.closest(FOCUS_ITEM);
+  if (it) lastPicked = it;
+}, true);
+
+const shelfName = (el) => {
+  const s = el.closest('.shelf');
+  const t = s && s.querySelector('h3');
+  return t ? t.textContent : null;
+};
 
 function rememberFocus() {
   const a = document.activeElement;
-  const item = a && a.closest && view.contains(a) && a.closest(FOCUS_ITEM);
+  let item = a && a.closest && view.contains(a) && a.closest(FOCUS_ITEM);
+  if (!item && lastPicked && view.contains(lastPicked)) item = lastPicked;
+  lastPicked = null;
   if (!item) return;
   const box = item.closest(SCROLLER);
-  focusMemory.set(routeHash, { title: item.title, sel: SCROLLER, top: box ? box.scrollTop : 0, y: item.getBoundingClientRect().top });
+  const row = item.closest('.shelf-row');
+  focusMemory.set(routeHash, {
+    title: item.title,
+    sel: box ? (box.matches('.vod-content') ? '.vod-content' : '.ch-scroll') : null, // null: rola a tela inteira
+    top: box ? box.scrollTop : view.scrollTop,
+    y: item.getBoundingClientRect().top,
+    rowLeft: row ? row.scrollLeft : null, // posição dentro da fileira
+    shelf: shelfName(item), // o mesmo filme pode estar em duas fileiras: volta na de onde saiu
+  });
 }
 
 // A lista recarrega aos poucos: rola até onde estava e espera o item aparecer.
 function restoreFocus(mem, tries = 24) {
-  const box = view.querySelector(mem.sel);
+  const box = mem.sel ? view.querySelector(mem.sel) : view;
   if (box) box.scrollTop = mem.top;
   const near = (el) => Math.abs(el.getBoundingClientRect().top - mem.y);
-  const found = [...view.querySelectorAll(FOCUS_ITEM)].filter((el) => el.title === mem.title).sort((p, q) => near(p) - near(q))[0];
-  if (found) return focusEl(found);
+  let cands = [...view.querySelectorAll(FOCUS_ITEM)].filter((el) => el.title === mem.title);
+  const same = mem.shelf ? cands.filter((el) => shelfName(el) === mem.shelf) : [];
+  if (same.length) cands = same;
+  const found = cands.sort((p, q) => near(p) - near(q))[0];
+  if (found) {
+    const row = found.closest('.shelf-row');
+    if (row && mem.rowLeft != null) row.scrollLeft = mem.rowLeft;
+    if (box) box.scrollTop = mem.top; // as fileiras que encheram enquanto isso podem ter mexido na altura
+    if (TV.on || KB.on) return focusEl(found);
+    // mouse/toque: seleciona sem rolar nada, para a tela ficar exatamente como estava
+    if (!found.hasAttribute('tabindex')) found.tabIndex = -1;
+    found.focus({ preventScroll: true });
+    return;
+  }
   if (tries > 0) setTimeout(() => restoreFocus(mem, tries - 1), 100);
-  else focusFirst();
+  else if (TV.on || KB.on) focusFirst();
 }
 
 function route() {
   const { name, params } = parseHash();
-  if (TV.on) rememberFocus();
+  rememberFocus();
   routeHash = location.hash;
   const goingBack = restoreNext;
   restoreNext = false;
@@ -431,11 +474,12 @@ function route() {
   view.classList.toggle('no-scroll', !!res.noScroll);
   view.replaceChildren(res.el);
   view.scrollTop = 0;
-  if (TV.on) {
+  // voltando: a tela reaparece onde estava, em qualquer plataforma
+  const mem = goingBack && focusMemory.get(location.hash);
+  if (mem) setTimeout(() => restoreFocus(mem), 30);
+  else if (TV.on) {
     // depois de trocar de tela, o foco vai para o conteúdo (e não fica preso na barra lateral)
     setTimeout(() => {
-      const mem = goingBack && focusMemory.get(location.hash);
-      if (mem) return restoreFocus(mem);
       const a = document.activeElement;
       if (a && a.dataset && a.dataset.native) return; // teclado da TV aberto: o foco não pode sair do campo
       const inContent = a && a !== document.body && document.contains(a) && view.contains(a);
@@ -578,6 +622,28 @@ async function deleteList(id) {
 
 const search = $('#globalSearch');
 $('.search .ico').innerHTML = icon('search');
+
+// Seletor de visualização ao lado da busca (Clássica / Streaming). Botões comuns: clique, toque ou OK do controle.
+function renderViewSwitch() {
+  const mode = viewMode();
+  const box = $('#viewSwitch');
+  if (!box) return; // index.html antigo em cache: sem seletor, mas o app abre normal
+  box.replaceChildren(...VIEW_MODES.map((m) =>
+    h('button.vs-btn' + (m.id === mode ? '.on' : ''), {
+      type: 'button', title: m.label, 'aria-label': m.label, role: 'radio', 'aria-checked': String(m.id === mode),
+      onclick: () => setViewMode(m.id),
+    }, ico(m.icon))));
+}
+applyViewMode();
+renderViewSwitch();
+window.addEventListener('iptvkz:view', () => {
+  renderViewSwitch();
+  const keep = document.activeElement && document.activeElement.closest && document.activeElement.closest('#viewSwitch');
+  unmount();
+  route();
+  // quem trocou pelo controle continua no seletor, no botão escolhido
+  if (keep && (TV.on || KB.on)) setTimeout(() => focusEl($('#viewSwitch .vs-btn.on')), 60); // depois do foco automático da rota (30ms)
+});
 initSearchBox(search, ctx, debounce);
 search.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
@@ -634,15 +700,17 @@ function handleBack(e) {
 document.addEventListener('keydown', (e) => {
   const ev = { key: normKey(e), keyCode: e.keyCode, type: e.type };
   const t = e.target;
-  if (TV.on) setTimeout(() => syncFocus(), 0);
-  if (TV.on && !document.hasFocus()) window.focus();
   const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+  // PC: setas (fora de campos) ou Tab ligam o modo teclado, igual ao controle da TV
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && (ev.key === 'Tab' || (DIRS[ev.key] && !typing))) setKbNav(true);
+  if (TV.on || KB.on) setTimeout(() => syncFocus(), 0);
+  if (TV.on && !document.hasFocus()) window.focus();
   if (isBack(e) && !(typing && ev.key === 'Escape')) {
     if (handleBack(e)) e.preventDefault();
     return;
   }
   if (document.querySelector('.modal-back')) {
-    if (TV.on && DIRS[ev.key] && !(typing && !t.readOnly && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight'))) {
+    if ((TV.on || (KB.on && !typing)) && DIRS[ev.key] && !(typing && !t.readOnly && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight'))) {
       if (move(DIRS[ev.key])) e.preventDefault();
     }
     if (TV.on && ev.key === 'Enter' && document.activeElement && !typing && document.activeElement.tagName === 'BUTTON') {
@@ -665,8 +733,10 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.ctrlKey || e.altKey || e.metaKey) return;
   if (current && current.key && current.key(ev)) { e.preventDefault(); return; }
-  if (TV.on || (DIRS[ev.key] && document.activeElement && document.activeElement !== document.body && !isNative(document.activeElement))) {
+  if (TV.on || KB.on) {
     if (DIRS[ev.key]) {
+      // nada focado ainda (PC): a primeira seta começa no primeiro cartão visível
+      if (!document.activeElement || document.activeElement === document.body) { e.preventDefault(); focusFirst(); return; }
       if (move(DIRS[ev.key])) e.preventDefault();
       return;
     }
@@ -722,8 +792,12 @@ function hideSplash() {
   setTimeout(hideSplash, 15000);
   detectTv();
   initKeyDebug();
-  document.addEventListener('focusin', () => { if (TV.on) syncFocus(); });
+  document.addEventListener('focusin', () => { if (TV.on || KB.on) syncFocus(); });
+  // PC: usar o mouse desliga o modo teclado (o pequeno limite ignora o "movimento" que a rolagem simula)
+  document.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') setKbNav(false); }, true);
+  document.addEventListener('mousemove', (e) => { if (Math.abs(e.movementX) + Math.abs(e.movementY) > 3) setKbNav(false); }, { passive: true });
   initTvKeyboard();
+  initSmoothScroll();
   window.addEventListener('resize', applyTv);
   try {
     await loadState();

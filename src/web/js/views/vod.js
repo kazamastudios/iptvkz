@@ -1,12 +1,14 @@
 // Filmes e Séries: prateleiras, grade por categoria e páginas de detalhe.
-import { h, ico, img, windowed, matcher, debounce, fmtDur, fmtTime, toast, modal, skPosters, skEpisodes, skLines } from '../core/util.js';
+import { h, ico, img, windowed, matcher, debounce, fmtDur, fmtTime, toast, modal, skPosters, skEpisodes, skLines, isBack } from '../core/util.js';
 import { starIcon } from '../core/icons.js';
 import {
   C, S, visibleCats, visibleItems, favItems, isFav, toggleFav, getProgress, setProgress, clearProgress, isWatched, isStarted,
-  continueMovies, continueSeries, clearContinue, catItems, isLater, toggleLater, laterItems, adultLocked, isAdultItem, seriesDetail, movieDetail, preferredVersion, setSetting, api,
+  continueMovies, continueSeries, clearContinue, catItems, isLater, toggleLater, laterItems, adultLocked, isAdultItem, seriesDetail, movieDetail, preferredVersion, setSetting,
 } from '../core/store.js';
 import { playMovie, playEpisode } from './vodplayer.js';
-import { TV, focusEl } from '../tv/tv.js';
+import { TV, KB, focusEl } from '../tv/tv.js';
+import { glideTo, glideTarget, stopGlide, scrolling } from '../core/smoothscroll.js';
+import { viewMode } from '../core/viewmode.js';
 import { cleanEpisodeTitle } from '../core/titles.js';
 
 const SHORT = { Dublado: 'DUB', Legendado: 'LEG', Nacional: 'NAC', 'Dual áudio': 'DUAL' };
@@ -46,7 +48,7 @@ export function whereStopped(section, item) {
   return ep && ep.d ? `${code} · parou em ${fmtTime(ep.t)}` : code;
 }
 
-export function posterCard(section, item, ctx, { where = false } = {}) {
+export function posterCard(section, item, ctx, { where = false, onOpen = null } = {}) {
   const th = img(item.poster, item.name, 'cover');
   const tags = versionTags(item);
   if (tags) th.append(tags);
@@ -63,8 +65,108 @@ export function posterCard(section, item, ctx, { where = false } = {}) {
       if (ep && ep.d) th.append(h('div.pbar', h('i', { style: { width: Math.min(100, (ep.t / ep.d) * 100) + '%' } })));
     }
   }
-  return h('div.poster', { onclick: () => ctx.navigate(`#/${cfg[section].detail}?id=${encodeURIComponent(item.id)}`), title: item.name },
+  return h('div.poster', { onclick: (e) => (onOpen ? onOpen(e) : ctx.navigate(`#/${cfg[section].detail}?id=${encodeURIComponent(item.id)}`)), title: item.name },
     th, h('div.pt', item.name), h('div.pm', (where && whereStopped(section, item)) || (item.year ? String(item.year) : ' ')));
+}
+
+// Controles de uma fileira, iguais em todas as plataformas, cada uma com o seu jeito de usar:
+// - setas no canto direito do título: andam uma página (quase uma tela de capas) — clique no PC, toque no
+//   celular, OK no controle da TV (são botões comuns, alcançáveis pelo foco);
+// - no PC, também as setas redondas que aparecem nas laterais ao passar o mouse e o arrastar com o mouse.
+// Tudo desliza pelo mesmo motor (glideTo), com a mesma curva do foco da TV.
+export function rowControls(row) {
+  let anim = 0; // embalo do arraste
+  const maxLeft = () => row.scrollWidth - row.clientWidth;
+  const page = (dir) => {
+    cancelAnimationFrame(anim);
+    glideTo(row, glideTarget(row).x + dir * Math.max(200, row.clientWidth * 0.85), null);
+    sync(); // pelo destino: a seta de voltar aparece já no clique, não só quando o deslize termina
+  };
+  const btns = [];
+  const btn = (cls, dir, extra) => {
+    const b = h('button.' + cls + (dir < 0 ? '.prev' : '.next'),
+      { type: 'button', title: dir < 0 ? 'Anteriores' : 'Próximos', onclick: () => page(dir), ...extra },
+      ico(dir < 0 ? 'back' : 'chevronRight'));
+    btns.push([b, dir]);
+    return b;
+  };
+  // na ponta, a seta apaga (sem "disabled": na TV o foco não pode sumir debaixo do controle)
+  const sync = () => {
+    if (!row.clientWidth) return; // fileira ainda não montada (fora da tela): sem medidas confiáveis
+    const x = glideTarget(row).x;
+    for (const [b, dir] of btns) b.classList.toggle('off', dir < 0 ? x <= 4 : x >= maxLeft() - 4);
+  };
+  row.addEventListener('scroll', debounce(sync, 60), { passive: true });
+  const pager = h('div.shelf-pager', btn('pager-btn', -1), btn('pager-btn', 1));
+  // controle: com o gesto ↑ ↓ ↑ numa capa, o foco vai ao título desta fileira ("Ver tudo" e setas)
+  row.dataset.up = '.shelf-head a[href], .shelf-pager .pager-btn';
+  setTimeout(() => {
+    sync();
+    // fileiras fora da tela só são montadas quando chegam perto: aí as setas recalculam
+    const shelf = row.closest('.shelf');
+    if (shelf) shelf.addEventListener('contentvisibilityautostatechange', (e) => { if (!e.skipped) sync(); });
+  }, 0);
+
+  if (TV.on) return { body: row, pager, sync };
+
+  // Arrastar com o mouse. Só vira arraste depois de 6px, para o clique no cartão continuar funcionando;
+  // ao soltar, a fileira segue no embalo e vai freando.
+  const settle = () => { row.style.scrollSnapType = ''; sync(); };
+  let drag = null;
+  let justDragged = false;
+  row.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    cancelAnimationFrame(anim);
+    stopGlide(row);
+    drag = { id: e.pointerId, x: e.clientX, left: row.scrollLeft, moved: false, pts: [] };
+  });
+  row.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x;
+    if (!drag.moved) {
+      if (Math.abs(dx) < 6) return;
+      drag.moved = true;
+      row.classList.add('dragging');
+      row.style.scrollSnapType = 'none';
+      try { row.setPointerCapture(drag.id); } catch {} // segue o mouse mesmo fora da fileira
+    }
+    row.scrollLeft = drag.left - dx;
+    drag.pts.push([e.timeStamp, e.clientX]);
+    if (drag.pts.length > 6) drag.pts.shift();
+  });
+  const release = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag;
+    drag = null;
+    if (!d.moved) return;
+    row.classList.remove('dragging');
+    justDragged = true;
+    setTimeout(() => { justDragged = false; }, 0);
+    // velocidade dos últimos ~100ms do movimento, em px/ms
+    const recent = d.pts.filter(([t]) => e.timeStamp - t < 100);
+    let v = recent.length > 1 ? (recent[0][1] - recent[recent.length - 1][1]) / Math.max(8, recent[recent.length - 1][0] - recent[0][0]) : 0;
+    v = Math.max(-3, Math.min(3, v)); // um puxão brusco não atravessa a fileira inteira
+    let last = performance.now();
+    const glide = (now) => {
+      const dt = now - last;
+      last = now;
+      row.scrollLeft += v * dt;
+      scrolling();
+      v *= Math.pow(0.94, dt / 16);
+      const atEdge = row.scrollLeft <= 0 || row.scrollLeft >= maxLeft();
+      if (Math.abs(v) > 0.03 && !atEdge) anim = requestAnimationFrame(glide);
+      else settle();
+    };
+    anim = requestAnimationFrame(glide);
+  };
+  row.addEventListener('pointerup', release);
+  row.addEventListener('pointercancel', release);
+  // o clique que encerra um arraste não abre o filme
+  row.addEventListener('click', (e) => { if (justDragged) { e.preventDefault(); e.stopPropagation(); } }, true);
+  row.addEventListener('dragstart', (e) => e.preventDefault()); // a capa não vira "arrastar imagem"
+  // (as setas laterais que apareciam no hover saíram: faziam a fileira tremer ao rolar; ficam o arraste e as do título)
+  const body = h('div.shelf-body', row);
+  return { body, pager, sync };
 }
 
 // ---------- navegação: categorias à esquerda, conteúdo à direita ----------
@@ -110,7 +212,14 @@ export function vodHome(section) {
     function renderContent() {
       if (cleanup) cleanup();
       content.scrollTop = 0;
-      const view = cat === 'home' ? homeContent(section, ctx, content) : gridContent(section, cat, ctx, content);
+      // Streaming: o Início vira destaque + fileiras, sem a coluna de categorias (cada categoria já é uma fileira)
+      const stream = cat === 'home' && viewMode() === 'stream';
+      root.classList.toggle('stream', stream);
+      // a fileira em foco sobe até logo abaixo do destaque (folga do scroll-padding em .stream-scroll)
+      content.classList.toggle('stream-scroll', stream);
+      if (stream) content.dataset.reveal = 'start';
+      else delete content.dataset.reveal;
+      const view = stream ? streamHome(section, ctx, content) : cat === 'home' ? homeContent(section, ctx, content) : gridContent(section, cat, ctx, content);
       content.replaceChildren(view.el);
       cleanup = view.destroy;
     }
@@ -136,19 +245,381 @@ export function vodHome(section) {
   };
 }
 
-function homeContent(section, ctx, scroller) {
+// ---------- visualização Streaming ----------
+// Destaque grande no topo + fileiras de cards deitados. O destaque acompanha o card em foco (controle/teclado) ou
+// sob o mouse/dedo, com uma espera curta para não trocar a cada passo de quem segura a seta.
+
+// Card deitado: o mesmo cartão das capas (badges, progresso, foco, moldura), só que 16:9.
+// Filme: o destaque já faz o papel da página do filme, então abrir o card não leva até ela:
+// mouse toca o filme (o destaque mostrou tudo no hover); controle/teclado sobe aos botões do destaque;
+// toque mostra o filme no destaque e sobe a tela até ele. Série continua abrindo a página (episódios).
+export function wideCardFor(hero) {
+  return (section, item, ctx, opts = {}) => {
+    // Abrir o card (filme ou série) mostra as opções dele no destaque, sem sair da tela:
+    // controle/teclado leva o foco aos botões; toque sobe a tela até o destaque; mouse prende o destaque
+    // no título clicado, para ele não mudar enquanto o ponteiro sobe até os botões.
+    const onOpen = (e) => {
+      hero.show(item, section, true);
+      hero.open(el); // descrição inteira; com controle/teclado o foco fica preso nos botões até voltar ao card
+      hero.pin();
+      // controle (OK ou clique do Magic Remote) e teclado: o foco sobe para os botões do destaque
+      if (e.detail === 0 || TV.on || KB.on) return setTimeout(() => focusEl(hero.el.querySelector('.hero-acts .btn.primary')), 0);
+      if (e.pointerType === 'touch') {
+        const box = hero.el.closest('.vod-content, .view');
+        if (box) glideTo(box, null, 0);
+      }
+    };
+    const el = posterCard(section, item, ctx, { ...opts, onOpen });
+    el.classList.add('wide');
+    el._item = item;
+    el._section = section;
+    return el;
+  };
+}
+
+const heroDetails = new Map(); // seção|id → Promise<detalhe>: um pedido por título, guardado
+
+export function streamHero(ctx) {
+  // duas camadas de imagem: a nova só aparece (troca suave) depois de carregar, sem piscar o fundo
+  const arts = [h('img.hero-art', { alt: '', referrerpolicy: 'no-referrer', decoding: 'async' }),
+    h('img.hero-art', { alt: '', referrerpolicy: 'no-referrer', decoding: 'async' })];
+  let front = 0;
+  const title = h('h2.hero-title');
+  const meta = h('div.hero-meta');
+  const versions = h('div.versions.hero-versions');
+  const plot = h('p.hero-plot');
+  const acts = h('div.hero-acts');
+  // Som do trailer de fundo: começa mudo (como nos apps de streaming) e este botão liga sem interromper o vídeo.
+  const soundBtn = h('button.hero-sound', { type: 'button', onclick: () => setMuted(!muted) });
+  // Modo trailer: os textos somem, o vídeo de fundo continua do ponto em que estava, agora com som.
+  const watchPlay = h('button.btn.primary.big', { type: 'button' });
+  const watchClose = h('button.btn.big', { type: 'button', onclick: () => exitWatch() }, ico('close'), 'Fechar trailer');
+  const bar = h('div.hero-trailer-bar', watchPlay, watchClose);
+  // data-ring-cover: a moldura do foco não é desenhada por cima do destaque (tv/focusring.js)
+  const el = h('section.hero-stream', { 'data-ring-cover': '' }, arts[0], arts[1], h('div.hero-shade'),
+    h('div.hero-info', title, meta, versions, plot, acts), bar, soundBtn);
+  let cur = null;
+  let curSection = 'movies';
+  let version = null;
+  let trailer = '';
+  let tShow = 0;
+  let tDetail = 0;
+  let tTrailer = 0;
+  let video = null; // { box, frame, id }: um trailer por vez, removido (não só pausado) ao trocar de título
+  let trailerId = null; // id do YouTube do título atual, se houver
+  let muted = true; // vale para os próximos trailers também: quem ligou o som continua ouvindo
+  let watching = false; // modo trailer
+
+  // Preso no título clicado: o hover nos cards não troca o destaque até o ponteiro passar pelo destaque e sair
+  // dele (ou 2,5 s sem chegar lá). O controle e o teclado continuam trocando normalmente.
+  let pinned = false;
+  let inHero = false;
+  let tPin = 0;
+  el.addEventListener('pointerenter', () => { inHero = true; });
+  el.addEventListener('pointerleave', () => { inHero = false; pinned = false; });
+
+  // Trailer de fundo (YouTube, sem som). Só depois que o foco descansa no título; aparece quando o YouTube
+  // avisa que está tocando, e some se o vídeo não puder ser incorporado.
+  // comandos para o player do YouTube (API por postMessage do iframe)
+  const yt = (func, args = []) => {
+    try { video.frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch {}
+  };
+  const paintSound = () => {
+    soundBtn.replaceChildren(ico(muted ? 'mute' : 'volume'));
+    soundBtn.title = muted ? 'Ligar o som do trailer' : 'Desligar o som do trailer';
+  };
+  // Volume do trailer: trailers vêm mixados bem alto. Liga baixo e sobe aos poucos até um nível moderado,
+  // para não dar susto; quem quiser mais alto aumenta no aparelho.
+  const TRAILER_VOLUME = 30; // % do volume do YouTube
+  let tVol = 0;
+  const setMuted = (m) => {
+    muted = m;
+    paintSound();
+    clearInterval(tVol);
+    if (!video) return;
+    if (m) return yt('mute');
+    let v = 5;
+    yt('setVolume', [v]);
+    yt('unMute');
+    tVol = setInterval(() => {
+      v = Math.min(TRAILER_VOLUME, v + 5);
+      yt('setVolume', [v]);
+      if (v >= TRAILER_VOLUME) clearInterval(tVol);
+    }, 180);
+  };
+  paintSound();
+
+  const stopTrailer = () => {
+    clearTimeout(tTrailer);
+    if (watching) exitWatch(false);
+    if (!video) return;
+    video.box.remove();
+    video = null;
+    el.classList.remove('trailer-on');
+  };
+  const startTrailer = (item, id) => {
+    stopTrailer();
+    const origin = encodeURIComponent(location.origin);
+    // sempre começa mudo (o navegador só deixa tocar sozinho assim); o som entra por comando, se for o caso
+    const frame = h('iframe', {
+      src: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&controls=0&loop=1&playlist=${id}&rel=0` +
+        `&playsinline=1&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0&enablejsapi=1&origin=${origin}`,
+      title: `Trailer de ${item.name}`, allow: 'autoplay; encrypted-media', tabindex: '-1', 'aria-hidden': 'true',
+    });
+    const box = h('div.hero-video', frame);
+    video = { box, frame, id };
+    // pede ao player do YouTube para avisar o estado (tocando, erro) por postMessage
+    frame.addEventListener('load', () => {
+      try { frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'hero', channel: 'widget' }), '*'); } catch {}
+    });
+    el.insertBefore(box, el.querySelector('.hero-shade'));
+  };
+  const onYoutube = (e) => {
+    let host = '';
+    try { host = new URL(e.origin).hostname; } catch {}
+    if (!video || !/(^|\.)youtube(-nocookie)?\.com$/.test(host)) return;
+    let msg;
+    try { msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
+    if (!msg) return;
+    if (msg.event === 'onError') return stopTrailer();
+    const state = msg.info && msg.info.playerState;
+    if (state === 1 && !el.classList.contains('trailer-on')) {
+      el.classList.add('trailer-on'); // tocando: o vídeo aparece por cima da imagem
+      if (!muted) setMuted(false); // som ligado antes (botão de som ou modo trailer): aplica agora
+    }
+  };
+  window.addEventListener('message', onYoutube);
+
+  // Modo trailer: assiste o trailer de fundo com som, sem recomeçar. Se ele ainda não começou, começa agora.
+  const enterWatch = () => {
+    if (!cur || !trailerId) return;
+    clearTimeout(tTrailer);
+    if (!video) startTrailer(cur, trailerId);
+    watching = true;
+    pinned = true; // o hover nos cards não troca o destaque no meio do trailer
+    el.classList.add('watching');
+    watchPlay.replaceChildren(ico('play'), curSection === 'movies' ? (isStarted(getProgress(cur.id)) ? 'Continuar' : 'Assistir') : 'Ver episódios');
+    watchPlay.onclick = () => {
+      const item = cur;
+      const section = curSection;
+      exitWatch();
+      if (section === 'movies') playMovie(item, version, { onClose: renderActs });
+      else ctx.navigate(`#/${cfg.series.detail}?id=${encodeURIComponent(item.id)}`);
+    };
+    setMuted(false);
+    if (TV.on || KB.on) focusEl(watchPlay);
+  };
+  // Sai do modo trailer: os textos voltam e o trailer segue de fundo, mudo.
+  function exitWatch(refocus = true) {
+    if (!watching) return;
+    watching = false;
+    pinned = inHero;
+    el.classList.remove('watching');
+    setMuted(true);
+    if (refocus && (TV.on || KB.on)) focusEl(acts.querySelector('[title="Ver o trailer com som"]') || acts.querySelector('.btn.primary'));
+  }
+  // Aberto pelo controle/teclado, o destaque é a "página" do título: as setas ficam presas nos botões dele
+  // (data-nav-trap) e ↓ ou Voltar devolvem o foco exatamente ao card de onde se veio.
+  let origin = null;
+  const unopen = () => {
+    el.classList.remove('open');
+    delete el.dataset.navTrap;
+    origin = null;
+  };
+  const closeOpen = () => {
+    const o = origin;
+    unopen();
+    if (o && o.isConnected && (TV.on || KB.on)) focusEl(o);
+  };
+  el._navExit = (dir) => {
+    if (dir !== 'down') return;
+    if (watching) exitWatch(); // no trailer, ↓ primeiro fecha o trailer
+    else closeOpen();
+  };
+  // Voltar (controle) ou Esc: fecha o modo trailer; senão, sai do título aberto e volta ao card
+  const onKey = (e) => {
+    if (!isBack(e)) return;
+    if (watching) exitWatch();
+    else if (origin && el.contains(document.activeElement)) closeOpen();
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  window.addEventListener('keydown', onKey, true);
+
+  // Uma imagem só por título: espera o detalhe e põe a larga (se houver) ou a capa; nunca a capa e depois a larga.
+  let artFor = null; // título cuja imagem já foi escolhida
+  let tArt = 0;
+  const setArt = (item, src, wide) => {
+    if (artFor === item || cur !== item) return;
+    artFor = item;
+    clearTimeout(tArt);
+    el.classList.toggle('wide-art', wide);
+    if (!src) return;
+    if (arts[front].getAttribute('src') === src) { arts[front].classList.add('on'); return; }
+    const next = arts[1 - front];
+    next.onload = () => {
+      if (cur !== item) return;
+      next.classList.add('on');
+      arts[front].classList.remove('on');
+      front = 1 - front;
+    };
+    next.onerror = null;
+    next.src = src;
+  };
+
+  // Botões: filme com todos os da página do filme (que o destaque substitui); série com os episódios na página dela.
+  const renderActs = () => {
+    const item = cur;
+    const section = curSection;
+    if (!item) return;
+    // se o foco estava num botão do destaque, volta para o mesmo lugar depois de redesenhar
+    const old = [...acts.querySelectorAll('button')];
+    const at = old.indexOf(document.activeElement);
+    if (section === 'movies') {
+      versionChips(versions, item.versions.map((v) => v.label), version.label, (l) => {
+        version = item.versions.find((v) => v.label === l);
+        setSetting('versionPref', l);
+        renderActs();
+      });
+      acts.replaceChildren(...movieActions(item, version, trailer, renderActs, acts, { onTrailer: enterWatch }));
+    } else {
+      versions.replaceChildren();
+      acts.replaceChildren(
+        h('button.btn.primary.big', { onclick: () => ctx.navigate(`#/${cfg.series.detail}?id=${encodeURIComponent(item.id)}`) }, ico('play'), 'Ver episódios'),
+        heroTrailerButton(trailer, enterWatch), laterButton(section, item), favButton(section, item));
+    }
+    if (at >= 0) {
+      const now = acts.querySelectorAll('button');
+      focusEl(now[Math.min(at, now.length - 1)]);
+    }
+  };
+
+  const loadDetail = (item, section) => {
+    const key = section + '|' + item.id;
+    let p = heroDetails.get(key);
+    if (!p) {
+      p = (section === 'movies' ? movieDetail(item) : seriesDetail(item)).catch(() => null);
+      heroDetails.set(key, p);
+    }
+    p.then((d) => {
+      if (cur !== item) return;
+      setArt(item, (d && d.backdrop) || item.poster, !!(d && d.backdrop));
+      // troca as linhas de carregamento; sem sinopse nenhuma, o espaço some e o título desce
+      const text = (d && d.plot) || item.plot || '';
+      plot.textContent = text;
+      plot.classList.toggle('none', !text);
+      if (!d) return;
+      if (d.genre) meta.append(h('span', d.genre.split(/[,/]/)[0].trim()));
+      const id = youtubeId(d.trailer);
+      if (!id) return;
+      trailer = d.trailer;
+      trailerId = id;
+      renderActs(); // aparece o botão Trailer (com som)
+      // a TV espera mais: o vídeo pesa mais lá, então só para quem realmente parou no título
+      tTrailer = setTimeout(() => cur === item && startTrailer(item, id), TV.on ? 3000 : 2000);
+    });
+  };
+
+  const fill = (item, section) => {
+    title.textContent = item.name;
+    const bits = [item.year, item.rating ? '★ ' + Number(item.rating).toFixed(1) : null, whereStopped(section, item) || null];
+    meta.replaceChildren(...bits.filter(Boolean).map((t) => h('span', String(t))));
+    // sinopse: a da lista se houver; senão linhas de carregamento até o detalhe chegar (a altura é fixa: sem pulo)
+    plot.classList.remove('none');
+    if (item.plot) plot.textContent = item.plot;
+    else plot.replaceChildren(...skLines(3));
+    version = section === 'movies' ? preferredVersion(item.versions) : null;
+    trailer = '';
+    trailerId = null;
+    renderActs();
+    // a imagem anterior some (fundo escuro) e entra uma só quando o detalhe decidir qual; se ele demorar, a capa
+    artFor = null;
+    for (const a of arts) a.classList.remove('on');
+    clearTimeout(tArt);
+    tArt = setTimeout(() => setArt(item, item.poster, false), 2500);
+    clearTimeout(tDetail);
+    loadDetail(item, section); // o destaque só chega aqui depois de o foco descansar no título (show espera 220ms)
+  };
+
+  return {
+    el,
+    show(item, section = 'movies', now = false) {
+      if (!item || item === cur) return;
+      cur = item;
+      curSection = section;
+      unopen();
+      stopTrailer();
+      clearTimeout(tShow);
+      if (now) fill(item, section);
+      else tShow = setTimeout(() => cur === item && fill(item, section), 220);
+    },
+    pin() {
+      pinned = true;
+      clearTimeout(tPin);
+      tPin = setTimeout(() => { if (!inHero) pinned = false; }, 2500);
+    },
+    isPinned: () => pinned,
+    // Aberto (o título foi clicado): a descrição aparece inteira e o destaque cresce para caber.
+    open(card) {
+      el.classList.add('open');
+      el.dataset.navTrap = '';
+      origin = card || null;
+    },
+    // Volta ao tamanho normal quando o foco volta para os cards (senão o destaque maior cobriria a fileira).
+    collapse() { if (!watching) unopen(); },
+    destroy() {
+      clearTimeout(tShow); clearTimeout(tDetail); clearTimeout(tArt); clearTimeout(tPin); clearInterval(tVol);
+      stopTrailer();
+      window.removeEventListener('message', onYoutube);
+      window.removeEventListener('keydown', onKey, true);
+    },
+  };
+}
+
+// O destaque segue o card em foco (controle, teclado) ou sob o ponteiro (mouse, dedo). Usado também pelo Histórico.
+export function wireStream(el, hero) {
+  const pick = (e) => {
+    const c = e.target.closest && e.target.closest('.poster.wide');
+    if (c && c._item) hero.show(c._item, c._section);
+  };
+  // foco (controle/teclado) num card: o destaque aberto volta ao tamanho normal para não cobrir a fileira
+  const focusPick = (e) => {
+    if (e.target.closest && e.target.closest('.poster.wide')) hero.collapse();
+    pick(e);
+  };
+  el.addEventListener('focusin', focusPick);
+  el.addEventListener('navfocus', focusPick);
+  el.addEventListener('pointerover', (e) => { if (!hero.isPinned()) pick(e); });
+}
+
+function streamHome(section, ctx, scroller) {
+  const hero = streamHero(ctx);
+  const rows = homeContent(section, ctx, scroller, { card: wideCardFor(hero) });
+  // primeiro destaque: o que a pessoa estava vendo; senão o mais recente; senão o primeiro da lista
+  const first = (section === 'movies' ? continueMovies() : continueSeries())[0]
+    || [...visibleItems(section)].sort((a, b) => (b.added || 0) - (a.added || 0))[0];
+  if (first) hero.show(first, section, true);
+  const el = h('div.stream-home', hero.el, rows.el);
+  wireStream(el, hero);
+  return { el, destroy: () => { hero.destroy(); rows.destroy(); } };
+}
+
+function homeContent(section, ctx, scroller, { card = posterCard } = {}) {
   const sec = C()[section];
   const page = h('div.page');
 
   const shelf = (title, items, link, onClear) => {
     if (!items.length) return null;
     const row = h('div.shelf-row');
-    for (const it of items.slice(0, 30)) row.append(posterCard(section, it, ctx, { where: !!onClear }));
+    for (const it of items.slice(0, 30)) row.append(card(section, it, ctx, { where: !!onClear }));
+    const nav = rowControls(row);
     const el = h('div.shelf',
       h('div.shelf-head', h('h3', title),
-        link ? h('a', { onclick: () => ctx.navigate(link) }, 'Ver tudo →') : null,
-        onClear ? h('button.link-btn', { title: 'Tirar todos desta fileira', onclick: () => onClear(el) }, 'Limpar') : null),
-      row);
+        link ? h('a', { href: link, onclick: (e) => { e.preventDefault(); ctx.navigate(link); } }, 'Ver tudo →') : null,
+        onClear ? h('button.link-btn', { title: 'Tirar todos desta fileira', onclick: () => onClear(el) }, 'Limpar') : null,
+        nav.pager),
+      nav.body);
     return el;
   };
 
@@ -176,15 +647,21 @@ function homeContent(section, ctx, scroller) {
       if (!e.isIntersecting) continue;
       io.unobserve(e.target);
       const row = e.target.querySelector('.shelf-row');
-      row.replaceChildren(...catItems(section, e.target.dataset.cat).slice(0, 24).map((it) => posterCard(section, it, ctx)));
+      row.classList.remove('sk-row');
+      row.replaceChildren(...catItems(section, e.target.dataset.cat).slice(0, 24).map((it) => card(section, it, ctx)));
+      syncs.get(e.target)(); // com as capas no lugar, as setas sabem se há para onde andar
     }
   }, { root: scroller, rootMargin: '600px' });
 
+  const syncs = new WeakMap();
   for (const c of visibleCats(section)) {
+    const nav = rowControls(h('div.shelf-row.sk-row', skPosters(Math.min(8, c.count))));
     const el = h('div.shelf',
       h('div.shelf-head', h('h3', c.name), h('span.faint', c.count.toLocaleString('pt-BR')),
-        h('a', { onclick: () => ctx.navigate(`#/${section}?cat=${encodeURIComponent(c.id)}`) }, 'Ver tudo →')),
-      h('div.shelf-row', skPosters(Math.min(8, c.count))));
+        h('a', { href: `#/${section}?cat=${encodeURIComponent(c.id)}`, onclick: (e) => { e.preventDefault(); ctx.navigate(`#/${section}?cat=${encodeURIComponent(c.id)}`); } }, 'Ver tudo →'),
+        nav.pager),
+      nav.body);
+    syncs.set(el, nav.sync);
     el.dataset.cat = c.id;
     page.append(el);
     io.observe(el);
@@ -211,6 +688,7 @@ function gridContent(section, cat, ctx, scroller) {
 
   const page = h('div.page',
     h('div.grid-head',
+      h('button.btn.small.ghost', { onclick: () => ctx.navigate(`#/${section}`) }, ico('back'), 'Início'),
       h('h2', { style: { margin: 0, font: '600 20px var(--font-display)' } }, name), count, h('div.grow'),
       h('label.filter', { style: { width: '220px' } }, ico('search'), filter), chips),
     grid);
@@ -244,30 +722,80 @@ function gridContent(section, cat, ctx, scroller) {
 
 // ---------- detalhe ----------
 
-function heroBase(item, section) {
-  const backdrop = h('div.backdrop', item.poster ? h('img', { src: item.poster, alt: '', referrerpolicy: 'no-referrer' }) : null);
+function favButton(section, item) {
+  const b = h('button.btn', {
+    html: `${starIcon(isFav(section, item.id))}<span>${isFav(section, item.id) ? 'Nos favoritos' : 'Favoritar'}</span>`,
+    onclick: () => {
+      const on = toggleFav(section, item.id);
+      b.innerHTML = `${starIcon(on)}<span>${on ? 'Nos favoritos' : 'Favoritar'}</span>`;
+    },
+  });
+  return b;
+}
+
+function laterButton(section, item) {
+  const paint = () => {
+    const on = isLater(section, item.id);
+    b.classList.toggle('seen-on', on);
+    b.innerHTML = '';
+    b.append(ico(on ? 'check' : 'plus'), h('span', 'Minha lista'));
+    b.title = on ? 'Tirar da minha lista' : 'Salvar para assistir depois';
+  };
+  const b = h('button.btn', { onclick: () => { toggleLater(section, item.id); paint(); } });
+  paint();
+  return b;
+}
+
+// Todos os botões de um filme, usados pela página do filme e pelo destaque do Streaming (que a substitui).
+// refresh: redesenha os botões (o progresso muda ao fechar o player, ao marcar como assistido...).
+// onTrailer: no destaque do Streaming, o botão Trailer assiste o trailer que já roda de fundo (com som);
+// sem ele (página do filme), abre o trailer numa janela.
+function movieActions(movie, version, trailer, refresh, box, { onTrailer = null } = {}) {
+  const p = getProgress(movie.id);
+  const resumable = isStarted(p);
+  return [
+    h('button.btn.primary.big', { onclick: () => playMovie(movie, version, { onClose: refresh }) }, ico('play'),
+      resumable ? `Continuar de ${p.t < 3600 ? fmtTime(p.t) : fmtClockSec(p.t)}` : 'Assistir'),
+    resumable ? h('button.btn.big', { onclick: () => playMovie(movie, version, { fromStart: true, onClose: refresh }) }, ico('refresh'), 'Do início') : null,
+    onTrailer ? heroTrailerButton(trailer, onTrailer) : trailerButton(movie.name, trailer),
+    laterButton('movies', movie),
+    favButton('movies', movie),
+    h('button.btn' + (isWatched(movie.id) ? '.seen-on' : ''), {
+      title: isWatched(movie.id) ? 'Clique para desmarcar' : 'Marcar como assistido',
+      onclick: () => {
+        if (isWatched(movie.id)) clearProgress(movie.id);
+        else {
+          const dur = (p && p.d) || 1;
+          setProgress(movie.id, { kind: 'movie', t: dur, d: dur });
+        }
+        refresh();
+        if (TV.on || KB.on) focusEl(box.querySelector('.btn.primary'));
+      },
+    }, ico('check'), isWatched(movie.id) ? 'Assistido' : 'Marcar como assistido'),
+  ];
+}
+
+function heroBase(item, section, ctx) {
+  // Fundo: uma imagem só. Espera o detalhe (que pode trazer a imagem larga) e só então põe a larga ou a capa;
+  // antes ia a capa e depois a larga por cima, duas imagens carregando.
+  const backdrop = h('div.backdrop');
+  let artSet = false;
+  const setArt = (src, sharp) => {
+    if (artSet || !src) return;
+    artSet = true;
+    backdrop.replaceChildren(h('img', { src, alt: '', referrerpolicy: 'no-referrer' }));
+    backdrop.classList.toggle('sharp', sharp);
+  };
+  const settleArt = () => setArt(item.poster, false); // detalhe sem imagem larga (ou falhou): fica a capa
+  const artTimer = setTimeout(settleArt, 2500); // detalhe demorando: não deixa o fundo vazio
   const poster = img(item.poster, item.name, 'cover');
   const meta = h('div.meta');
   const plot = h('p.plot', item.plot || '');
   const credits = h('div.credits');
   const versions = h('div.versions');
   const acts = h('div.acts');
-  const favBtn = h('button.btn', {
-    html: `${starIcon(isFav(section, item.id))}<span>${isFav(section, item.id) ? 'Nos favoritos' : 'Favoritar'}</span>`,
-    onclick: () => {
-      const on = toggleFav(section, item.id);
-      favBtn.innerHTML = `${starIcon(on)}<span>${on ? 'Nos favoritos' : 'Favoritar'}</span>`;
-    },
-  });
-  const paintLater = () => {
-    const on = isLater(section, item.id);
-    laterBtn.classList.toggle('seen-on', on);
-    laterBtn.innerHTML = '';
-    laterBtn.append(ico(on ? 'check' : 'plus'), h('span', 'Minha lista'));
-    laterBtn.title = on ? 'Tirar da minha lista' : 'Salvar para assistir depois';
-  };
-  const laterBtn = h('button.btn', { onclick: () => { toggleLater(section, item.id); paintLater(); } });
-  paintLater();
+  const favBtn = favButton(section, item);
+  const laterBtn = laterButton(section, item);
   const fillMeta = (info = {}) => {
     const year = info.year || item.year;
     const rating = info.rating || item.rating;
@@ -283,15 +811,18 @@ function heroBase(item, section) {
     if (info.director) cr.push(`Direção: ${info.director}`);
     if (info.cast) cr.push(`Elenco: ${info.cast}`);
     credits.textContent = cr.join('  ·  ');
-    if (info.backdrop) {
-      backdrop.replaceChildren(h('img', { src: info.backdrop, alt: '', referrerpolicy: 'no-referrer' }));
-      backdrop.classList.add('sharp');
-    }
+    if (info.backdrop) setArt(info.backdrop, true);
   };
   fillMeta();
-  const inner = h('div.inner',
+  // Voltar visível (PC e celular não têm a tecla do controle; na TV ela também funciona)
+  const back = h('button.btn.small.ghost.detail-back', { type: 'button', onclick: () => ctx.back(`#/${section}`) }, ico('back'), 'Voltar');
+  const inner = h('div.inner', back,
     h('div.hero', poster, h('div', { style: { flex: 1, minWidth: 0 } }, h('h2', item.name), meta, versions, plot, credits, acts)));
-  return { el: h('div.detail', backdrop, inner), inner, meta, versions, acts, favBtn, fillMeta, plot, laterBtn };
+  return {
+    el: h('div.detail', backdrop, inner), inner, meta, versions, acts, favBtn, fillMeta, plot, laterBtn,
+    settleArt: () => { clearTimeout(artTimer); settleArt(); },
+    destroy: () => clearTimeout(artTimer),
+  };
 }
 
 // Aceita o id do YouTube ou um link completo, como vem das listas.
@@ -319,6 +850,12 @@ function trailerButton(name, value) {
   }, ico('play'), 'Trailer');
 }
 
+// Botão Trailer do destaque: assiste o trailer de fundo, com som, sem recomeçar.
+function heroTrailerButton(value, onTrailer) {
+  if (!youtubeId(value)) return null;
+  return h('button.btn', { title: 'Ver o trailer com som', onclick: onTrailer }, ico('play'), 'Trailer');
+}
+
 function versionChips(container, labels, current, onPick) {
   container.replaceChildren();
   if (labels.length < 2) return;
@@ -328,14 +865,6 @@ function versionChips(container, labels, current, onPick) {
   }
 }
 
-async function openVlc(url, title) {
-  try {
-    await api('/api/vlc', { method: 'POST', body: JSON.stringify({ url, title }) });
-    toast('Abrindo no VLC…', 'ok');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-}
 
 function lockedState() {
   return h('div.center-state', ico('lock'), h('h2', 'Conteúdo bloqueado'),
@@ -347,7 +876,7 @@ export function movieView(params, ctx) {
   ctx.setTitle('Filmes');
   if (!movie) return { el: h('div.center-state', h('h2', 'Filme não encontrado'), h('p', 'Ele pode ter saído da lista.')) };
   if (adultLocked() && isAdultItem('movies', movie.id)) return { el: lockedState() };
-  const d = heroBase(movie, 'movies');
+  const d = heroBase(movie, 'movies', ctx);
   let version = preferredVersion(movie.versions);
   let trailer = '';
 
@@ -357,30 +886,7 @@ export function movieView(params, ctx) {
       setSetting('versionPref', l);
       renderActs();
     });
-    const p = getProgress(movie.id);
-    const resumable = isStarted(p);
-    d.acts.replaceChildren(
-      h('button.btn.primary.big', { onclick: () => playMovie(movie, version, { onClose: renderActs }) }, ico('play'),
-        resumable ? `Continuar de ${p.t < 3600 ? fmtTime(p.t) : fmtClockSec(p.t)}` : 'Assistir'),
-      resumable ? h('button.btn.big', { onclick: () => playMovie(movie, version, { fromStart: true, onClose: renderActs }) }, ico('refresh'), 'Do início') : null,
-      trailerButton(movie.name, trailer),
-      d.laterBtn,
-      d.favBtn,
-      h('button.btn' + (isWatched(movie.id) ? '.seen-on' : ''), {
-        title: isWatched(movie.id) ? 'Clique para desmarcar' : 'Marcar como assistido',
-        onclick: () => {
-          if (isWatched(movie.id)) clearProgress(movie.id);
-          else {
-            const dur = (p && p.d) || 1;
-            setProgress(movie.id, { kind: 'movie', t: dur, d: dur });
-          }
-          renderActs();
-          if (TV.on) focusEl(d.acts.querySelector('.btn.primary'));
-        },
-      }, ico('check'), isWatched(movie.id) ? 'Assistido' : 'Marcar como assistido'),
-      S.vlc && !matchMedia('(hover: none) and (pointer: coarse)').matches ? h('button.btn', { onclick: () => openVlc(version.url, movie.name) }, ico('external'), 'VLC') : null,
-      resumable ? h('button.icon-btn', { title: 'Remover de "Continuar assistindo"', onclick: () => { clearProgress(movie.id); renderActs(); } }, ico('close')) : null,
-    );
+    d.acts.replaceChildren(...movieActions(movie, version, trailer, renderActs, d.acts));
   }
   renderActs();
   // Sinopse vem à parte no Xtream: skeleton enquanto chega, e some se não houver nenhuma.
@@ -388,14 +894,15 @@ export function movieView(params, ctx) {
   const endPlot = () => { if (d.plot.querySelector('.sk-box')) d.plot.replaceChildren(); };
   movieDetail(movie).then((info) => {
     if (info) d.fillMeta(info);
+    d.settleArt();
     endPlot();
     if (info && info.trailer) {
       trailer = info.trailer;
       renderActs();
       if (TV.on && (!document.activeElement || document.activeElement === document.body)) focusEl(d.acts.querySelector('.btn.primary'));
     }
-  }).catch(endPlot);
-  return { el: d.el };
+  }).catch(() => { d.settleArt(); endPlot(); });
+  return { el: d.el, destroy: d.destroy };
 }
 
 function fmtClockSec(t) {
@@ -409,7 +916,7 @@ export function serieView(params, ctx) {
   ctx.setTitle('Séries');
   if (!serie) return { el: h('div.center-state', h('h2', 'Série não encontrada'), h('p', 'Ela pode ter saído da lista.')) };
   if (adultLocked() && isAdultItem('series', serie.id)) return { el: lockedState() };
-  const d = heroBase(serie, 'series');
+  const d = heroBase(serie, 'series', ctx);
   const seasonsBar = h('div.seasons');
   const epsEl = h('div.episodes');
   d.inner.append(seasonsBar, epsEl);
@@ -548,6 +1055,7 @@ export function serieView(params, ctx) {
       for (const season of seasons) for (const ep of season.eps) ep.title = cleanEpisodeTitle(ep.title, serie.name, ep.num);
       trailer = info.trailer || '';
       d.fillMeta(info);
+      d.settleArt();
       if (!seasons.some((s) => s.num === season)) season = seasons[0]?.num ?? null;
       if (!seasons.length) {
         renderVersions();
@@ -558,11 +1066,12 @@ export function serieView(params, ctx) {
       }
       renderAll();
     } catch (e) {
+      d.settleArt();
       epsEl.replaceChildren(h('div.error-box', 'Não foi possível carregar os episódios: ' + e.message));
     }
   }
   renderVersions();
   renderActs();
   load();
-  return { el: d.el };
+  return { el: d.el, destroy: d.destroy };
 }

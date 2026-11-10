@@ -5,7 +5,6 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn } = require('child_process');
 const { Readable } = require('stream');
 
 const { UA } = require('./util');
@@ -171,30 +170,6 @@ async function handleProxy(req, res, query) {
     .pipe(res);
 }
 
-// ---------- VLC ----------
-
-function findVlc() {
-  const candidates = [
-    process.env.VLC_PATH,
-    'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe',
-    'C:\\Program Files (x86)\\VideoLAN\\VLC\\vlc.exe',
-    '/Applications/VLC.app/Contents/MacOS/VLC',
-    '/usr/bin/vlc',
-  ].filter(Boolean);
-  return candidates.find((p) => fs.existsSync(p)) || null;
-}
-
-function openVlc(url, title) {
-  const vlc = findVlc();
-  if (!vlc) throw Object.assign(new Error('VLC não encontrado. Instale em videolan.org.'), { status: 404 });
-  const args = ['--no-one-instance'];
-  if (title) args.push('--meta-title=' + title);
-  args.push(url);
-  const child = spawn(vlc, args, { detached: true, stdio: 'ignore', windowsHide: false });
-  child.on('error', () => {});
-  child.unref();
-}
-
 // ---------- API ----------
 
 const catalogText = new Map(); // listId -> { updatedAt, text }
@@ -276,7 +251,7 @@ async function handleApi(req, res, url) {
   }
 
   if (p === '/api/state' && m === 'GET') {
-    return sendJson(res, 200, { ...store.getState(), dataDir: store.DATA, vlc: req.isLocal && !!findVlc(), local: req.isLocal, host: req.isLocal ? os.hostname() : null });
+    return sendJson(res, 200, { ...store.getState(), dataDir: store.DATA, local: req.isLocal, host: req.isLocal ? os.hostname() : null });
   }
 
   if (p === '/api/info' && m === 'GET') {
@@ -291,7 +266,7 @@ async function handleApi(req, res, url) {
   }
 
   // Daqui pra baixo, ações que só fazem sentido no próprio PC.
-  if (!req.isLocal && ['/api/vlc', '/api/quit', '/api/autostart'].includes(p)) {
+  if (!req.isLocal && ['/api/quit', '/api/autostart'].includes(p)) {
     return sendJson(res, 403, { error: 'Disponível só no computador.' });
   }
 
@@ -385,13 +360,6 @@ async function handleApi(req, res, url) {
     const list = requireList(body.list);
     const cached = store.readJson(`catalog-${list.id}.json`, null);
     return sendJson(res, 200, epg.query(list, cached, body.chans, { force: !!body.force }));
-  }
-
-  if (p === '/api/vlc' && m === 'POST') {
-    const body = await readJsonBody(req);
-    if (!/^https?:\/\//i.test(body.url || '')) return sendJson(res, 400, { error: 'URL inválida' });
-    openVlc(body.url, body.title);
-    return sendJson(res, 200, { ok: true });
   }
 
   if (p === '/api/quit' && m === 'POST') {
