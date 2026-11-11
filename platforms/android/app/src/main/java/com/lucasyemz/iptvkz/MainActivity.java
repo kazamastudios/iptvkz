@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -77,8 +78,13 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        // Sem isto, antes do Android 11 o app não fica sabendo que o teclado abriu.
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        // Celular: a página encolhe para o campo não ficar atrás do teclado (e, antes do Android 11, é assim que o app
+        // fica sabendo que o teclado abriu). TV: o teclado fica por cima e a página mantém o tamanho; encolhida, a
+        // barra lateral não cabia, ganhava barra de rolagem e a tela inteira se mexia.
+        boolean tv = getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK);
+        getWindow().setSoftInputMode(tv && Build.VERSION.SDK_INT >= 30
+                ? WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                : WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
         setContentView(root);

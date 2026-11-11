@@ -59,7 +59,9 @@ input, select, textarea { font: inherit; color: inherit; }
   padding: 18px 12px 12px;
   min-height: 0;
 }
-.brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 16px; font: 600 19px var(--font-display); letter-spacing: -0.2px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px; margin-bottom: 14px; border-radius: 12px; font: 600 19px var(--font-display); letter-spacing: -0.2px; }
+/* o destaque do logo é só em volta dele (o espaço até a caixa da lista é margem): igual aos itens do menu */
+.brand:hover { background: rgba(255, 255, 255, 0.04); }
 .brand img { width: 32px; height: 32px; border-radius: 9px; }
 .brand b { color: var(--accent); font-weight: 700; }
 
@@ -731,6 +733,8 @@ input, select, textarea { font: inherit; color: inherit; }
 .no-flexgap .episodes > * + *, .no-flexgap .list-card > * + *, .no-flexgap .pref > * + *, .no-flexgap .center-state > * + * { margin-top: 8px; }
 
 /* ---------- modo TV (controle remoto) ---------- */
+.tv .sidebar { scrollbar-width: none; } /* sem barra de rolagem: ela estreitava o menu quando a tela encolhia */
+.tv .sidebar::-webkit-scrollbar { display: none; }
 .tv :focus { outline: none; }
 .tv .btn:focus, .tv .chip:focus, .tv .icon-btn:focus, .tv .nav a:focus, .tv .sidebar-foot a:focus, .tv .list-btn:focus,
 .tv .cat-item:focus, .tv .tabs button:focus, .tv .pmenu button:focus, .tv .list-menu button:focus, .tv .list-card:focus,
@@ -848,7 +852,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* ---------- logo horizontal ---------- */
 .brand img.logo-h { width: 192px; height: auto; border-radius: 0; display: block; }
 .brand img.logo-mark { display: none; }
-.brand { padding: 6px 8px 16px 12px; }
+.brand { padding: 6px 8px 6px 12px; margin-bottom: 10px; }
 @media (max-width: 1100px) {
   html:not(.tv-wide) .brand img.logo-h { display: none; }
   html:not(.tv-wide) .brand img.logo-mark { display: block; }
@@ -961,6 +965,7 @@ input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------- destaque do controle remoto (não depende do :focus) ---------- */
 .tv .tv-focus { outline: none; box-shadow: 0 0 0 3px var(--accent); }
+.tv .brand.tv-focus, .tv .brand:focus, .kb-nav .brand.tv-focus { box-shadow: none; background: var(--accent-soft); }
 .tv .nav a.tv-focus, .tv .cat-item.tv-focus { background: var(--accent-soft); color: var(--text); }
 .tv .ch-card.tv-focus { border-color: var(--accent); background: #2a1a20; transform: scale(1.03); position: relative; z-index: 1; }
 .tv .poster.tv-focus { box-shadow: none; }
