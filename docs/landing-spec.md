@@ -1,50 +1,43 @@
 # Spec da landing page do IPTVKZ
 
-Status: versão 2, para aprovação. Substitui o conteúdo de `public/`, mantendo a pasta, o domínio (`iptvkz.kazamastudios.com.br`) e o deploy sem build no Cloudflare Pages.
+Status: versão 3, implementada em `public/`. Substitui o conteúdo de `public/`, mantendo a pasta, o domínio (`iptvkz.kazamastudios.com.br`) e o deploy sem build no Cloudflare Pages.
 
 **Referência:** a estrutura de [IPTVnator](https://4gray.github.io/iptvnator/). Seguimos a ordem das seções, a simplicidade e o download detectado. Textos, imagens, cores e código são do IPTVKZ, sem copiar nada de lá.
 
 ## 1. Objetivo
 
-Em poucos segundos, quem chega precisa saber o que é, ver que é grátis e baixar a versão certa. A promessa: **a lista entra na TV por um QR Code, e tudo é de graça.**
+Em poucos segundos, quem chega precisa saber o que é, ver que é grátis e baixar a versão certa. A promessa: **você já paga pela lista, então pare de pagar pelo player.** Gratuidade primeiro, depois QR Code, visualizações e leveza.
 
 ## 2. Estrutura
 
 | # | Seção | O que tem |
 |---|---|---|
-| 1 | Barra do topo | Logo, Recursos, Telas, Baixar, ícone do GitHub e botão "Baixar" |
+| 1 | Barra do topo | Logo, Recursos, Telas, Baixar e botão "Baixar grátis" |
 | 2 | Topo | Título, texto, download recomendado e print com o botão Clássica/Streaming |
 | 3 | Números | Quatro fatos em uma faixa |
 | 4 | Recursos | Grade de cartões de tamanhos diferentes, com o QR Code como cartão maior |
 | 5 | Onde roda | Uma linha com os seis sistemas |
 | 6 | Telas | Lista de telas à esquerda, print grande à direita |
 | 7 | Baixar | Recomendado em destaque, demais aparelhos recolhidos |
-| 8 | Código aberto | Chamada para dar estrela no GitHub e relatar problemas |
+| 8 | Ajude a melhorar | Único bloco com chamada para o GitHub: sugestões, problemas e estrela |
 | 9 | Dúvidas e rodapé | Até cinco perguntas, aviso legal, termos e privacidade |
 
 Não entram agora: blog, comparativo com outros apps e doações.
 
 ### 2.1 Topo
 
-- **Linha acima do título, em texto simples:** "Player IPTV gratuito · v1.0.5", com a versão vinda do GitHub.
-- **Título:** "Sua lista na TV em um **QR Code**.", com "QR Code" em vermelho.
-- **Texto:** "Listas M3U e Xtream, TV ao vivo com guia, filmes e séries na LG, no Android TV, no celular e no computador. De graça, sem mensalidade e sem anúncio."
-- **Botões:** principal detectado, como "Baixar para Windows", e "Todos os aparelhos".
+- **Linha acima do título, em texto simples:** "Grátis · Sem anúncio · Sem cadastro".
+- **Título:** "Você já paga pela lista. **Pare de pagar pelo player.**", com a segunda frase em vermelho.
+- **Texto:** player completo para listas M3U e Xtream, com QR Code, visual de streaming, guia, filmes e séries, de graça.
+- **Botões:** principal detectado, como "Baixar grátis para Windows", e "Outros aparelhos".
 - **Print:** tela real ao lado do texto, com o botão de visualização funcionando de verdade. Alterna a imagem entre Clássica e Streaming, como no app.
-- **Legenda do print:** "Títulos fictícios. O IPTVKZ não vem com nenhum canal ou filme."
+- **Legenda do print:** "Filmes fictícios. O IPTVKZ é só o player: a lista é sua."
 
 ### 2.2 Números
 
-Hoje o repositório tem **0 estrelas e 58 downloads**. Mostrar isso, como a referência faz com 7,6 mil e 1,9 milhão, jogaria contra. A faixa começa com fatos que já são fortes:
+Quatro fatos de venda: R$ 0 de mensalidade, 0 anúncios, 1 QR Code e 1,4 MB na TV LG. Licença, estrelas e GitHub ficam fora do início, no bloco "Ajude a melhorar" e no rodapé. O total de downloads substitui "0 anúncios" sozinho a partir de 1.000.
 
-| Número | Legenda |
-|---|---|
-| R$ 0 | sem mensalidade |
-| 1,4 MB | na TV LG |
-| 6 | sistemas |
-| MIT | código aberto |
-
-O botão "Estrela no GitHub" aparece desde o início, sem número. **A contagem entra sozinha** pela API do GitHub: estrelas a partir de 50 e downloads a partir de 1.000, substituindo as legendas menos fortes. Sem a API, a faixa continua igual.
+**Regras de texto:** não citar concorrentes nem preços deles, não dizer "o melhor" sem prova, não prometer gratuidade "para sempre" e sempre falar em app pago de player, nunca em conteúdo grátis.
 
 ### 2.3 Recursos
 

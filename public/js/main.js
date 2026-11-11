@@ -23,12 +23,12 @@
   }
   var device = detect();
   var HERO = {
-    win: { label: 'Baixar para Windows', direct: true },
-    linux: { label: 'Baixar para Linux', direct: true },
-    android: { label: 'Baixar para Android', direct: true },
-    atv: { label: 'Baixar para Android TV', direct: true },
-    mac: { label: 'Baixar para macOS' },
-    lg: { label: 'Instalar na TV LG' },
+    win: { label: 'Baixar grátis para Windows', direct: true },
+    linux: { label: 'Baixar grátis para Linux', direct: true },
+    android: { label: 'Baixar grátis para Android', direct: true },
+    atv: { label: 'Baixar grátis para Android TV', direct: true },
+    mac: { label: 'Baixar grátis para macOS' },
+    lg: { label: 'Instalar grátis na TV LG' },
   };
 
   var others = $('#outros');
@@ -129,10 +129,10 @@
     if (Math.abs(dx) > 40) show(current + (dx < 0 ? 1 : -1), true);
   });
 
-  // ---------- GitHub: versão, links, tamanhos e números ----------
+  // ---------- GitHub: versão, links, tamanhos e total de downloads ----------
   var API = 'https://api.github.com/repos/lucasyemz/iptvkz';
   var KEY = 'iptvkz-github';
-  var SHOW_STARS_FROM = 50, SHOW_DOWNLOADS_FROM = 1000;
+  var SHOW_DOWNLOADS_FROM = 1000;
   function mb(bytes) {
     var v = bytes / 1e6;
     return (v < 10 ? v.toFixed(1).replace('.', ',') : Math.round(v)) + ' MB';
@@ -162,7 +162,6 @@
       refreshCta();
     }
     if (d.downloads >= SHOW_DOWNLOADS_FROM) setStat('downloads', short(d.downloads), 'downloads');
-    if (d.stars >= SHOW_STARS_FROM) setStat('stars', short(d.stars), 'estrelas no GitHub');
   }
   function load() {
     try {
@@ -172,11 +171,11 @@
     if (!window.fetch) return;
     var json = function (r) { return r.ok ? r.json() : null; };
     var head = { headers: { Accept: 'application/vnd.github+json' } };
-    Promise.all([fetch(API, head).then(json), fetch(API + '/releases?per_page=30', head).then(json)]).then(function (res) {
-      var repo = res[0] || {}, all = res[1] || [];
+    fetch(API + '/releases?per_page=30', head).then(json).then(function (res) {
+      var all = res || [];
       var published = all.filter(function (r) { return !r.draft && !r.prerelease; });
       var latest = published[0];
-      var d = { stars: repo.stargazers_count || 0, downloads: 0, tag: latest && latest.tag_name, assets: [] };
+      var d = { downloads: 0, tag: latest && latest.tag_name, assets: [] };
       published.forEach(function (r) {
         r.assets.forEach(function (a) { if (/\.(exe|dmg|AppImage|deb|apk|ipk)$/.test(a.name)) d.downloads += a.download_count; });
       });
