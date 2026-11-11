@@ -73,12 +73,27 @@ save(square(master, 1024), "assets", "brand", "icon-beta-1024.png")
 save(square(P("assets", "brand", "icon-mac-1024.png"), 1024), "assets", "brand", "icon-mac-beta-1024.png")
 save(square(master, 64, with_badge=False), "assets", "brand", "icon-small-beta-64.png")  # bandeja: pequeno demais para texto
 
-# Windows: tamanhos grandes com o selo, os pequenos (barra de tarefas) só na cor
-ico_big = square(master, 256)
-ico_small = square(master, 48, with_badge=False)
-os.makedirs(P("platforms", "windows"), exist_ok=True)
-ico_big.save(P("platforms", "windows", "iptvkz-beta.ico"), sizes=[(256, 256), (128, 128), (64, 64)],
-             append_images=[ico_small.resize((s, s), Image.LANCZOS) for s in (48, 32, 24, 16)])
+# Windows: os mesmos 9 tamanhos do ícone oficial. De 32 px para cima, o ícone âmbar com a faixa, reduzido direto
+# da imagem de 1024 px. Abaixo disso, o desenho simplificado do oficial (só o "KZ"), em âmbar: o logo inteiro
+# encolhido ficava borrado na barra de tarefas.
+SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
+big = square(master, 1024)
+official = Image.open(P("platforms", "windows", "iptvkz.ico"))
+frames = {}
+for n in SIZES:
+    if n < 32:
+        official.size = (n, n)
+        f = amber(official.copy().convert("RGBA"))
+        # cantinho âmbar no lugar da faixa (texto não cabe): o Beta se distingue até no menor tamanho
+        corner = Image.new("RGBA", f.size, (0, 0, 0, 0))
+        ImageDraw.Draw(corner).polygon([(n * 0.55, 0), (n, 0), (n, n * 0.45)], fill=AMBER)
+        corner.putalpha(ImageChops.multiply(corner.getchannel("A"), f.getchannel("A")))
+        f.alpha_composite(corner)
+        frames[n] = f
+    else:
+        frames[n] = big.resize((n, n), Image.LANCZOS)
+frames[256].save(P("platforms", "windows", "iptvkz-beta.ico"), sizes=[(n, n) for n in SIZES],
+                 append_images=[frames[n] for n in SIZES if n != 256])
 print("ok platforms/windows/iptvkz-beta.ico")
 
 # Android TV: ícone e banner
