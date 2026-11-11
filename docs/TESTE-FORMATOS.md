@@ -31,7 +31,7 @@ Abra o item e espere uns 10 s. No botão de áudio (onda sonora), a última linh
 |---|---|---|---|
 | MP4, MOV · H.264 · AAC | ok | ok | ok |
 | MKV · H.264 · AAC | ok | ok | ok |
-| TS · H.264 · AAC | ok | ok | ok |
+| TS · H.264 · AAC (aparece em TV ao Vivo, como os canais .ts das listas) | ok | ok | ok |
 | FLV, AVI, MPG | ok | depende do modelo | componente |
 | WebM · VP9 · Opus | ok | ok | ok |
 | H.265 (MP4, MKV, 4K 10-bit) | ok se o aparelho decodifica H.265 | ok | depende da placa de vídeo |
