@@ -551,13 +551,28 @@ export function versionNames(versions) {
   return out;
 }
 
+// Tela que mostra 4K? (pixels reais: no Android TV a página tem metade do tamanho e o dobro de densidade)
+function screen4K() {
+  const s = window.screen || {};
+  return Math.max(s.width || 0, s.height || 0) * (window.devicePixelRatio || 1) >= 3000;
+}
+const is4K = (v) => /\b4K\b/.test(v.label);
+const kindOf = (v) => v.label.split(/[ ·]/)[0]; // Dublado, Legendado, Nacional, Dual, Versão
+
+// Versão que abre ao dar play: a que o usuário escolheu antes (exata), senão a do idioma preferido, e entre elas
+// a que cabe na tela: numa tela Full HD, a versão Full HD em vez da 4K (que trava em aparelhos mais simples).
+// O 4K continua no menu; escolhido lá, vira a preferência e abre direto nas próximas vezes.
 export function preferredVersion(versions) {
   const pref = S.settings.versionPref;
   const exact = versions.find((v) => v.label === pref);
   if (exact) return exact;
+  let pool = pref ? versions.filter((v) => kindOf(v) === pref.split(/[ ·]/)[0]) : [];
   // versão sem marcação, mas que o app já viu tocar no idioma preferido
   const want = S.settings.audioLang === 'en' ? 'Inglês' : S.settings.audioLang === 'orig' ? null : 'Português';
-  return (want && versions.find((v) => /^Versão/.test(v.label) && learned(v) === want)) || versions[0];
+  if (!pool.length && want) pool = versions.filter((v) => /^Versão/.test(v.label) && learned(v) === want);
+  if (!pool.length) pool = versions.filter((v) => kindOf(v) === kindOf(versions[0]));
+  if (!pool.length) return versions[0];
+  return (!screen4K() && pool.find((v) => !is4K(v))) || pool[0];
 }
 
 // ---------- guia (EPG) ----------

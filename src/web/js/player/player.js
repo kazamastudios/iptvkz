@@ -458,7 +458,9 @@ export class Player {
     if (engine === 'mpegts' && !(window.mpegts && mpegts.getFeatureList().mseLivePlayback)) engine = 'native';
     if (this.forceNative) engine = 'native';
     const kind = engine;
-    if (nativeVideoAvailable() && (this.useNative || NATIVE_FIRST.test(String(url).split(/[?#]/)[0].toLowerCase()))) engine = 'exo';
+    // No Android, filme e série vão sempre ao player nativo: ele desenha o vídeo direto na camada de vídeo do aparelho.
+    // Pelo WebView, cada quadro (4K principalmente) é reduzido pela GPU para caber na página, e a imagem trava.
+    if (nativeVideoAvailable() && (this.useNative || !live || NATIVE_FIRST.test(String(url).split(/[?#]/)[0].toLowerCase()))) engine = 'exo';
     this.engine = engine;
     const purl = proxyUrl(url);
     const v = this.video;
@@ -476,6 +478,7 @@ export class Player {
         levelLoadingMaxRetry: 3,
         fragLoadingMaxRetry: 4,
         subtitleDisplay: false,
+        capLevelToPlayerSize: true, // no automático, não baixa resolução maior do que a tela consegue mostrar
       });
       this.hls = hls;
       hls.subtitleDisplay = false;
