@@ -285,10 +285,17 @@ final class NativeVideo implements Player.Listener {
     @Override
     public void onTracksChanged(Tracks tracks) {
         JSONArray audio = new JSONArray(), text = new JSONArray();
+        Json playing = new Json(); // o que está tocando agora, para o menu do player
         List<Tracks.Group> groups = tracks.getGroups();
         for (int g = 0; g < groups.size(); g++) {
             Tracks.Group group = groups.get(g);
             int type = group.getType();
+            for (int i = 0; i < group.length; i++) {
+                if (!group.isTrackSelected(i)) continue;
+                Format f = group.getTrackFormat(i);
+                if (type == C.TRACK_TYPE_VIDEO) playing.put("video", String.valueOf(f.sampleMimeType)).put("height", f.height);
+                if (type == C.TRACK_TYPE_AUDIO) playing.put("audio", String.valueOf(f.sampleMimeType)).put("ch", f.channelCount);
+            }
             if (type != C.TRACK_TYPE_AUDIO && type != C.TRACK_TYPE_TEXT) continue;
             for (int i = 0; i < group.length; i++) {
                 if (!group.isTrackSupported(i)) continue;
@@ -305,7 +312,7 @@ final class NativeVideo implements Player.Listener {
                 (type == C.TRACK_TYPE_AUDIO ? audio : text).put(t);
             }
         }
-        send(event("tracks").put("audio", audio).put("text", text));
+        send(event("tracks").put("audio", audio).put("text", text).put("playing", playing.o));
     }
 
     @Override

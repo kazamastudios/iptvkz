@@ -56,6 +56,15 @@ export function proxyUrl(url) {
 // No Android, estes vão direto ao player nativo: o WebView não abre o contêiner ou costuma tocar sem som.
 const NATIVE_FIRST = /\.(mkv|avi|wmv|flv)$/;
 
+// Nomes curtos dos formatos para a linha "Reprodução" do menu.
+const CODECS = {
+  'video/avc': 'H.264', 'video/hevc': 'H.265', 'video/dolby-vision': 'Dolby Vision', 'video/av01': 'AV1', 'video/x-vnd.on2.vp9': 'VP9',
+  'video/mpeg2': 'MPEG-2', 'video/mp4v-es': 'MPEG-4',
+  'audio/mp4a-latm': 'AAC', 'audio/ac3': 'AC3', 'audio/eac3': 'E-AC3', 'audio/eac3-joc': 'E-AC3 Atmos', 'audio/vnd.dts': 'DTS',
+  'audio/vnd.dts.hd': 'DTS-HD', 'audio/true-hd': 'TrueHD', 'audio/mpeg': 'MP3', 'audio/opus': 'Opus', 'audio/vorbis': 'Vorbis', 'audio/flac': 'FLAC',
+};
+const channels = (n) => (n > 2 ? `${n - 1}.1` : n === 2 ? 'estéreo' : n === 1 ? 'mono' : '');
+
 function detectEngine(url, live) {
   const path = String(url).split(/[?#]/)[0].toLowerCase();
   if (path.endsWith('.m3u8') || path.endsWith('.m3u')) return 'hls';
@@ -1087,6 +1096,21 @@ export class Player {
         m.append(opt(label, !auto && this.hls.currentLevel === i, () => { this.hls.currentLevel = i; this._renderMenu(); }));
       }
     }
+
+    m.append(h('div.sep'), h('div.note.playing-info', `Reprodução: ${this._playingInfo()}`));
+  }
+
+  // Quem está tocando (navegador ou player do Android) e, quando se sabe, os formatos de vídeo e áudio.
+  _playingInfo() {
+    const v = this.video;
+    if (this.exo) {
+      const p = this.exo.playing || {};
+      const name = (mime) => CODECS[mime] || (mime && mime !== 'null' ? mime.split('/').pop().toUpperCase() : '');
+      const audio = [name(p.audio), channels(p.ch)].filter(Boolean).join(' ');
+      return ['player do Android', name(p.video), p.height > 0 ? `${p.height}p` : '', audio].filter(Boolean).join(' · ');
+    }
+    const how = { hls: 'navegador (HLS)', mpegts: 'navegador (MPEG-TS)', native: TV.on ? 'player da TV' : 'navegador' }[this.engine] || 'navegador';
+    return [how, v.videoHeight > 0 ? `${v.videoHeight}p` : ''].filter(Boolean).join(' · ');
   }
 
   // ---------- avançar/voltar segurando a seta (TV) ----------

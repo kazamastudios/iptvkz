@@ -115,6 +115,7 @@ export class NativeVideo {
     if (m.e === 'tracks') {
       this.audio = m.audio || [];
       this.text = m.text || [];
+      this.playing = m.playing || {};
       this.cb.onTracks();
       return;
     }
