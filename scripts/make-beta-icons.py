@@ -93,12 +93,49 @@ for dens, (bw, bh) in (("xhdpi", (320, 180)), ("xxxhdpi", (640, 360))):
 save(square(master, 130), "platforms", "webos", "beta", "largeIcon.png")
 save(square(master, 80), "platforms", "webos", "beta", "icon.png")
 
-# Logos da interface (abertura, barra lateral, carregamento do player): só a cor. O servidor entrega estes
-# no lugar dos originais quando o app é Beta (src/server/index.js).
-for name in ("logo-horizontal.webp", "logo-horizontal.png", "logo-sidebar.png", "icon.png", "icon-192.png", "icon-small.png"):
+def badge(im, cx, cy, height):
+    """Selo BETA (pílula âmbar, texto escuro) centrado em (cx, cy)."""
+    im = im.copy()
+    d = ImageDraw.Draw(im)
+    f = ImageFont.truetype(FONT, round(height * 0.76))
+    w = d.textlength("BETA", font=f) + height * 0.7
+    d.rounded_rectangle((cx - w / 2, cy - height / 2, cx + w / 2, cy + height / 2), radius=height / 2,
+                        fill=AMBER, outline=DARK, width=max(1, round(height / 18)))
+    d.text((cx, cy + height * 0.03), "BETA", font=f, fill=DARK, anchor="mm")
+    return im
+
+
+# Logos da interface: âmbar e com a marca BETA em todo lugar onde o logo aparece. O servidor entrega estes no
+# lugar dos originais quando o app é Beta (src/server/index.js).
+def web(name, mark):
     src = P("src", "web", "img", name)
     base, ext = os.path.splitext(name)
-    im = amber(Image.open(src))
+    im = mark(amber(Image.open(src)))
     dst = P("src", "web", "img", f"{base}-beta{ext}")
     im.save(dst, quality=92) if ext == ".webp" else im.save(dst, optimize=True)
     print("ok", f"src/web/img/{base}-beta{ext}", im.size)
+
+
+def tv_logo(im):
+    """Logo da TV (abertura, carregamento): a imagem cresce para baixo e o selo fica centralizado embaixo do logo."""
+    W, H = im.size
+    extra = round(H * 0.20)
+    canvas = Image.new("RGBA", (W, H + extra), (0, 0, 0, 0))
+    canvas.alpha_composite(im, (0, 0))
+    return badge(canvas, W / 2, H + extra * 0.52, extra * 0.72)
+
+
+def wide_logo(im):
+    """Logo largo da barra lateral: a imagem cresce para baixo e o selo fica embaixo do "KZ", sem cobrir nada."""
+    W, H = im.size
+    extra = round(H * 0.42)
+    canvas = Image.new("RGBA", (W, H + extra), (0, 0, 0, 0))
+    canvas.alpha_composite(im, (0, 0))
+    return badge(canvas, W * 0.86, H + extra * 0.38, extra * 0.82)
+
+
+for n in ("logo-horizontal.webp", "logo-horizontal.png"):
+    web(n, tv_logo)
+web("logo-sidebar.png", wide_logo)
+for n in ("icon.png", "icon-192.png", "icon-small.png"):
+    web(n, ribbon)
