@@ -312,7 +312,7 @@ export function focusEl(el, { center = false } = {}) {
 }
 
 function region(el) {
-  return el.closest('.sidebar') ? 'side' : el.closest('.cats') ? 'cats' : 'main';
+  return el.closest('.sidebar') ? 'side' : el.closest('.cats') ? 'cats' : el.closest('.topbar') ? 'top' : 'main';
 }
 
 export function focusFirst(root) {
@@ -320,7 +320,12 @@ export function focusFirst(root) {
   const isFar = farCheck();
   const els = [...scope.querySelectorAll(FOCUSABLE)].filter((el) => !isFar(el) && visible(el) && !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
   // de preferência um cartão do conteúdo; campos de texto abririam o teclado da TV
-  const inView = (sel) => els.find((el) => el.matches(sel) && el.closest('#view') && el.getBoundingClientRect().top >= 0);
+  // só o que já está na tela: um botão principal lá embaixo (ex.: em Configurações) fazia a tela abrir rolada até o fim
+  const inView = (sel) => els.find((el) => {
+    if (!el.matches(sel) || !el.closest('#view')) return false;
+    const r = el.getBoundingClientRect();
+    return r.top >= 0 && r.bottom <= window.innerHeight;
+  });
   focusEl(inView('.ch-card, .poster, .ep, .g-prog') || inView('.cat-item.on, .btn.primary') || inView('*') || els[0]);
 }
 
@@ -461,6 +466,10 @@ export function move(dir) {
   const ay = a.top + a.height / 2;
   let best = null;
   let bestScore = Infinity;
+  // A barra do topo (busca, seletor de visualização) é o último recurso do ↑: com a página rolada, os itens de
+  // cima ficam fora da tela e a busca, fixa no topo, parecia mais perto. Só vai para ela sem nada acima na página.
+  let bestTop = null;
+  let topScore = Infinity;
   const isFar = farCheck();
   for (const el of (trap || scope).querySelectorAll(FOCUSABLE)) {
     if (el === cur || isFar(el)) continue;
@@ -480,7 +489,8 @@ export function move(dir) {
     // sem alinhamento, pesa o vão entre as bordas: um item largo não pode perder para outro bem mais distante
     const gap = across ? Math.max(0, r.top - a.bottom, a.top - r.bottom) : Math.max(0, r.left - a.right, a.left - r.right);
     const score = primary + (overlap > 0 ? 0 : gap * 2) + side * 0.1;
-    if (score >= bestScore) continue;
+    const toTop = dir === 'up' && curRegion !== 'top' && region(el) === 'top';
+    if (score >= (toTop ? topScore : bestScore)) continue;
     // as checagens que sobem pela árvore ficam por último: só para quem pode ganhar
     if ((cur.contains(el) && !cur.matches(CARD)) || el.closest('.hidden') || !reachable(el, cur)) continue;
     if (getComputedStyle(el).visibility === 'hidden') continue; // invisível mas no layout (ex.: textos no modo trailer)
@@ -488,11 +498,14 @@ export function move(dir) {
     if (!(curSkip && curSkip.contains(el)) && el.closest(NAV_SKIP)) continue;
     // dentro do cabeçalho, ←/→ só andam entre os itens dele
     if (curSkip && across && !curSkip.contains(el)) continue;
-    // ↑/↓ não saltam entre a barra lateral e o conteúdo
-    if ((dir === 'up' || dir === 'down') && region(el) !== curRegion) continue;
+    if (toTop) { topScore = score; bestTop = el; continue; }
+    // ↑/↓ não saltam entre a barra lateral e o conteúdo (da barra do topo, ↓ desce para o conteúdo)
+    const elRegion = region(el);
+    if ((dir === 'up' || dir === 'down') && elRegion !== curRegion && !(curRegion === 'top' && elRegion === 'main')) continue;
     bestScore = score;
     best = el;
   }
+  if (!best) best = bestTop;
   if (best) {
     remember(dir, cur, best);
     focusEl(best);
