@@ -13,6 +13,7 @@
     "dist:linux": "node scripts/build-info.js && electron-builder --linux",
     "ipk": "node scripts/build-ipk.js",
     "ipk:store": "node scripts/build-ipk.js --store",
+    "ipk:store:fhd": "node scripts/build-ipk.js --store --fhd",
     "android": "node scripts/build-android.js",
     "test": "node --test scripts/test-server.js"
   },

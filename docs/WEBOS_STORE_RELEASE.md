@@ -19,7 +19,7 @@ Nada aqui publica sozinho. O envio é sempre manual, pela conta do Seller Lounge
 | Pasta de dados | `$HOME/iptvkz`, a pasta do serviço ou `/media/developer/temp` (como sempre) | `/media/internal/<id>`, depois `$HOME/iptvkz` |
 | Recursos | Todos | Todos, inclusive o cadastro pelo celular por QR Code |
 
-Os dois saem do mesmo código: `src/server`, `src/web` e `platforms/webos`. Só mudam as constantes do build. Por terem ids diferentes, podem ficar instalados juntos na mesma TV.
+Os dois saem do mesmo código: `src/server`, `src/web` e `platforms/webos`. Só mudam as constantes do build. Têm ids diferentes e podem ficar instalados juntos, mas não rodam ao mesmo tempo: os dois usam a porta 8787, e o segundo a abrir acaba usando o servidor do primeiro. Para testar um depois do outro, desligue a TV da tomada antes.
 
 Opção dos dois canais: `WEBOS_LAN_PAIRING=0` deixa o servidor só em 127.0.0.1, sem o cadastro pelo celular. Use se o QA da LG recusar a porta aberta para a rede de casa.
 

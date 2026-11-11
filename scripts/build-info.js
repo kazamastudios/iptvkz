@@ -9,7 +9,8 @@ const { execFileSync } = require('child_process');
 
 const root = path.join(__dirname, '..');
 
-function buildInfo({ build } = {}) {
+// channel: força o modo (o IPK da Store é sempre a versão de produção, mesmo gerado no PC).
+function buildInfo({ build, channel } = {}) {
   const { version } = require(path.join(root, 'package.json'));
   let commit = (process.env.GITHUB_SHA || '').slice(0, 7);
   if (!commit) {
@@ -19,7 +20,7 @@ function buildInfo({ build } = {}) {
   return {
     version,
     build: n > 0 ? n : null,
-    channel: (process.env.GITHUB_REF || '').startsWith('refs/tags/v') ? 'producao' : 'desenvolvimento',
+    channel: channel || ((process.env.GITHUB_REF || '').startsWith('refs/tags/v') ? 'producao' : 'desenvolvimento'),
     commit: commit || null,
     date: new Date().toISOString(),
   };
