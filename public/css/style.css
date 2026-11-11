@@ -98,12 +98,12 @@ html.tv .hero h1 { font-size: 4.2rem; }
 .frame img.is-swap { opacity: 0; }
 figcaption { margin-top: .65rem; color: var(--faint); font-size: .8125rem; text-align: right; }
 
-/* números */
-.stats { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--bg-2); }
-.stats__in { display: flex; align-items: center; padding-top: 1.6rem; padding-bottom: 1.6rem; }
-.stat { flex: 1 1 0; min-width: 0; }
-.stat strong { display: block; font-size: 2.35rem; line-height: 1.1; font-weight: 800; letter-spacing: -.03em; }
-.stat span { font: 500 .75rem/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+/* promessas */
+.promises__in { display: flex; padding-top: 1rem; padding-bottom: 1rem; }
+.promise { flex: 1 1 0; min-width: 0; padding: .25rem 2.25rem; border-left: 1px solid var(--line-2); color: var(--muted); font-size: 1.2rem; line-height: 1.45; }
+.promise:first-child { padding-left: 0; border-left: 0; }
+.promise:last-child { padding-right: 0; }
+.promise strong { display: block; margin-bottom: .2rem; color: var(--text); font-size: 1.35rem; font-weight: 720; letter-spacing: -.02em; }
 
 /* seções */
 .section { padding: 6rem 0; }
@@ -244,8 +244,9 @@ html.kb .ring.is-on { opacity: 1; }
   .tile { display: inline-block; width: auto; margin: 0 .3rem 0 0; padding: .5rem .85rem; }
   .tile i, .tile.is-on span { display: none; }
   .gallery__pause { display: none; }
-  .stats__in { flex-wrap: wrap; }
-  .stat { flex: 1 1 40%; padding: .5rem 0; }
+  .promises__in { display: block; }
+  .promise, .promise:first-child, .promise:last-child { padding: 1.1rem 0; border-left: 0; border-top: 1px solid var(--line); }
+  .promise:first-child { border-top: 0; }
   .open { display: block; }
   .open .cta { margin: 1.25rem -.35rem -.35rem; }
 }

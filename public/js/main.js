@@ -129,22 +129,12 @@
     if (Math.abs(dx) > 40) show(current + (dx < 0 ? 1 : -1), true);
   });
 
-  // ---------- GitHub: versão, links, tamanhos e total de downloads ----------
+  // ---------- GitHub: versão, links e tamanhos ----------
   var API = 'https://api.github.com/repos/lucasyemz/iptvkz';
   var KEY = 'iptvkz-github';
-  var SHOW_DOWNLOADS_FROM = 1000;
   function mb(bytes) {
     var v = bytes / 1e6;
     return (v < 10 ? v.toFixed(1).replace('.', ',') : Math.round(v)) + ' MB';
-  }
-  function short(n) {
-    return n >= 1000 ? (n / 1000).toFixed(1).replace('.0', '').replace('.', ',') + ' mil' : String(n);
-  }
-  function setStat(name, value, label) {
-    var el = $('[data-stat="' + name + '"]');
-    if (!el) return;
-    $('strong', el).textContent = value;
-    $('span', el).textContent = label;
   }
   function apply(d) {
     if (d.tag) {
@@ -161,7 +151,6 @@
       });
       refreshCta();
     }
-    if (d.downloads >= SHOW_DOWNLOADS_FROM) setStat('downloads', short(d.downloads), 'downloads');
   }
   function load() {
     try {
@@ -175,10 +164,7 @@
       var all = res || [];
       var published = all.filter(function (r) { return !r.draft && !r.prerelease; });
       var latest = published[0];
-      var d = { downloads: 0, tag: latest && latest.tag_name, assets: [] };
-      published.forEach(function (r) {
-        r.assets.forEach(function (a) { if (/\.(exe|dmg|AppImage|deb|apk|ipk)$/.test(a.name)) d.downloads += a.download_count; });
-      });
+      var d = { tag: latest && latest.tag_name, assets: [] };
       if (latest) d.assets = latest.assets.map(function (a) { return { name: a.name, size: a.size, url: a.browser_download_url }; });
       try { sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), d: d })); } catch (e) { /* cheio */ }
       apply(d);

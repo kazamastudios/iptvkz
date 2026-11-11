@@ -14,7 +14,7 @@ Em poucos segundos, quem chega precisa saber o que é, ver que é grátis e baix
 |---|---|---|
 | 1 | Barra do topo | Logo, Recursos, Telas, Baixar e botão "Baixar grátis" |
 | 2 | Topo | Título, texto, download recomendado e print com o botão Clássica/Streaming |
-| 3 | Números | Quatro fatos em uma faixa |
+| 3 | Promessas | Três frases curtas, separadas por linhas finas |
 | 4 | Recursos | Grade de cartões de tamanhos diferentes, com o QR Code como cartão maior |
 | 5 | Onde roda | Uma linha com os seis sistemas |
 | 6 | Telas | Lista de telas à esquerda, print grande à direita |
@@ -33,9 +33,9 @@ Não entram agora: blog, comparativo com outros apps e doações.
 - **Print:** tela real ao lado do texto, com o botão de visualização funcionando de verdade. Alterna a imagem entre Clássica e Streaming, como no app.
 - **Legenda do print:** "Filmes fictícios. O IPTVKZ é só o player: a lista é sua."
 
-### 2.2 Números
+### 2.2 Promessas
 
-Quatro fatos de venda: R$ 0 de mensalidade, 0 anúncios, QR Code (aponte a câmera e vincule à TV) e 1,4 MB na TV LG. Licença, estrelas e GitHub ficam fora do início, no bloco "Ajude a melhorar" e no rodapé. O total de downloads substitui "0 anúncios" sozinho a partir de 1.000.
+Três frases curtas logo abaixo do topo, sem números soltos: grátis de verdade, lista por QR Code e leve até em TV antiga. Licença, estrelas e GitHub ficam no bloco "Ajude a melhorar" e no rodapé.
 
 **Regras de texto:** não citar concorrentes nem preços deles, não dizer "o melhor" sem prova, não prometer gratuidade "para sempre" e sempre falar em app pago de player, nunca em conteúdo grátis.
 
