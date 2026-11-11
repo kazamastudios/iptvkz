@@ -321,12 +321,13 @@ export function focusFirst(root) {
   const els = [...scope.querySelectorAll(FOCUSABLE)].filter((el) => !isFar(el) && visible(el) && !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
   // de preferência um cartão do conteúdo; campos de texto abririam o teclado da TV
   // só o que já está na tela: um botão principal lá embaixo (ex.: em Configurações) fazia a tela abrir rolada até o fim
-  const inView = (sel) => els.find((el) => {
+  const inView = (sel, top = false) => els.find((el) => {
     if (!el.matches(sel) || !el.closest('#view')) return false;
+    if (top && el.getBoundingClientRect().top > window.innerHeight * 0.5) return false; // botão principal: só na metade de cima
     const r = el.getBoundingClientRect();
     return r.top >= 0 && r.bottom <= window.innerHeight;
   });
-  focusEl(inView('.ch-card, .poster, .ep, .g-prog') || inView('.cat-item.on, .btn.primary') || inView('*') || els[0]);
+  focusEl(inView('.ch-card, .poster, .ep, .g-prog') || inView('.cat-item.on, .btn.primary', true) || inView('*') || els[0]);
 }
 
 // Botões dentro de um cartão (ex.: ★) só são alcançáveis a partir do próprio cartão.

@@ -110,7 +110,7 @@ fs.cpSync(path.join(root, 'src', 'web'), path.join(bundleDir, 'web'), {
   filter: (f) => !f.endsWith('.map') && path.basename(f) !== 'logo-horizontal.png', // a abertura usa o WebP
 });
 fs.writeFileSync(path.join(bundleDir, 'version.txt'), String(bundleVersion));
-require('./build-info').writeBuildInfo(path.join(bundleDir, 'web'), { build: bundleVersion }); // versão e modo no app
+require('./build-info').writeBuildInfo(path.join(bundleDir, 'web'), { build: bundleVersion, channel: STORE ? 'producao' : undefined }); // versão e modo no app
 
 // O pacote baixável só existe no Developer: a Store não publica nem lê pacotes de fora.
 let bundleFile = null;

@@ -1027,6 +1027,9 @@ input, select, textarea { font: inherit; color: inherit; }
 .tv *:not(#splash), .tv *::before, .tv *::after { transition: none !important; backdrop-filter: none !important; }
 .tv .detail .backdrop img { filter: none; }
 .tv .poster .thumb, .tv .poster:focus .thumb, .tv .poster.tv-focus .thumb { box-shadow: none; transform: none; }
+/* Ponteiro do Magic Remote: área de clique invisível de ~75px de tela (56px com o zoom da LG) nos botões só de ícone, sem mudar o visual */
+.tv .icon-btn, .tv .vs-btn, .tv .pager-btn, .tv .player .pbtn { position: relative; }
+.tv .icon-btn::after, .tv .vs-btn::after, .tv .pager-btn::after, .tv .player .pbtn::after { content: ""; position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; transform: translate(-50%, -50%); }
 /* Moldura de foco que desliza entre cartões (tv/focusring.js). Com ela ativa, o cartão não desenha a própria borda. */
 .tv-ring {
   position: fixed; left: 0; top: 0; z-index: 6; pointer-events: none; box-sizing: border-box;
