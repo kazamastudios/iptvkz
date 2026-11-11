@@ -1,0 +1,12 @@
+#EXTM3U
+# Lista de teste de formatos do IPTVKZ (MKV, H.265, áudio AC3, legendas embutidas). Só vídeos abertos.
+# Sintel e Big Buck Bunny: (c) Blender Foundation, licença Creative Commons Attribution (CC BY).
+# Jellyfish: arquivo de teste de codecs do projeto Jellyfin.
+#EXTINF:-1 group-title="Formatos",Sintel - MKV, H.264, áudio AC3 5.1, 10 legendas
+https://download.blender.org/durian/movies/Sintel.2010.1080p.mkv
+#EXTINF:-1 group-title="Formatos",Jellyfish - MKV, vídeo H.265
+https://repo.jellyfin.org/archive/jellyfish/media/jellyfish-3-mbps-hd-hevc.mkv
+#EXTINF:-1 group-title="Formatos",Big Buck Bunny - MP4, vídeo H.265 (sem som)
+https://test-videos.co.uk/vids/bigbuckbunny/mp4/h265/1080/Big_Buck_Bunny_1080_10s_1MB.mp4
+#EXTINF:-1 group-title="Formatos",Big Buck Bunny - MKV, vídeo H.264 (sem som)
+https://test-videos.co.uk/vids/bigbuckbunny/mkv/1080/Big_Buck_Bunny_1080_10s_1MB.mkv
