@@ -13,8 +13,12 @@ os.networkInterfaces = () => { try { return listInterfaces(); } catch { return {
 const hostname = os.hostname;
 os.hostname = () => { try { return hostname(); } catch { return 'Android TV'; } };
 
+// O app Beta (build no PC) fica instalado ao lado do oficial: com a mesma porta, o oficial parado em segundo
+// plano pelo Android ainda segura a 8787 e a interface do Beta não abre.
+const beta = /\.beta$/.test(path.basename(path.dirname(base)));
+
 require('./src/server/index.js')
-  .start({ host: '0.0.0.0', port: 8787, portFallback: true, keepAlive: true, pairing: true })
+  .start({ host: '0.0.0.0', port: beta ? 8797 : 8787, portFallback: true, keepAlive: true, pairing: true })
   .then(({ port }) => {
     const target = path.join(base, 'port');
     fs.writeFileSync(target + '.tmp', String(port));

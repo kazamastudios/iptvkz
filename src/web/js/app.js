@@ -114,7 +114,7 @@ function renderNav() {
   // versão, build e modo no rodapé (o completo, com commit e data, fica em Configurações → Sobre)
   const b = buildLabel();
   const ver = h('div.build-tag', { title: `${b.mode}${b.detail ? ' · ' + b.detail : ''}` },
-    h('span', b.short), h('span.build-mode' + (b.dev ? '.dev' : ''), b.dev ? 'Dev' : 'Prod'));
+    h('span', b.short), h('span.build-mode' + (b.dev ? '.dev' : ''), b.dev ? 'Beta' : 'Prod'));
   $('#sideFoot').replaceChildren(link('settings', 'Configurações', 'settings'), status, ver);
   if (refocus) {
     const again = document.querySelector(`#nav a[href="${refocus}"], #sideFoot a[href="${refocus}"]`);

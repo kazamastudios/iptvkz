@@ -14,12 +14,12 @@ export const S = {
 export function buildLabel() {
   const b = S.build || {};
   const dev = b.channel !== 'producao';
-  const parts = [b.version ? `v${b.version}` : null, b.build ? `build ${b.build}` : b.source === 'codigo' ? 'código local' : null].filter(Boolean);
+  const parts = [b.version ? `v${b.version}` : null, b.build >= 1e9 ? 'build local' : b.build ? `build ${b.build}` : b.source === 'codigo' ? 'código local' : null].filter(Boolean);
   let when = '';
   if (b.date) { try { when = new Date(b.date).toLocaleDateString('pt-BR'); } catch {} }
   return {
     dev,
-    mode: dev ? 'Desenvolvimento' : 'Produção',
+    mode: dev ? 'Beta' : 'Produção',
     short: parts.join(' · '),
     detail: [b.commit ? `commit ${b.commit}` : null, when ? `gerada em ${when}` : null].filter(Boolean).join(' · '),
   };

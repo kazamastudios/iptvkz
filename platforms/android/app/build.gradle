@@ -52,9 +52,9 @@ android {
             } else {
                 // build no PC, sem a chave oficial: outro app, instalado ao lado do oficial
                 signingConfig signingConfigs.debug
-                applicationIdSuffix '.dev'
-                versionNameSuffix '-dev'
-                manifestPlaceholders = [appLabel: 'IPTVKZ Dev']
+                applicationIdSuffix '.beta'
+                versionNameSuffix '-beta'
+                manifestPlaceholders = [appLabel: 'IPTVKZ Beta']
             }
         }
     }

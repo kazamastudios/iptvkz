@@ -68,7 +68,7 @@ const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file
 
 function main() {
   const v = props();
-  // Sem a chave oficial (build no PC), sai o app "IPTVKZ Dev", ao lado do oficial. Com versão de pacote alta,
+  // Sem a chave oficial (build no PC), sai o app "IPTVKZ Beta", ao lado do oficial. Com versão de pacote alta,
   // ele não troca o código local pelo da última versão publicada.
   const local = !process.env.ANDROID_KEYSTORE;
   const bundleVersion = Number(process.env.BUNDLE_VERSION || (local ? 1000000000 : v.bundleVersion));
