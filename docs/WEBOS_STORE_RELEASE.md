@@ -131,7 +131,7 @@ A versão oficial está em https://iptvkz.kazamastudios.com.br/privacidade.html.
 
 O app não traz conteúdo próprio e tem controle dos pais (PIN para categorias adultas).
 
-O que aparece depende só das listas de quem usa, e a LG testa o conteúdo "de acordo com a faixa etária". Por isso, a escolha mais segura contra reprovação é a faixa mais alta que o questionário permitir para players de mídia. Essa é uma recomendação, não uma regra confirmada da LG.
+O que aparece depende só das listas de quem usa. No envio de 11/11/2026 ficou **General Audiences (Livre)**: a classificação do Brasil vem de um questionário sobre o conteúdo do próprio app (todas as respostas "No" dão "All"), e a LG exige que a classificação geral seja igual à do Brasil. Marcar 18+ exigiria declarar conteúdo que o app não tem. A política do site diz o mesmo.
 
 ## Direitos e marcas
 
