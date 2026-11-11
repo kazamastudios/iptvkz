@@ -180,7 +180,9 @@ Abra http://localhost:8787. Só o servidor não precisa de `npm install`. Suas l
 | `npm run build` | gera a versão para TVs antigas (`src/web/js/app.legacy.js`) | `src/web/js/` |
 | `npm run vendor` | copia hls.js e mpegts.js para `src/web/vendor/` | `src/web/vendor/` |
 | `npm run dist:win` / `dist:mac` / `dist:linux` | gera os instaladores do computador | `dist/desktop/` |
-| `npm run ipk` | gera o app da LG | `dist/webos/` |
+| `npm run ipk` | gera o app da LG, canal Developer (Modo Desenvolvedor, atualiza pelo GitHub) | `dist/webos/` |
+| `npm run ipk:store` | gera o app da LG para a LG Content Store (sem atualização automática) | `dist/webos/store/` |
+| `npm test` | testa o servidor local com listas fictícias | — |
 | `npm run android` | gera o APK (precisa de JDK 17 e Android SDK com NDK) | `dist/android/` |
 
 Rode `npm install` antes dos comandos que usam ferramentas (Electron, esbuild, webOS CLI). Depois de mexer em `src/web/js`, rode `npm run build` para atualizar a versão das TVs antigas.

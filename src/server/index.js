@@ -150,7 +150,8 @@ async function handleProxy(req, res, query) {
 
   const ct = upstream.headers.get('content-type') || '';
   const finalUrl = upstream.url || target.href;
-  const out = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' };
+  // Sem Access-Control-Allow-Origin: só a própria interface (mesma origem) lê o que o proxy traz.
+  const out = { 'Cache-Control': 'no-store' };
 
   if (upstream.ok && looksLikeManifest(finalUrl, ct) && !ct.includes('video/mp2t')) {
     const text = await upstream.text();
@@ -245,7 +246,7 @@ async function handleApi(req, res, url) {
     if (!req.isLocal) return sendJson(res, 403, { error: 'Só na própria TV' });
     if (p === '/api/pair/start' && m === 'POST') {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
-      return sendJson(res, 200, pairing.begin(PORT, body.address));
+      return sendJson(res, 200, pairing.begin(PORT, body.address, body.list));
     }
     if (p === '/api/pair/status' && m === 'GET') return sendJson(res, 200, pairing.status(q.get('token')));
     if (p === '/api/pair/restore' && m === 'POST') {
@@ -392,10 +393,12 @@ async function handleApi(req, res, url) {
 const staticGz = new Map();
 
 function serveStatic(req, res, pathname) {
-  let rel = decodeURIComponent(pathname);
+  let rel;
+  try { rel = decodeURIComponent(pathname); } catch { rel = null; }
   if (rel === '/') rel = '/index.html';
-  const file = path.normalize(path.join(PUBLIC, rel));
-  if (!file.startsWith(PUBLIC)) {
+  const file = rel && !rel.includes('\0') ? path.normalize(path.join(PUBLIC, rel)) : '';
+  // com o separador no fim, "src/web-outra" não passa por "src/web"
+  if (!file.startsWith(path.join(PUBLIC, path.sep))) {
     res.writeHead(403);
     return res.end();
   }
@@ -432,9 +435,18 @@ const BLOCKED_PAGE = `<!doctype html><meta charset="utf-8"><title>IPTVKZ</title>
 <div><h1 style="color:#ff2a2a">IPTVKZ</h1><p>O acesso pela rede está desligado.</p>
 <p style="color:#999">No computador, abra Configurações → TV e outros aparelhos → ligue “Permitir acesso pela rede”.</p></div>`;
 
+const FORBIDDEN = (res, text) => {
+  res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(text);
+};
+
 const server = http.createServer((req, res) => {
   const ip = req.socket.remoteAddress;
   req.isLocal = net.isLoopback(ip);
+  // Um site aberto no navegador não pode usar o servidor: nem por um domínio apontado para cá
+  // (DNS rebinding) nem mandando pedidos de outra origem (CSRF).
+  if (!net.allowedHost(req.headers.host)) return FORBIDDEN(res, 'Endereço não permitido. Use o IP do aparelho.');
+  if (!net.sameOrigin(req.headers.origin, req.headers.host)) return FORBIDDEN(res, 'Origem não permitida.');
   // cadastro pelo celular: só esta rota, com chave de uso único, e só de redes domésticas
   if (pairing.enabled() && net.isPrivate(ip) && req.url.startsWith('/pair/')) {
     return pairing.handle(req, res, new URL(req.url, 'http://localhost'));
@@ -464,7 +476,9 @@ const server = http.createServer((req, res) => {
 
 // Inicia o servidor. Rodando direto (`npm start`) usa a porta fixa e encerra se ela já estiver
 // ocupada; no app de computador tenta as próximas portas e não desliga por inatividade.
-function start({ port = PORT, host = HOST, keepAlive = KEEPALIVE, portFallback = false, onQuit, autostart, pairing: withPairing } = {}) {
+// idleMs (TV LG): encerra depois desse tempo sem a interface aberta e sem vídeo tocando, mesmo com
+// keepAlive. A interface avisa a cada minuto (core/lifeline.js); fechar o app para os avisos.
+function start({ port = PORT, host = HOST, keepAlive = KEEPALIVE, portFallback = false, onQuit, autostart, pairing: withPairing, idleMs } = {}) {
   if (withPairing) pairing.enable();
   if (onQuit) hooks.onQuit = onQuit;
   if (autostart) hooks.autostart = autostart;
@@ -477,7 +491,14 @@ function start({ port = PORT, host = HOST, keepAlive = KEEPALIVE, portFallback =
       });
       server.listen(p, host, () => {
         PORT = p;
-        if (!keepAlive) {
+        if (idleMs > 0) {
+          setInterval(() => {
+            if (openStreams === 0 && Date.now() - lastSeen > idleMs) {
+              console.log('App fechado, encerrando.');
+              hooks.onQuit();
+            }
+          }, 30000).unref();
+        } else if (!keepAlive) {
           setInterval(() => {
             if (net.lanEnabled()) return; // a TV precisa encontrar o servidor ligado
             if (openStreams === 0 && Date.now() - lastSeen > IDLE_MS) {

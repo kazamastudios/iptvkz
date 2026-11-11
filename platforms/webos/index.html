@@ -13,15 +13,15 @@
   @-webkit-keyframes wait { from { -webkit-transform: translateX(-110%); } to { -webkit-transform: translateX(300%); } }
   @keyframes wait { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
   #msg { height: 40px; margin-top: 22px; font-size: 28px; color: #c9c9d8; text-align: center; }
-  #retry { display: none; margin-top: 14px; font-size: 24px; color: #fff; }
+  #retry { display: none; margin-top: 14px; padding: 18px 28px; font-size: 26px; color: #fff; cursor: pointer; }
 </style>
 </head>
 <body>
 <div id="boot">
   <img src="logo-horizontal.webp" alt="IPTVKZ" />
   <div id="track"><div id="fill" class="wait"></div></div>
-  <div id="msg" role="status">Verificando se há atualizações</div>
-  <div id="retry">Aperte OK para tentar de novo</div>
+  <div id="msg" role="status">Carregando</div>
+  <div id="retry">Aperte OK para tentar de novo ou Voltar para sair</div>
 </div>
 <script>
 // Abertura do app da LG: mostra o progresso do serviço interno e abre a interface quando ele está pronto.
@@ -72,7 +72,7 @@
   function start() {
     failed = false;
     $('retry').style.display = 'none';
-    say('Verificando se há atualizações');
+    say('Carregando');
     arm();
     var Bridge = window.WebOSServiceBridge || window.PalmServiceBridge;
     if (!Bridge) return fail('Este aparelho não é compatível.');
@@ -86,9 +86,19 @@
     bridge.call(SERVICE, JSON.stringify({ subscribe: true }));
   }
 
+  // Voltar (461) na abertura: comportamento padrão da LG (aviso de saída ou tela inicial).
+  function back() {
+    var sys = window.webOSSystem || window.PalmSystem;
+    try { if (sys && sys.platformBack) return sys.platformBack(); } catch (e) { /* fecha abaixo */ }
+    window.close();
+  }
+
   document.addEventListener('keydown', function (e) {
+    if (e.keyCode === 461 || e.key === 'GoBack') { e.preventDefault(); back(); return; }
     if (failed && e.keyCode === 13) start();
   });
+  // Ponteiro do Magic Remote: clicar na mensagem de erro também tenta de novo.
+  $('retry').addEventListener('click', function () { if (failed) start(); });
 
   start();
 })();

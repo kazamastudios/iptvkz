@@ -27,6 +27,29 @@ function isPrivate(ip) {
   return low.startsWith('fe80:') || low.startsWith('fc') || low.startsWith('fd');
 }
 
+// Nomes aceitos no cabeçalho Host: IP, localhost, nome do aparelho na rede (sem ponto) e
+// domínios locais. Um domínio da internet apontado para cá (DNS rebinding) fica de fora.
+function allowedHost(host) {
+  if (!host) return true; // HTTP/1.0 sem Host: não vem de navegador
+  const h = String(host).toLowerCase().replace(/:\d+$/, '');
+  if (/^\[[0-9a-f:.]+\]$/.test(h)) return true; // IPv6
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return true;
+  if (h === 'localhost' || h.endsWith('.localhost')) return true;
+  if (/^[a-z0-9-]+$/.test(h)) return true;
+  return /\.(local|lan|home|home\.arpa|internal|localdomain)$/.test(h);
+}
+
+// Navegadores mandam Origin em pedidos de outra origem; sem Origin ou com a mesma, segue.
+function sameOrigin(origin, host) {
+  if (origin == null || origin === '') return true;
+  try {
+    const o = new URL(origin);
+    return (o.protocol === 'http:' || o.protocol === 'https:') && o.host.toLowerCase() === String(host || '').toLowerCase();
+  } catch {
+    return false; // "null" (iframe isolado, arquivo local) e lixo
+  }
+}
+
 let cache = { at: 0, value: false };
 function lanEnabled() {
   if (Date.now() - cache.at > 2000) {
@@ -124,4 +147,4 @@ function setAutostart(on) {
   });
 }
 
-module.exports = { checkInternet, isLoopback, isPrivate, lanEnabled, lanAddresses, autostartEnabled, setAutostart, clean };
+module.exports = { allowedHost, sameOrigin, checkInternet, isLoopback, isPrivate, lanEnabled, lanAddresses, autostartEnabled, setAutostart, clean };
