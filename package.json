@@ -55,11 +55,14 @@
     "files": [
       "platforms/desktop/**",
       "platforms/windows/iptvkz.ico",
+      "platforms/windows/iptvkz-beta.ico",
       "src/server/**",
       "src/web/**",
       "!src/web/**/*.map",
       "assets/brand/icon-1024.png",
       "assets/brand/icon-small-64.png",
+      "assets/brand/icon-beta-1024.png",
+      "assets/brand/icon-small-beta-64.png",
       "package.json"
     ],
     "win": {

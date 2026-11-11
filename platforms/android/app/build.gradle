@@ -3,6 +3,8 @@ plugins { id 'com.android.application' }
 def v = new Properties()
 file('../version.properties').withInputStream { v.load(it) }
 def bundleVersion = (System.getenv('BUNDLE_VERSION') ?: v.bundleVersion).toInteger()
+// só a versão publicada (tag v*) é o app oficial; o resto é o Beta (nome, ícone e banner próprios)
+def isBeta = !(System.getenv('GITHUB_REF') ?: '').startsWith('refs/tags/v')
 
 android {
     namespace 'com.lucasyemz.iptvkz'
@@ -28,7 +30,11 @@ android {
 
     buildFeatures { buildConfig true }
     externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
-    sourceSets { main { jniLibs.srcDirs = ['libnode/bin'] } }
+    sourceSets {
+        main { jniLibs.srcDirs = ['libnode/bin'] }
+        // Beta: ícone e banner âmbar com o selo BETA (scripts/make-beta-icons.py), por cima dos do main
+        if (isBeta) release { res.srcDirs = ['src/beta/res'] }
+    }
     packaging { jniLibs { useLegacyPackaging = true } }
     aaptOptions { noCompress 'zip' }
 
@@ -49,7 +55,7 @@ android {
             if (System.getenv('ANDROID_KEYSTORE')) {
                 signingConfig signingConfigs.release
                 // build de PR (teste) também aparece como Beta; só a versão publicada (tag v*) é "IPTVKZ"
-                manifestPlaceholders = [appLabel: (System.getenv('GITHUB_REF') ?: '').startsWith('refs/tags/v') ? 'IPTVKZ' : 'IPTVKZ Beta']
+                manifestPlaceholders = [appLabel: isBeta ? 'IPTVKZ Beta' : 'IPTVKZ']
             } else {
                 // build no PC, sem a chave oficial: outro app, instalado ao lado do oficial
                 signingConfig signingConfigs.debug

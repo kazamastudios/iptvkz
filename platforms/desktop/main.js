@@ -15,6 +15,8 @@ const APP_NAME = (() => {
     return 'IPTVKZ Beta'; // rodando direto pelo código
   }
 })();
+const BETA = APP_NAME !== 'IPTVKZ';
+const WIN_ICO = BETA ? '../../platforms/windows/iptvkz-beta.ico' : '../../platforms/windows/iptvkz.ico';
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -47,7 +49,7 @@ function boot() {
 
   app.whenReady().then(async () => {
     if (process.platform === 'darwin') {
-      app.dock.setIcon(nativeImage.createFromPath(iconPath('icon-1024.png')));
+      app.dock.setIcon(nativeImage.createFromPath(iconPath(BETA ? 'icon-beta-1024.png' : 'icon-1024.png')));
     } else {
       Menu.setApplicationMenu(null);
     }
@@ -85,7 +87,7 @@ function showWindow() {
     show: false,
     title: APP_NAME,
     backgroundColor: '#08080b',
-    icon: iconPath(process.platform === 'win32' ? '../../platforms/windows/iptvkz.ico' : 'icon-1024.png'),
+    icon: iconPath(process.platform === 'win32' ? WIN_ICO : BETA ? 'icon-beta-1024.png' : 'icon-1024.png'),
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
@@ -130,8 +132,8 @@ function createTray() {
   if (process.platform === 'darwin') return; // no Mac o Dock já faz esse papel
   // No Windows o .ico já traz cada tamanho desenhado para a bandeja.
   const img = process.platform === 'win32'
-    ? nativeImage.createFromPath(iconPath('../../platforms/windows/iptvkz.ico'))
-    : nativeImage.createFromPath(iconPath('icon-small-64.png')).resize({ width: 22, height: 22 });
+    ? nativeImage.createFromPath(iconPath(WIN_ICO))
+    : nativeImage.createFromPath(iconPath(BETA ? 'icon-small-beta-64.png' : 'icon-small-64.png')).resize({ width: 22, height: 22 });
   tray = new Tray(img);
   tray.setToolTip(APP_NAME);
   tray.setContextMenu(Menu.buildFromTemplate([

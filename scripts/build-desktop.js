@@ -15,6 +15,9 @@ if (beta) {
     '-c.appId=com.lucasyemz.iptvkz.beta',
     '-c.artifactName=IPTVKZ-Beta-${version}-${os}-${arch}.${ext}',
     '-c.nsis.shortcutName=IPTVKZ Beta',
+    '-c.win.icon=platforms/windows/iptvkz-beta.ico', // ícones âmbar com o selo BETA (scripts/make-beta-icons.py)
+    '-c.mac.icon=assets/brand/icon-mac-beta-1024.png',
+    '-c.linux.icon=assets/brand/icon-beta-1024.png',
     '-c.nsis.artifactName=IPTVKZ-Beta-${version}-windows-setup.${ext}',
     '-c.portable.artifactName=IPTVKZ-Beta-${version}-windows-portable.${ext}',
   );
