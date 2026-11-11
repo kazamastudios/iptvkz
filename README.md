@@ -146,7 +146,7 @@ O app da LG é independente: a interface e o servidor rodam dentro da própria T
 3. Instale o arquivo baixado:
 
 ```bash
-ares-install --device minha-tv com.lucasyemz.iptvkz_*.ipk
+ares-install --device minha-tv com.kazamastudios.iptvkz.dev_*.ipk
 ```
 
 O modo desenvolvedor da LG expira depois de um tempo; renove a sessão pelo app Developer Mode para o IPTVKZ continuar abrindo.

@@ -35,7 +35,7 @@
   },
   "main": "platforms/desktop/main.js",
   "author": {
-    "name": "lucasyemz",
+    "name": "Kazama Studios",
     "email": "lukkolly@gmail.com"
   },
   "license": "MIT",
@@ -47,7 +47,7 @@
   "build": {
     "appId": "com.lucasyemz.iptvkz",
     "productName": "IPTVKZ",
-    "copyright": "Copyright © 2026 lucasyemz",
+    "copyright": "Copyright © 2026 Kazama Studios",
     "artifactName": "IPTVKZ-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "dist/desktop"
@@ -111,7 +111,7 @@
         "AppImage",
         "deb"
       ],
-      "maintainer": "lucasyemz <lukkolly@gmail.com>"
+      "maintainer": "Kazama Studios <lukkolly@gmail.com>"
     },
     "publish": {
       "provider": "github",

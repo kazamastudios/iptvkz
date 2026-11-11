@@ -1,5 +1,5 @@
 {
-  "name": "com.lucasyemz.iptvkz.service",
+  "name": "com.kazamastudios.iptvkz.dev.service",
   "version": "1.0.0",
   "description": "Servidor interno e atualização do IPTVKZ",
   "main": "main.js"

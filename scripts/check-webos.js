@@ -68,7 +68,7 @@ function check({ appDir, serviceDir, channel, appId, serviceId }) {
   // ---------- canal Store: nada de código vindo de fora ----------
   const main = fs.readFileSync(path.join(serviceDir, 'main.js'), 'utf8');
   if (channel === 'store') {
-    need(!splash.includes('com.lucasyemz.iptvkz'), 'Store: index.html ainda cita o id do Developer');
+    need(!splash.includes('com.kazamastudios.iptvkz.dev'), 'Store: index.html ainda cita o id do Developer');
     for (const bad of ['webos-update.json', 'releases/latest', 'createVerify', 'gunzipSync', '/media/developer']) {
       need(!main.includes(bad), `Store: service/main.js contém "${bad}" (atualização automática ou caminho do Modo Desenvolvedor)`);
     }

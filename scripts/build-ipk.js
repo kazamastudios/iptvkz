@@ -32,7 +32,7 @@ const UPDATE_BASE = process.env.UPDATE_BASE || 'https://github.com/kazamastudios
 // Developer com número de build: baixa atualizações. IPK feito no PC e Store: nunca.
 const AUTO_UPDATE = !STORE && bundleVersion > 0;
 
-const DEV_ID = 'com.lucasyemz.iptvkz';
+const DEV_ID = 'com.kazamastudios.iptvkz.dev';
 const APP_ID = STORE ? process.env.WEBOS_STORE_ID || 'com.kazamastudios.iptvkz' : DEV_ID;
 const SERVICE_ID = APP_ID + '.service';
 // Cadastro pelo celular (servidor aberto à rede de casa). WEBOS_LAN_PAIRING=0 deixa só a própria TV.
