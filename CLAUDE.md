@@ -10,6 +10,7 @@ Toda pasta tem uma função só. Antes de criar um arquivo ou pasta, encaixe nes
 | `assets/brand/` | Logos e ícones originais | Sim |
 | `scripts/` | Scripts de build e manutenção | Sim |
 | `docs/` | Documentação | Sim |
+| `public/` | Landing page publicada pelo Cloudflare Pages. Sem build, sem importar nada de `src/`, e nenhum build escreve aqui | Sim |
 | `dist/<plataforma>/` | Tudo o que os builds geram | Não |
 | `data/` | Listas e preferências de quem roda pelo código | Não |
 

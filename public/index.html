@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IPTVKZ: player IPTV gratuito para TV, computador e celular</title>
+  <meta name="description" content="Player IPTV gratuito e de código aberto para suas próprias listas M3U e Xtream Codes. Configure a TV pelo celular com QR Code. LG webOS, Android TV, Android, Windows, macOS e Linux.">
+  <link rel="canonical" href="https://kazamastudios.com.br/iptvkz/">
+  <meta name="theme-color" content="#08080B">
+  <meta name="color-scheme" content="dark">
+
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="IPTVKZ · Kazama Studios">
+  <meta property="og:title" content="IPTVKZ: suas listas, sua TV, sem complicação">
+  <meta property="og:description" content="Player IPTV gratuito para suas próprias listas. Configure a TV pelo celular com QR Code.">
+  <meta property="og:url" content="https://kazamastudios.com.br/iptvkz/">
+  <meta property="og:image" content="https://kazamastudios.com.br/iptvkz/images/og-iptvkz.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="IPTVKZ aberto em uma TV mostrando a tela de filmes">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="IPTVKZ: suas listas, sua TV, sem complicação">
+  <meta name="twitter:description" content="Player IPTV gratuito para suas próprias listas. Configure a TV pelo celular com QR Code.">
+  <meta name="twitter:image" content="https://kazamastudios.com.br/iptvkz/images/og-iptvkz.jpg">
+
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="images/brand/favicon-32.png">
+  <link rel="apple-touch-icon" href="images/brand/apple-touch-icon.png">
+  <link rel="preload" href="fonts/inter-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" as="image" href="images/mockups/hero-tv-1600.webp" imagesrcset="images/mockups/hero-tv-960.webp 960w, images/mockups/hero-tv-1600.webp 1600w" imagesizes="(max-width: 1200px) 100vw, 1120px" media="(min-width: 601px)">
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    // Esconde o hero só até as animações começarem; se elas não carregarem, a página aparece igual.
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.classList.add('motion');
+      setTimeout(function () { if (!document.documentElement.classList.contains('motion-ready')) document.documentElement.classList.remove('motion'); }, 3500);
+    }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "IPTVKZ",
+    "description": "Player IPTV gratuito para listas M3U/M3U8 e Xtream Codes, com TV ao vivo, filmes, séries, guia de programação e configuração da TV pelo celular via QR Code.",
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "LG webOS, Android TV, Android, Windows, macOS, Linux",
+    "softwareVersion": "1.0.5",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "BRL" },
+    "license": "https://opensource.org/licenses/MIT",
+    "url": "https://kazamastudios.com.br/iptvkz/",
+    "downloadUrl": "https://github.com/lucasyemz/iptvkz/releases/latest",
+    "image": "https://kazamastudios.com.br/iptvkz/images/og-iptvkz.jpg",
+    "author": { "@type": "Organization", "name": "Kazama Studios", "url": "https://kazamastudios.com.br" }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip" href="#conteudo">Pular para o conteúdo</a>
+
+  <header class="topbar" id="topo">
+    <div class="wrap topbar__in">
+      <a class="brand" href="#topo" aria-label="IPTVKZ, voltar ao início">
+        <img src="images/brand/logo-iptvkz.webp" width="600" height="140" alt="IPTVKZ">
+      </a>
+      <nav class="nav" aria-label="Seções">
+        <a href="#qr-code">QR Code</a>
+        <a href="#recursos">Recursos</a>
+        <a href="#capturas">Capturas</a>
+        <a href="#faq">Dúvidas</a>
+      </nav>
+      <a class="btn btn--sm btn--primary" href="#download">Baixar</a>
+    </div>
+  </header>
+
+  <main id="conteudo">
+    <!-- HERO -->
+    <section class="hero" aria-labelledby="hero-titulo">
+      <canvas class="hero__gl" aria-hidden="true"></canvas>
+      <div class="hero__glow" aria-hidden="true"></div>
+      <div class="wrap hero__text">
+        <p class="eyebrow"><span class="dot" aria-hidden="true"></span> Gratuito e de código aberto · <span data-release-version>v1.0.5</span></p>
+        <h1 id="hero-titulo"><span class="nw">Suas listas.</span> <span class="nw">Sua TV.</span><br><span class="accent nw">Sem complicação.</span></h1>
+        <p class="lead">Um player IPTV gratuito para organizar e reproduzir suas próprias listas. Configure sua TV pelo celular, navegue com facilidade e aproveite tudo em uma interface moderna.</p>
+        <div class="cta">
+          <a class="btn btn--primary" href="#download"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-download"/></svg>Baixar gratuitamente</a>
+          <a class="btn btn--ghost" href="#recursos">Conhecer os recursos</a>
+        </div>
+        <ul class="platforms" aria-label="Plataformas compatíveis">
+          <li><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-lg"/></svg>LG webOS</li>
+          <li><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-android"/></svg>Android TV</li>
+          <li><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-android"/></svg>Android</li>
+          <li><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-windows"/></svg>Windows</li>
+          <li><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-apple"/></svg>macOS</li>
+          <li><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-linux"/></svg>Linux</li>
+        </ul>
+      </div>
+      <div class="wrap wrap--wide hero__stage">
+        <figure class="hero__shot">
+          <picture>
+            <source media="(max-width: 600px)" srcset="images/mockups/hero-tv-mobile-800.webp" width="800" height="450">
+          <img src="images/mockups/hero-tv-1600.webp"
+               srcset="images/mockups/hero-tv-960.webp 960w, images/mockups/hero-tv-1600.webp 1600w"
+               sizes="(max-width: 1200px) 100vw, 1120px"
+               width="1600" height="900" fetchpriority="high"
+               alt="TV na sala mostrando o IPTVKZ no modo TV, na tela de filmes com capas e categorias">
+          </picture>
+        </figure>
+      </div>
+    </section>
+
+    <!-- QR CODE -->
+    <section class="section qr" id="qr-code" aria-labelledby="qr-titulo">
+      <div class="wrap">
+        <header class="section__head">
+          <p class="kicker"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-qr-code"/></svg>O nosso diferencial</p>
+          <h2 id="qr-titulo">Configure na TV.<br>Digite pelo celular.</h2>
+          <p class="sub">Chega de digitar links enormes com o controle remoto. Escaneie o QR Code, adicione sua lista pelo celular e comece a assistir.</p>
+        </header>
+
+        <figure class="qr__shot">
+          <div class="qr__media">
+          <picture>
+            <source media="(max-width: 600px)" srcset="images/mockups/qr-tv-celular-mobile-800.webp" width="800" height="450">
+          <img src="images/mockups/qr-tv-celular-1600.webp"
+               srcset="images/mockups/qr-tv-celular-960.webp 960w, images/mockups/qr-tv-celular-1600.webp 1600w"
+               sizes="(max-width: 1200px) 100vw, 1120px"
+               width="1600" height="900" loading="lazy" decoding="async"
+               alt="TV mostrando a tela Adicionar lista do IPTVKZ com o QR Code, e um celular com o formulário Enviar para a TV">
+          </picture>
+          <svg class="qr__fx" viewBox="0 0 2048 1152" aria-hidden="true" focusable="false">
+            <defs>
+              <filter id="qr-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <linearGradient id="qr-beam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff2a2a" stop-opacity="0"/><stop offset=".5" stop-color="#ff4d4d" stop-opacity=".95"/><stop offset="1" stop-color="#ff2a2a" stop-opacity="0"/></linearGradient>
+            </defs>
+            <path class="qr__path" d="M1500 606 C 1290 430, 880 110, 532 252" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="3" stroke-linecap="round"/>
+            <path class="qr__trail" d="M1500 606 C 1290 430, 880 110, 532 252" fill="none" stroke="#ff2a2a" stroke-width="6" stroke-linecap="round" filter="url(#qr-glow)"/>
+            <circle class="qr__ring-phone" cx="1521" cy="619" r="18" fill="none" stroke="#ff2a2a" stroke-width="4"/>
+            <circle class="qr__ring-tv" cx="473" cy="266" r="40" fill="none" stroke="#ff2a2a" stroke-width="5" opacity="0"/>
+            <rect class="qr__scan" x="424" y="222" width="98" height="10" rx="5" fill="url(#qr-beam)" filter="url(#qr-glow)"/>
+            <circle class="qr__dot" r="10" fill="#fff" filter="url(#qr-glow)" opacity="0"/>
+          </svg>
+          </div>
+          <figcaption>Telas reais do IPTVKZ: a TV mostra o QR Code e o celular abre o formulário da lista.</figcaption>
+        </figure>
+
+        <ol class="steps">
+          <li class="step">
+            <div class="step__img step__img--tv"><img src="images/screens/passo-1-tv-qr.webp" width="560" height="200" loading="lazy" decoding="async" alt="Caixa Mais rápido pelo celular, com o QR Code, na tela Adicionar lista da TV"></div>
+            <span class="step__n" aria-hidden="true">1</span>
+            <h3>Abra o IPTVKZ na TV</h3>
+            <p>Em “Adicionar lista”, a TV mostra um QR Code exclusivo.</p>
+          </li>
+          <li class="step">
+            <div class="step__img step__img--phone"><img src="images/screens/passo-2-celular.webp" width="390" height="600" loading="lazy" decoding="async" alt="Formulário do celular com Xtream, Link M3U e Carregar lista"></div>
+            <span class="step__n" aria-hidden="true">2</span>
+            <h3>Escaneie com o celular</h3>
+            <p>Use a câmera, com o celular no mesmo Wi‑Fi da TV.</p>
+          </li>
+          <li class="step">
+            <div class="step__img step__img--tv"><img src="images/screens/tv-canais.webp" width="1280" height="720" loading="lazy" decoding="async" alt="Lista de canais no modo TV com o foco do controle remoto"></div>
+            <span class="step__n" aria-hidden="true">3</span>
+            <h3>Adicione sua lista e aproveite</h3>
+            <p>Preencha Xtream Codes ou link M3U e toque em “Enviar para a TV”.</p>
+          </li>
+        </ol>
+
+        <ul class="qr__notes">
+          <li><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-shield-check"/></svg>Os dados vão direto do celular para a TV, pela rede de casa. Nada passa por servidores de fora.</li>
+          <li><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-tv"/></svg>Disponível nos apps de LG webOS e Android TV.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- RECURSOS -->
+    <section class="section" id="recursos" aria-labelledby="rec-titulo">
+      <div class="wrap">
+        <header class="section__head">
+          <p class="kicker">Recursos</p>
+          <h2 id="rec-titulo">Tudo o que você precisa, em um só player.</h2>
+        </header>
+
+        <article class="spotlight" aria-labelledby="streaming-titulo">
+          <div class="spotlight__text">
+            <span class="tag">Novo</span>
+            <h3 id="streaming-titulo">Visualização Streaming</h3>
+            <p>Um destaque grande no topo mostra cada filme ou série em detalhe: imagem ampla, sinopse, nota e os botões para assistir, salvar ou favoritar. Abaixo, fileiras de cards, como nos apps de streaming.</p>
+            <p>Prefere a grade de sempre? Troque entre Clássica e Streaming ao lado da busca, em cada aparelho.</p>
+            <div class="spotlight__light">
+              <svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-play"/></svg>
+              <div><strong>Leve de verdade.</strong> Feito para abrir rápido no seu aparelho, até em TVs mais antigas: interface sem frameworks pesados e nada de conversão de vídeo no dispositivo.</div>
+            </div>
+          </div>
+          <figure class="spotlight__shot">
+            <img src="images/screens/tv-streaming.webp" srcset="images/screens/tv-streaming.webp 1280w, images/screens/tv-streaming-1600.webp 1600w" sizes="(max-width: 1000px) 100vw, 640px"
+                 width="1280" height="720" loading="lazy" decoding="async"
+                 alt="Visualização Streaming no modo TV: destaque grande de um filme com imagem ampla, sinopse e botões, e uma fileira de cards abaixo">
+            <figcaption>Tela real, com títulos fictícios de demonstração.</figcaption>
+          </figure>
+        </article>
+
+        <ul class="features">
+          <li class="feat"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-list-video"/></svg><h3>M3U, M3U8 e Xtream Codes</h3><p>Use link, arquivo ou conta Xtream. Tenha várias listas e troque entre elas na hora.</p></li>
+          <li class="feat"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-tv-minimal"/></svg><h3>TV ao vivo</h3><p>Categorias, recentes e o que passa agora. Zapeie com ↑ e ↓ sem sair da tela cheia.</p></li>
+          <li class="feat"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-clapperboard"/></svg><h3>Filmes e séries</h3><p>Prateleiras por categoria, temporadas e próximo episódio automático.</p></li>
+          <li class="feat"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-calendar-clock"/></svg><h3>Guia de programação</h3><p>EPG em grade de horários, com XMLTV e ajuste de fuso por lista.</p></li>
+          <li class="feat"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-star"/></svg><h3>Favoritos</h3><p>Marque canais, filmes e séries com a estrela e ache tudo num só lugar.</p></li>
+          <li class="feat"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-history"/></svg><h3>Continuar assistindo</h3><p>Volte ao ponto exato em que parou, em filmes e séries.</p></li>
+          <li class="feat"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-captions"/></svg><h3>Áudio e legendas</h3><p>Troque o áudio, use legendas do stream ou .srt/.vtt e ajuste atraso e tamanho.</p></li>
+          <li class="feat"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-lock"/></svg><h3>Controle dos pais</h3><p>Um PIN de 4 dígitos esconde o conteúdo adulto em todos os aparelhos.</p></li>
+          <li class="feat"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-archive-restore"/></svg><h3>Backup e restauração</h3><p>Leve uma lista com favoritos e histórico para outro aparelho ou depois de reinstalar.</p></li>
+          <li class="feat"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-remote"/></svg><h3>Feito para o controle remoto</h3><p>Letras grandes e navegação por setas, OK e Voltar. Busca por voz na LG e no Android.</p></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- CAPTURAS -->
+    <section class="section" id="capturas" aria-labelledby="cap-titulo">
+      <div class="wrap">
+        <header class="section__head">
+          <p class="kicker">Capturas de tela</p>
+          <h2 id="cap-titulo">Veja o IPTVKZ por dentro.</h2>
+          <p class="sub">Telas reais do aplicativo, com uma lista de demonstração de canais, filmes e séries fictícios.</p>
+        </header>
+
+        <div class="gallery" data-gallery>
+          <div class="gallery__bar">
+            <div class="tabs" role="tablist" aria-label="Telas do aplicativo">
+              <button role="tab" type="button" aria-selected="true" data-tab="live">TV ao vivo</button>
+              <button role="tab" type="button" aria-selected="false" tabindex="-1" data-tab="movies">Filmes</button>
+              <button role="tab" type="button" aria-selected="false" tabindex="-1" data-tab="series">Séries</button>
+              <button role="tab" type="button" aria-selected="false" tabindex="-1" data-tab="guide">Guia</button>
+              <button role="tab" type="button" aria-selected="false" tabindex="-1" data-tab="search">Busca</button>
+              <button role="tab" type="button" aria-selected="false" tabindex="-1" data-tab="player">Player</button>
+            </div>
+            <div class="seg" role="group" aria-label="Aparelho" data-modes>
+              <button type="button" aria-pressed="true" data-mode="tv"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-tv"/></svg>Modo TV</button>
+              <button type="button" aria-pressed="false" data-mode="desktop"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-monitor"/></svg>Computador</button>
+            </div>
+          </div>
+          <figure class="gallery__stage" role="tabpanel" aria-live="polite">
+            <button class="gallery__nav gallery__nav--prev" type="button" aria-label="Tela anterior" data-prev><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-chevron-left"/></svg></button>
+            <div class="gallery__frame">
+              <img data-gallery-img src="images/screens/tv-canais.webp" width="1280" height="720" decoding="async"
+                   alt="Modo TV: lista de canais com o foco do controle remoto">
+            </div>
+            <button class="gallery__nav gallery__nav--next" type="button" aria-label="Próxima tela" data-next><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-chevron-right"/></svg></button>
+            <figcaption data-gallery-cap>Canais com o foco do controle remoto.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- DOWNLOAD -->
+    <section class="section download" id="download" aria-labelledby="dl-titulo">
+      <div class="wrap">
+        <header class="section__head">
+          <p class="kicker">Download</p>
+          <h2 id="dl-titulo">Gratuito. Simples. Feito para você.</h2>
+          <p class="sub">Versão atual: <strong data-release-version>v1.0.5</strong>. Todos os arquivos vêm das <a href="https://github.com/lucasyemz/iptvkz/releases/latest" rel="noopener">Releases oficiais no GitHub</a>.</p>
+        </header>
+
+        <div class="dl-grid">
+          <article class="dl">
+            <header class="dl__head"><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-android"/></svg><div><h3>Android TV / Google TV</h3><p class="dl__ver" data-release-version>v1.0.5</p></div></header>
+            <div class="dl__row dl__row--store"><span class="dl__label"><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-googleplay"/></svg>Google Play</span><span class="badge">Em preparação</span></div>
+            <div class="dl__row"><span class="dl__label">Instalação manual (APK)</span></div>
+            <a class="btn btn--primary btn--block" data-asset="IPTVKZ-android.apk" href="https://github.com/lucasyemz/iptvkz/releases/download/v1.0.5/IPTVKZ-android.apk"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-download"/></svg>Baixar APK <span class="size" data-size>35 MB</span></a>
+            <p class="dl__note">Permita “fontes desconhecidas” no app que vai abrir o arquivo. Funciona sem computador ligado.</p>
+          </article>
+
+          <article class="dl">
+            <header class="dl__head"><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-lg"/></svg><div><h3>LG webOS</h3><p class="dl__ver" data-release-version>v1.0.5</p></div></header>
+            <div class="dl__row dl__row--store"><span class="dl__label"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-tv"/></svg>LG Content Store</span><span class="badge">Em preparação</span></div>
+            <div class="dl__row"><span class="dl__label">Instalação manual (IPK)</span></div>
+            <a class="btn btn--primary btn--block" data-asset-re="^com\.lucasyemz\.iptvkz_.*\.ipk$" href="https://github.com/lucasyemz/iptvkz/releases/download/v1.0.5/com.lucasyemz.iptvkz_1.0.5_all.ipk"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-download"/></svg>Baixar IPK <span class="size" data-size>1,4 MB</span></a>
+            <p class="dl__note">Instalação pelo modo desenvolvedor da LG, em TVs com webOS 4 ou mais novo. <a href="https://github.com/lucasyemz/iptvkz#lg-webos" rel="noopener">Ver o passo a passo</a>.</p>
+          </article>
+
+          <article class="dl">
+            <header class="dl__head"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-smartphone"/></svg><div><h3>Android (celular)</h3><p class="dl__ver" data-release-version>v1.0.5</p></div></header>
+            <div class="dl__row dl__row--store"><span class="dl__label"><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-googleplay"/></svg>Google Play</span><span class="badge">Em preparação</span></div>
+            <div class="dl__row"><span class="dl__label">Instalação manual (APK)</span></div>
+            <a class="btn btn--primary btn--block" data-asset="IPTVKZ-android.apk" href="https://github.com/lucasyemz/iptvkz/releases/download/v1.0.5/IPTVKZ-android.apk"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-download"/></svg>Baixar APK <span class="size" data-size>35 MB</span></a>
+            <p class="dl__note">O mesmo APK da TV. Android 7.0 ou mais novo, com a tela deitada.</p>
+          </article>
+
+          <article class="dl">
+            <header class="dl__head"><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-windows"/></svg><div><h3>Windows</h3><p class="dl__ver" data-release-version>v1.0.5</p></div></header>
+            <a class="btn btn--primary btn--block" data-asset-re="-windows-setup\.exe$" href="https://github.com/lucasyemz/iptvkz/releases/download/v1.0.5/IPTVKZ-1.0.5-windows-setup.exe"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-download"/></svg>Instalador <span class="size" data-size>85 MB</span></a>
+            <a class="btn btn--ghost btn--block" data-asset-re="-windows-portable\.exe$" href="https://github.com/lucasyemz/iptvkz/releases/download/v1.0.5/IPTVKZ-1.0.5-windows-portable.exe">Versão portátil <span class="size" data-size>84 MB</span></a>
+            <p class="dl__note">Sem assinatura digital ainda: em “O Windows protegeu o computador”, clique em Mais informações → Executar assim mesmo.</p>
+          </article>
+
+          <article class="dl">
+            <header class="dl__head"><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-apple"/></svg><div><h3>macOS</h3><p class="dl__ver" data-release-version>v1.0.5</p></div></header>
+            <a class="btn btn--primary btn--block" data-asset-re="-mac-arm64\.dmg$" href="https://github.com/lucasyemz/iptvkz/releases/download/v1.0.5/IPTVKZ-1.0.5-mac-arm64.dmg"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-download"/></svg>Apple Silicon <span class="size" data-size>103 MB</span></a>
+            <a class="btn btn--ghost btn--block" data-asset-re="-mac-x64\.dmg$" href="https://github.com/lucasyemz/iptvkz/releases/download/v1.0.5/IPTVKZ-1.0.5-mac-x64.dmg">Intel <span class="size" data-size>108 MB</span></a>
+            <p class="dl__note">Na primeira vez, clique com o botão direito no app → Abrir → Abrir.</p>
+          </article>
+
+          <article class="dl">
+            <header class="dl__head"><svg class="ic ic--b" aria-hidden="true"><use href="images/icons.svg#b-linux"/></svg><div><h3>Linux</h3><p class="dl__ver" data-release-version>v1.0.5</p></div></header>
+            <a class="btn btn--primary btn--block" data-asset-re="-linux-x86_64\.AppImage$" href="https://github.com/lucasyemz/iptvkz/releases/download/v1.0.5/IPTVKZ-1.0.5-linux-x86_64.AppImage"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-download"/></svg>AppImage <span class="size" data-size>111 MB</span></a>
+            <a class="btn btn--ghost btn--block" data-asset-re="-linux-amd64\.deb$" href="https://github.com/lucasyemz/iptvkz/releases/download/v1.0.5/IPTVKZ-1.0.5-linux-amd64.deb">Pacote .deb <span class="size" data-size>78 MB</span></a>
+            <p class="dl__note">Para computadores de 64 bits (x86_64).</p>
+          </article>
+        </div>
+
+        <p class="dl-warn" role="note"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-shield-check"/></svg><span><strong>Cuidado com golpes.</strong> O IPTVKZ é gratuito e só é distribuído pelos links desta página. Não vendemos listas, canais, assinaturas nem “versões com conteúdo”: quem oferece isso usando o nome IPTVKZ não tem relação com a Kazama Studios.</span></p>
+
+        <p class="dl-foot"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-smartphone"/></svg><span>iPhone ou outra TV? Use pelo navegador, com o app de computador como servidor. <a href="#faq-aparelhos">Veja como</a>.</span></p>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section" id="faq" aria-labelledby="faq-titulo">
+      <div class="wrap wrap--narrow">
+        <header class="section__head">
+          <p class="kicker">Perguntas frequentes</p>
+          <h2 id="faq-titulo">Dúvidas comuns.</h2>
+        </header>
+        <div class="faq">
+          <details>
+            <summary>O IPTVKZ é gratuito?</summary>
+            <p>Sim. O IPTVKZ é gratuito e de código aberto, sob a Licença MIT. O código está no <a href="https://github.com/lucasyemz/iptvkz" rel="noopener">GitHub</a>.</p>
+          </details>
+          <details>
+            <summary>O aplicativo fornece canais ou listas?</summary>
+            <p>Não. O IPTVKZ é só um player: vem sem nenhuma lista, canal ou conteúdo. Você usa as listas que você mesmo cadastrar e é responsável pelo que adiciona e assiste. Use apenas conteúdo que você tem direito de assistir.</p>
+          </details>
+          <details>
+            <summary>Vocês se responsabilizam por pirataria ou fraude?</summary>
+            <p>Não. A Kazama Studios e os desenvolvedores do IPTVKZ não se responsabilizam por pirataria, fraude, golpes ou cobranças ligadas às listas, contas ou assinaturas que o usuário adicionar ou contratar de terceiros. Problemas com uma lista devem ser tratados com quem a forneceu; em caso de golpe, procure os órgãos de defesa do consumidor e as autoridades. Veja os <a href="termos.html#pirataria-e-fraude">Termos de uso</a>.</p>
+          </details>
+          <details>
+            <summary>Como configuro minha TV pelo celular?</summary>
+            <p>Nos apps de LG webOS e Android TV, abra “Adicionar lista”. A TV mostra um QR Code: escaneie com a câmera do celular, conectado ao mesmo Wi‑Fi da TV. No celular, preencha a conta Xtream Codes ou o link M3U e toque em “Enviar para a TV”. Os dados vão direto para a TV, pela rede de casa.</p>
+          </details>
+          <details>
+            <summary>Preciso deixar o computador ligado?</summary>
+            <p>Não, nos apps de LG webOS, Android TV e Android: tudo roda dentro do próprio aparelho. O computador só precisa ficar ligado se você assistir pelo navegador de outra TV ou celular, usando o app de computador como servidor.</p>
+          </details>
+          <details id="faq-aparelhos">
+            <summary>Quais aparelhos são compatíveis?</summary>
+            <p>TVs LG com webOS 4 ou mais novo, Android TV e Google TV, celulares Android 7.0 ou mais novos, Windows, macOS (Apple Silicon e Intel) e Linux (AppImage ou .deb). iPhone e outros aparelhos usam o navegador: no app de computador, abra Configurações → TV e outros aparelhos → Permitir acesso pela rede de casa, e acesse o endereço mostrado.</p>
+          </details>
+          <details>
+            <summary>Como faço para atualizar?</summary>
+            <p>Na LG e no Android TV, o app confere a versão mais recente ao abrir e aplica as atualizações sozinho. Quando a parte nativa muda, o app Android oferece baixar o APK novo; na LG, instale o .ipk novo. No computador, baixe e instale a versão nova nesta página.</p>
+          </details>
+          <details>
+            <summary>Onde posso solicitar suporte?</summary>
+            <p>Abra um chamado em <a href="https://github.com/lucasyemz/iptvkz/issues" rel="noopener">GitHub Issues</a>, com o aparelho, a versão do app e o que aconteceu. Não envie links, usuários ou senhas das suas listas.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <p class="disclaimer"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-shield-check"/></svg><span>O IPTVKZ é apenas um reprodutor de mídia. Ele não fornece, hospeda, vende nem indica conteúdo, listas ou assinaturas. A Kazama Studios e os desenvolvedores não se responsabilizam por pirataria, fraude ou qualquer uso indevido das listas adicionadas pelo usuário. <a href="termos.html">Termos de uso</a> · <a href="privacidade.html">Política de privacidade</a></span></p>
+      <div class="footer__in">
+        <div class="footer__brand">
+          <img src="images/brand/logo-iptvkz.webp" width="600" height="140" alt="IPTVKZ" loading="lazy">
+          <p>Desenvolvido por <a href="https://kazamastudios.com.br" rel="noopener">Kazama Studios</a></p>
+        </div>
+        <nav class="footer__nav" aria-label="Links do rodapé">
+          <a href="https://github.com/lucasyemz/iptvkz" rel="noopener"><svg class="ic" aria-hidden="true"><use href="images/icons.svg#i-github"/></svg>GitHub</a>
+          <a href="termos.html">Termos de uso</a>
+          <a href="privacidade.html">Política de privacidade</a>
+          <a href="https://github.com/lucasyemz/iptvkz/issues" rel="noopener">Suporte</a>
+          <a href="https://kazamastudios.com.br" rel="noopener">kazamastudios.com.br</a>
+        </nav>
+      </div>
+      <p class="footer__legal">© 2026 Kazama Studios · Código sob Licença MIT</p>
+    </div>
+  </footer>
+
+  <script src="js/main.js" defer></script>
+  <script src="js/vendor/gsap.min.js" defer></script>
+  <script src="js/vendor/ScrollTrigger.min.js" defer></script>
+  <script src="js/motion.js" defer></script>
+</body>
+</html>
