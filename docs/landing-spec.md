@@ -27,7 +27,7 @@ Não entram agora: blog, comparativo com outros apps e doações.
 ### 2.1 Topo
 
 - **Linha acima do título, em texto simples:** "Grátis · Sem anúncio · Sem cadastro".
-- **Título:** "Você já paga pela lista. **Pare de pagar pelo player.**", com a segunda frase em vermelho.
+- **Título, em três linhas:** "O player IPTV / **que não cobra** / para ser bom.", com a linha do meio em vermelho.
 - **Texto:** player completo para listas M3U e Xtream, com QR Code, visual de streaming, guia, filmes e séries, de graça.
 - **Botões:** principal detectado, como "Baixar grátis para Windows", e "Outros aparelhos".
 - **Print:** tela real ao lado do texto, com o botão de visualização funcionando de verdade. Alterna a imagem entre Clássica e Streaming, como no app.
