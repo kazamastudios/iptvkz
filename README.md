@@ -26,6 +26,10 @@ Use suas listas M3U e Xtream Codes com TV ao vivo, guia de programação, filmes
   <a href="#rodar-pelo-código">Rodar pelo código</a>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/destaque-streaming.webp" alt="IPTVKZ na visualização Streaming, com um filme fictício em destaque e a fileira Continuar assistindo" />
+</p>
+
 ---
 
 > [!IMPORTANT]
@@ -33,22 +37,33 @@ Use suas listas M3U e Xtream Codes com TV ao vivo, guia de programação, filmes
 
 ## Capturas de tela
 
-As telas abaixo usam uma lista de demonstração com canais, filmes e séries fictícios.
+As telas abaixo são reais e usam uma lista de demonstração, com canais, filmes e séries fictícios. O app não vem com nenhum conteúdo.
+
+### Lista pelo QR Code
+
+Na TV, escaneie o código e preencha a lista no celular, sem digitar com o controle.
+
+<table>
+  <tr>
+    <td width="72%"><img src="docs/screenshots/tv-qr.webp" alt="TV mostrando a tela Adicionar lista com o QR Code" /><p align="center"><sub>A TV mostra o QR Code</sub></p></td>
+    <td><img src="docs/screenshots/celular-qr.webp" alt="Formulário no celular com o botão Enviar para a TV" /><p align="center"><sub>Você preenche no celular</sub></p></td>
+  </tr>
+</table>
 
 ### Computador
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/desktop-tv-ao-vivo.webp" alt="TV ao vivo com o player, o guia de agora e a seguir e a lista de canais" /><p align="center"><sub>TV ao vivo: player, agora/a seguir e lista para zapear</sub></p></td>
-    <td width="50%"><img src="docs/screenshots/desktop-filmes.webp" alt="Tela de filmes com Continuar assistindo e prateleiras por categoria" /><p align="center"><sub>Filmes: continuar assistindo e prateleiras</sub></p></td>
+    <td width="50%"><img src="docs/screenshots/desktop-streaming.webp" alt="Visualização Streaming com destaque grande e a fileira Continuar assistindo" /><p align="center"><sub>Visualização Streaming: destaque e fileiras</sub></p></td>
+    <td width="50%"><img src="docs/screenshots/desktop-classica.webp" alt="Visualização Clássica com a grade de filmes e categorias" /><p align="center"><sub>Visualização Clássica: grade e categorias</sub></p></td>
   </tr>
   <tr>
+    <td><img src="docs/screenshots/desktop-tv-ao-vivo.webp" alt="TV ao vivo com o player, o guia de agora e a seguir e a lista de canais" /><p align="center"><sub>TV ao vivo: player, agora/a seguir e lista para zapear</sub></p></td>
     <td><img src="docs/screenshots/desktop-serie.webp" alt="Página de uma série com temporadas e episódios assistidos" /><p align="center"><sub>Séries: temporadas, episódios e próximo episódio</sub></p></td>
-    <td><img src="docs/screenshots/desktop-player.webp" alt="Player de vídeo com barra de progresso e controles" /><p align="center"><sub>Player com áudio, legendas e PiP</sub></p></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/desktop-busca.webp" alt="Busca mostrando canais, filmes e séries" /><p align="center"><sub>Busca em canais, filmes e séries</sub></p></td>
     <td><img src="docs/screenshots/desktop-guia.webp" alt="Guia de programação em grade de horários" /><p align="center"><sub>Guia de programação (EPG)</sub></p></td>
+    <td><img src="docs/screenshots/desktop-busca.webp" alt="Busca em canais, filmes e séries" /><p align="center"><sub>Busca em canais, filmes e séries</sub></p></td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/desktop-adicionar-lista.webp" alt="Janela Adicionar lista com abas Xtream Codes, Link M3U e Arquivo M3U" /><p align="center"><sub>Adicionar lista: Xtream, link ou arquivo M3U</sub></p></td>
@@ -62,12 +77,30 @@ Letras maiores e navegação pelas setas, OK e Voltar do controle remoto.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/tv-canais.webp" alt="Modo TV: lista de canais com o foco do controle remoto" /><p align="center"><sub>Canais com o foco do controle</sub></p></td>
-    <td width="50%"><img src="docs/screenshots/tv-zapping.webp" alt="Modo TV: vídeo em tela cheia com a lista de canais aberta ao lado" /><p align="center"><sub>Tela cheia com a lista para zapear (◀)</sub></p></td>
+    <td width="50%"><img src="docs/screenshots/tv-streaming.webp" alt="Modo TV: visualização Streaming com um filme em destaque" /><p align="center"><sub>Streaming com o foco do controle</sub></p></td>
+    <td width="50%"><img src="docs/screenshots/tv-classica.webp" alt="Modo TV: grade de filmes com capas" /><p align="center"><sub>Grade de filmes</sub></p></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/tv-filmes.webp" alt="Modo TV: grade de filmes" /><p align="center"><sub>Filmes</sub></p></td>
-    <td><img src="docs/screenshots/tv-busca.webp" alt="Modo TV: resultados da busca" /><p align="center"><sub>Busca</sub></p></td>
+    <td><img src="docs/screenshots/tv-canais.webp" alt="Modo TV: lista de canais com o foco do controle remoto" /><p align="center"><sub>Canais com o programa de agora</sub></p></td>
+    <td><img src="docs/screenshots/tv-zapping.webp" alt="Modo TV: vídeo em tela cheia com a lista de canais aberta ao lado" /><p align="center"><sub>Tela cheia com a lista para zapear (◀)</sub></p></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/tv-player.webp" alt="Modo TV: player de vídeo com barra de progresso" /><p align="center"><sub>Player em tela cheia</sub></p></td>
+    <td><img src="docs/screenshots/tv-serie.webp" alt="Modo TV: página de uma série com episódios" /><p align="center"><sub>Séries e episódios</sub></p></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/tv-historico.webp" alt="Modo TV: histórico com títulos em andamento e assistidos" /><p align="center"><sub>Histórico: em andamento e assistidos</sub></p></td>
+    <td><img src="docs/screenshots/tv-guia.webp" alt="Modo TV: guia de programação em grade" /><p align="center"><sub>Guia de programação</sub></p></td>
+  </tr>
+</table>
+
+### Celular
+
+<table>
+  <tr>
+    <td width="56%"><img src="docs/screenshots/celular-classica.webp" alt="App no celular com a tela deitada, na grade de filmes" /><p align="center"><sub>Com a tela deitada</sub></p></td>
+    <td width="22%"><img src="docs/screenshots/celular-streaming.webp" alt="Visualização Streaming no celular em pé" /><p align="center"><sub>Streaming em pé, pelo navegador</sub></p></td>
+    <td width="22%"><img src="docs/screenshots/celular-serie.webp" alt="Página de uma série no celular em pé" /><p align="center"><sub>Séries em pé, pelo navegador</sub></p></td>
   </tr>
 </table>
 
