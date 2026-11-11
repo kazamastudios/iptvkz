@@ -23,7 +23,7 @@ jobs:
           - { target: win-x64, os: ubuntu-latest }
           - { target: linux-x64, os: ubuntu-latest }
           - { target: mac-arm64, os: macos-latest }
-          - { target: mac-x64, os: macos-13 }
+          - { target: mac-x64, os: macos-latest } # compilado para Intel no Mac M1
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
