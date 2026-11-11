@@ -75,7 +75,7 @@ O servidor faz o proxy dos vídeos, monta o catálogo das listas e guarda os dad
 | 14 | O serviço é compilado para Node 8. O webOS TV 4.x e anteriores têm Node 0.12, onde o serviço não sobe. | **Aberto** (configuração) | No Seller Lounge, marque só **webOS TV 5.0 ou mais novo**: Node 8.12 no 5.0 e no 6.0, Node 12 no 22 e no 23, Node 16 no 24 e no 25, Node 20 no 26. A interface roda em Chromium 53 ou mais novo, então o limite é o serviço. |
 | 15 | Os botões só de ícone (`.icon-btn`, 36 px × zoom de cerca de 1,35) ficam abaixo dos 75×75 px que o checklist pede para o ponteiro. | **Aberto** | Precisa de ajuste visual na TV. Não foi mudado às cegas, para não alterar o visual. Equivalentes: no PC, o hover; na TV, o foco do controle, que já é grande; no celular, a área de toque. |
 | 16 | A LG pede política de privacidade dentro do app e um endereço público no cadastro. | Parcial | A política está nos Termos (seção 6), aceitos na primeira abertura, e foi revisada (versão 3, que pede novo aceite). Falta publicar uma página pública, por exemplo no GitHub Pages, e informar o endereço no Seller Lounge. |
-| 17 | O id do app da Store ainda não foi decidido. | **Aberto** (decisão) | O build usa `com.kazamastudios.iptvkz`, como na proposta da Google Play, e dá para trocar com `WEBOS_STORE_ID`. Depois do primeiro envio, o id não muda mais. O Developer continua `com.lucasyemz.iptvkz`, então os dois podem ficar instalados na mesma TV. |
+| 17 | Id do app da Store. | Decidido | `com.kazamastudios.iptvkz`, confirmado em 10/11/2026, o mesmo da Google Play. Depois do primeiro envio, o id não muda mais. O Developer continua `com.lucasyemz.iptvkz`, então os dois podem ficar instalados na mesma TV. |
 
 ### P2
 

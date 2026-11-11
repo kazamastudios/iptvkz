@@ -12,7 +12,7 @@ Nada aqui publica sozinho. O envio é sempre manual, pela conta do Seller Lounge
 |---|---|---|
 | Comando | `npm run ipk` | `npm run ipk:store` |
 | Saída | `dist/webos/` | `dist/webos/store/` |
-| Id do app | `com.lucasyemz.iptvkz` | `com.kazamastudios.iptvkz` (troca com `WEBOS_STORE_ID`) |
+| Id do app | `com.lucasyemz.iptvkz` | `com.kazamastudios.iptvkz` (definitivo) |
 | Fornecedor | lucasyemz | Kazama Studios (troca com `WEBOS_STORE_VENDOR`) |
 | Instalação | `ares-install`, com o Modo Desenvolvedor ligado | LG Content Store |
 | Atualização | Pacote assinado do GitHub Releases, só com `BUNDLE_VERSION` (CI). O IPK feito no PC não se atualiza. | Só por um IPK novo, aprovado pela LG. O código de atualização nem entra no pacote. |
@@ -68,7 +68,7 @@ Atenção: com o Modo Desenvolvedor ligado, a TV pode não aplicar o ACG como um
 
 ## Antes de enviar: decisões e itens pendentes
 
-1. **Id do app.** `com.kazamastudios.iptvkz` (sugestão, igual à da Google Play). Depois do primeiro envio, não muda mais.
+1. **Id do app:** `com.kazamastudios.iptvkz`, decidido (igual ao da Google Play). Depois do primeiro envio, não muda mais. Não use `WEBOS_STORE_ID` nos builds de envio.
 2. **Versões do webOS.** Marque só **webOS TV 5.0 ou mais novo**. O serviço precisa de Node 8 ou mais novo, e o webOS 4.x tem Node 0.12.
 3. **Política de privacidade pública.** Publique uma página com o texto abaixo, por exemplo no GitHub Pages, e use o endereço no cadastro.
 4. **Ícone de 400×400 para a loja**, a partir de `assets/brand/icon-1024.png`, e capturas de tela (veja abaixo).
