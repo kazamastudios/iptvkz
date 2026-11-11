@@ -3,10 +3,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lucasyemz/iptvkz/releases/latest"><img src="https://img.shields.io/github/v/release/lucasyemz/iptvkz?label=vers%C3%A3o&color=ff2a2a" alt="Versão" /></a>
-  <a href="https://github.com/lucasyemz/iptvkz/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/lucasyemz/iptvkz/build.yml?label=build" alt="Build" /></a>
-  <a href="https://github.com/lucasyemz/iptvkz/releases"><img src="https://img.shields.io/github/downloads/lucasyemz/iptvkz/total?label=downloads&color=ff2a2a" alt="Downloads" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/lucasyemz/iptvkz?label=licen%C3%A7a" alt="Licença MIT" /></a>
+  <a href="https://github.com/kazamastudios/iptvkz/releases/latest"><img src="https://img.shields.io/github/v/release/kazamastudios/iptvkz?label=vers%C3%A3o&color=ff2a2a" alt="Versão" /></a>
+  <a href="https://github.com/kazamastudios/iptvkz/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/kazamastudios/iptvkz/build.yml?label=build" alt="Build" /></a>
+  <a href="https://github.com/kazamastudios/iptvkz/releases"><img src="https://img.shields.io/github/downloads/kazamastudios/iptvkz/total?label=downloads&color=ff2a2a" alt="Downloads" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/kazamastudios/iptvkz?label=licen%C3%A7a" alt="Licença MIT" /></a>
   <br />
   <img src="https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white" alt="Windows" />
   <img src="https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white" alt="macOS" />
@@ -119,7 +119,7 @@ Letras maiores e navegação pelas setas, OK e Voltar do controle remoto.
 
 ## Instalar
 
-Baixe os arquivos na página de **[Releases](https://github.com/lucasyemz/iptvkz/releases/latest)**.
+Baixe os arquivos na página de **[Releases](https://github.com/kazamastudios/iptvkz/releases/latest)**.
 
 | Aparelho | Arquivo | Precisa de computador ligado? |
 |---|---|---|
@@ -177,7 +177,7 @@ O computador precisa ficar ligado. Com o acesso pela rede ligado, fechar a janel
 
 ## Atualizações
 
-Tudo sai das [Releases](https://github.com/lucasyemz/iptvkz/releases):
+Tudo sai das [Releases](https://github.com/kazamastudios/iptvkz/releases):
 
 - **LG e Android TV:** ao abrir, o app confere a Release mais recente, baixa as mudanças da interface e do servidor (`src/`), confere a assinatura e aplica antes de mostrar a tela inicial. Não precisa reinstalar.
 - **App Android novo:** só quando muda a parte nativa (Java). Aí o app oferece baixar o APK novo e o Android pede a confirmação.
@@ -199,7 +199,7 @@ As chaves de assinatura ficam nos secrets do GitHub (`ANDROID_KEYSTORE_BASE64`, 
 Requisitos: [Node.js](https://nodejs.org) 18 ou mais novo.
 
 ```bash
-git clone https://github.com/lucasyemz/iptvkz.git
+git clone https://github.com/kazamastudios/iptvkz.git
 cd iptvkz
 npm start
 ```

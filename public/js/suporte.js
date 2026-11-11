@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ISSUES = 'https://github.com/lucasyemz/iptvkz/issues/new';
+  var ISSUES = 'https://github.com/kazamastudios/iptvkz/issues/new';
   var form = document.querySelector('[data-support-form]');
   var tvNote = document.querySelector('[data-support-tv]');
   var done = document.querySelector('[data-support-done]');

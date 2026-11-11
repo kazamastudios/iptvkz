@@ -39,10 +39,10 @@
     "email": "lukkolly@gmail.com"
   },
   "license": "MIT",
-  "homepage": "https://github.com/lucasyemz/iptvkz",
+  "homepage": "https://github.com/kazamastudios/iptvkz",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lucasyemz/iptvkz.git"
+    "url": "https://github.com/kazamastudios/iptvkz.git"
   },
   "build": {
     "appId": "com.lucasyemz.iptvkz",
@@ -115,7 +115,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "lucasyemz",
+      "owner": "kazamastudios",
       "repo": "iptvkz",
       "releaseType": "draft"
     }
