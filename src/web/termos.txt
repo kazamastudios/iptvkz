@@ -1,7 +1,8 @@
 ﻿TERMOS DE USO DO IPTVKZ
-Versão 3 — novembro de 2026
+Versão 4 — novembro de 2026
 
 Ao instalar ou usar o IPTVKZ, você declara que leu e concorda com estes termos. Se não concordar, não use o aplicativo.
+Estes termos também estão em https://iptvkz.kazamastudios.com.br/termos.html e a política de privacidade completa em https://iptvkz.kazamastudios.com.br/privacidade.html
 
 1. O QUE É O IPTVKZ
 O IPTVKZ é apenas um reprodutor de mídia (player). Ele lê listas de reprodução (M3U/M3U8, Xtream Codes) e guias de programação (XMLTV) que o próprio usuário informa, e reproduz os endereços contidos nelas.
@@ -42,3 +43,14 @@ Estes termos podem ser atualizados em novas versões do aplicativo. Quando isso 
 
 9. LICENÇA DO SOFTWARE
 O código-fonte do IPTVKZ é distribuído sob a Licença MIT (arquivo LICENSE). Estes termos tratam do uso do aplicativo e não restringem os direitos concedidos por essa licença.
+
+10. PIRATARIA, FRAUDE E GOLPES
+Esta seção complementa os itens 3 e 4 e vale para o aplicativo e para o site do IPTVKZ.
+a) O IPTVKZ, a Kazama Studios e os desenvolvedores não se responsabilizam por pirataria, violação de direitos autorais, fraude, golpe, cobrança indevida ou qualquer prejuízo ligado às listas, contas, assinaturas ou serviços de terceiros que o usuário adicionar ao aplicativo ou contratar fora dele.
+b) O IPTVKZ é gratuito e não vende listas, canais, assinaturas, ativações nem "versões com conteúdo". Qualquer pessoa, site ou revendedor que ofereça isso usando o nome IPTVKZ não tem relação com a Kazama Studios.
+c) Problemas com uma lista, um provedor ou uma cobrança devem ser tratados diretamente com quem forneceu a lista. Em caso de golpe, procure os órgãos de defesa do consumidor e as autoridades competentes.
+d) O IPTVKZ só é distribuído pelos links oficiais publicados em iptvkz.kazamastudios.com.br, no repositório oficial do GitHub e nas lojas oficiais onde estiver publicado. Arquivos obtidos em outros lugares podem ter sido alterados.
+e) Não prestamos suporte a pedidos que envolvam conteúdo sem autorização dos titulares dos direitos.
+
+11. CONTATO
+Dúvidas sobre estes termos: https://iptvkz.kazamastudios.com.br/suporte.html. Não publique links, usuários ou senhas das suas listas.

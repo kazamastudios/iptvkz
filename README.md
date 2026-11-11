@@ -33,7 +33,7 @@ Use suas listas M3U e Xtream Codes com TV ao vivo, guia de programação, filmes
 ---
 
 > [!IMPORTANT]
-> O IPTVKZ é **só um player**. Ele não vem com nenhuma lista, canal ou conteúdo: você usa as listas que você mesmo cadastrar e é o único responsável pelo que adiciona e assiste. Use apenas conteúdo que você tem direito de assistir. Ao usar o app você concorda com os **[Termos de Uso](src/web/termos.txt)**.
+> O IPTVKZ é **só um player**. Ele não vem com nenhuma lista, canal ou conteúdo: você usa as listas que você mesmo cadastrar e é o único responsável pelo que adiciona e assiste. Use apenas conteúdo que você tem direito de assistir. Ao usar o app você concorda com os **[Termos de Uso](https://iptvkz.kazamastudios.com.br/termos.html)**.
 
 ## Capturas de tela
 
@@ -248,5 +248,6 @@ O servidor local faz proxy dos streams (resolve CORS e links `http`), junta as l
 
 ## Termos e licença
 
-- **[Termos de Uso](src/web/termos.txt):** aceitos na primeira vez que o app abre (e no instalador do Windows).
+- **[Termos de Uso](https://iptvkz.kazamastudios.com.br/termos.html):** aceitos na primeira vez que o app abre (e no instalador do Windows).
+- **[Política de Privacidade](https://iptvkz.kazamastudios.com.br/privacidade.html):** o app não coleta dados; tudo fica no seu aparelho.
 - **Código:** [Licença MIT](LICENSE).

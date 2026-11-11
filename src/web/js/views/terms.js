@@ -3,7 +3,16 @@ import { h, ico, modal } from '../core/util.js';
 import { S, setSetting, saveNow } from '../core/store.js';
 import { focusEl, TV } from '../tv/tv.js';
 
-export const TERMS_VERSION = 3;
+export const TERMS_VERSION = 4;
+
+// Termos e política completos no site. Na TV não há navegador à mão: mostra só o endereço para ler no celular.
+const SITE = 'iptvkz.kazamastudios.com.br';
+function siteLinks() {
+  const style = { margin: '0 0 4px', fontSize: '13px' };
+  if (TV.on) return h('p.muted', { style }, `Termos e política de privacidade completos em ${SITE}`);
+  const link = (page, label) => h('a', { href: `https://${SITE}/${page}`, target: '_blank', rel: 'noopener' }, label);
+  return h('p.muted', { style }, 'Versão completa no site: ', link('termos.html', 'Termos de uso'), ' · ', link('privacidade.html', 'Política de privacidade'));
+}
 
 let cache = null;
 async function termsText() {
@@ -22,7 +31,7 @@ function renderTerms(text) {
   for (const line of lines) {
     const t = line.trim();
     if (!t) continue;
-    if (/^\d+\.\s+[A-ZÀ-Ú ]+$/.test(t)) box.append(h('h4', t));
+    if (/^\d+\.\s+[A-ZÀ-Ú ,]+$/.test(t)) box.append(h('h4', t));
     else if (/^Versão \d/.test(t)) box.append(h('p.faint', t));
     else box.append(h('p', t));
   }
@@ -53,6 +62,7 @@ export async function ensureTerms() {
       body.replaceChildren(
         h('p.muted', { style: { marginTop: 0 } }, 'Antes de começar, leia e aceite os termos de uso.'),
         renderTerms(text),
+        siteLinks(),
         h('div.form-actions', h('button.btn.ghost', { onclick: refuse }, 'Recusar'), accept));
       if (TV.on) setTimeout(() => focusEl(accept), 50);
     };
@@ -75,6 +85,7 @@ export async function showTermsDialog() {
   const when = S.settings.termsAcceptedAt ? new Date(S.settings.termsAcceptedAt).toLocaleDateString('pt-BR') : null;
   modal('Termos de uso', [
     renderTerms(text),
+    siteLinks(),
     when ? h('p.faint', { style: { margin: '12px 0 0', fontSize: '12px' } }, `Aceitos em ${when}.`) : null,
   ], { wide: true });
 }
