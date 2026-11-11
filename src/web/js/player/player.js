@@ -116,12 +116,12 @@ export class Player {
       this.video.muted = this.video.volume === 0;
     });
     this.btnFs = this._btn('fullscreen', 'Tela cheia (F)', () => this.toggleFullscreen());
-    this.btnGear = this._btn('settings', 'Estilo da legenda e qualidade', (e) => {
+    this.btnGear = this._btn('settings', 'Versão, áudio e qualidade', (e) => {
       e.stopPropagation();
       this.toggleMenu('settings');
     });
-    // como nos streamings: versão (Dublado, Legendado...), faixa de áudio e legenda num botão só, perto do volume
-    this.btnAV = this._btn('cc', 'Áudio e legendas', (e) => {
+    // como nos streamings: legenda num botão próprio, ao lado da engrenagem (versão e áudio), perto do volume
+    this.btnAV = this._btn('cc', 'Legendas', (e) => {
       e.stopPropagation();
       this.toggleMenu('av');
     });
@@ -155,11 +155,11 @@ export class Player {
     // ao vivo na TV já é tela cheia, e o menu seria quase só legenda, que canais não têm
     const liveTv = TV.on && o.live;
     left.push(h('div.vol', this.btnMute, this.volRange));
-    if (!liveTv) left.push(this.btnAV);
+    if (!liveTv) left.push(this.btnAV, this.btnGear);
     left.push(o.live ? h('span.badge.onair.live-badge', 'AO VIVO') : this.timeEl);
 
     // filmes e séries já abrem ocupando a tela: tela cheia só no ao vivo, que no PC toca numa janela ao lado da lista
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, liveTv ? null : this.btnGear, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
@@ -1029,7 +1029,7 @@ export class Player {
     const open = !this.menu.classList.contains('hidden');
     if (!open || this.menuMode !== mode) {
       this.menuMode = mode;
-      this.menu.classList.toggle('left', mode === 'av');
+      this.menu.classList.add('left'); // os dois botões ficam perto do volume
       this._renderMenu();
       this.menu.classList.remove('hidden');
       this._showCtrl();
@@ -1060,6 +1060,29 @@ export class Player {
 
     if (this.menuMode === 'settings') return this._renderSettings(m, seg, opt);
 
+    // Botão de legenda: só a legenda
+    m.append(h('h4', 'Legenda'));
+    const cur = this.subSource;
+    m.append(opt('Desligada', !cur, () => { this.setSub(null); this._renderMenu(); }));
+    for (const s of this.subTracks()) {
+      m.append(opt(s.label, cur && cur.type === 'hls' && cur.index === s.i, () => { this.setSub({ type: 'hls', index: s.i }); this._renderMenu(); }));
+    }
+    if (cur && cur.type === 'ext') m.append(opt(cur.name, true, () => {}));
+    m.append(h('button.opt', { onclick: () => this._pickSubFile() }, h('span.ck', ico('upload')), h('span', 'Carregar arquivo .srt / .vtt...')));
+    if (!this.hls && !this.exo && this.engine !== 'mpegts') {
+      m.append(h('div.note', 'Legendas embutidas em MP4/MKV não aparecem aqui; use um arquivo .srt ou .vtt.'));
+    }
+
+    if (cur) {
+      m.append(h('h4', 'Atraso da legenda'));
+      const val = h('span', `${this.subDelay > 0 ? '+' : ''}${this.subDelay.toFixed(1)}s`);
+      const step = (d) => { this.subDelay = Math.round((this.subDelay + d) * 10) / 10; this.lastSubText = null; this._renderMenu(); };
+      m.append(h('div.delay', h('button', { onclick: () => step(-0.5), title: 'Legenda mais cedo' }, '−'), val, h('button', { onclick: () => step(0.5), title: 'Legenda mais tarde' }, '+')));
+    }
+  }
+
+  // Engrenagem: versão e áudio; depois aparência da legenda, qualidade e o que está tocando.
+  _renderSettings(m, seg, opt) {
     // Versão (Dublado/Legendado): nomes com o idioma que o app já viu tocando
     const vs = this.opts.versions;
     if (vs && vs.length > 1) {
@@ -1086,30 +1109,8 @@ export class Player {
       m.append(h('div.note', vs && vs.length > 1 ? 'Este vídeo tem um áudio só. Para outro idioma, troque a versão acima.' : 'Este vídeo tem um áudio só.'));
     }
 
-    // Legenda
-    m.append(h('div.sep'), h('h4', 'Legenda'));
-    const cur = this.subSource;
-    m.append(opt('Desligada', !cur, () => { this.setSub(null); this._renderMenu(); }));
-    for (const s of this.subTracks()) {
-      m.append(opt(s.label, cur && cur.type === 'hls' && cur.index === s.i, () => { this.setSub({ type: 'hls', index: s.i }); this._renderMenu(); }));
-    }
-    if (cur && cur.type === 'ext') m.append(opt(cur.name, true, () => {}));
-    m.append(h('button.opt', { onclick: () => this._pickSubFile() }, h('span.ck', ico('upload')), h('span', 'Carregar arquivo .srt / .vtt...')));
-    if (!this.hls && !this.exo && this.engine !== 'mpegts') {
-      m.append(h('div.note', 'Legendas embutidas em MP4/MKV não aparecem aqui; use um arquivo .srt ou .vtt.'));
-    }
 
-    if (cur) {
-      m.append(h('h4', 'Atraso da legenda'));
-      const val = h('span', `${this.subDelay > 0 ? '+' : ''}${this.subDelay.toFixed(1)}s`);
-      const step = (d) => { this.subDelay = Math.round((this.subDelay + d) * 10) / 10; this.lastSubText = null; this._renderMenu(); };
-      m.append(h('div.delay', h('button', { onclick: () => step(-0.5), title: 'Legenda mais cedo' }, '−'), val, h('button', { onclick: () => step(0.5), title: 'Legenda mais tarde' }, '+')));
-    }
-  }
-
-  // Engrenagem: aparência da legenda, qualidade e o que está tocando.
-  _renderSettings(m, seg, opt) {
-    m.append(h('h4', 'Legenda: tamanho'));
+    m.append(h('div.sep'), h('h4', 'Legenda: tamanho'));
     m.append(seg([['P', 'P'], ['M', 'M'], ['G', 'G'], ['GG', 'GG']], S.settings.subSize, (v) => { setSetting('subSize', v); this._applySubStyle(); }));
     m.append(h('h4', 'Legenda: fundo'));
     m.append(seg([['none', 'Nenhum'], ['shadow', 'Sombra'], ['box', 'Caixa']], S.settings.subBg, (v) => { setSetting('subBg', v); this._applySubStyle(); }));
