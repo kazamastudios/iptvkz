@@ -28,7 +28,7 @@ const serviceDir = path.join(out, 'service');
 const bundleDir = path.join(serviceDir, 'app');
 const bundleVersion = Number(process.env.BUNDLE_VERSION || 0);
 const NODE_TARGET = 'node8';
-const UPDATE_BASE = process.env.UPDATE_BASE || 'https://github.com/lucasyemz/iptvkz/releases/latest/download/';
+const UPDATE_BASE = process.env.UPDATE_BASE || 'https://github.com/kazamastudios/iptvkz/releases/latest/download/';
 // Developer com número de build: baixa atualizações. IPK feito no PC e Store: nunca.
 const AUTO_UPDATE = !STORE && bundleVersion > 0;
 

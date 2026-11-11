@@ -1,7 +1,7 @@
 // IPTVKZ: recebe o formulário de suporte e abre um chamado no GitHub. Roda no Cloudflare Pages, no modo
 // avançado (_worker.js), e entrega o restante do site sem mudanças. O segredo GITHUB_TOKEN fica só no
 // painel do Cloudflare: token com acesso apenas a este repositório e permissão de escrita em Issues.
-const REPO = 'lucasyemz/iptvkz';
+const REPO = 'kazamastudios/iptvkz';
 
 const TIPOS = { erro: 'Algo deu errado', sugestao: 'Sugestão', duvida: 'Dúvida' };
 const AREAS = {

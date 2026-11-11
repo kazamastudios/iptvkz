@@ -121,7 +121,7 @@
   });
 
   // ---------- GitHub: versão, links e tamanhos ----------
-  var API = 'https://api.github.com/repos/lucasyemz/iptvkz';
+  var API = 'https://api.github.com/repos/kazamastudios/iptvkz';
   var KEY = 'iptvkz-github';
   function mb(bytes) {
     var v = bytes / 1e6;
