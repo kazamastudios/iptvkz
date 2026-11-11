@@ -12,17 +12,7 @@
   if (isTv) root.classList.add('tv');
 
   // ---------- aparelho de quem visita ----------
-  function detect() {
-    if (/web0s|webos|netcast/i.test(ua)) return 'lg';
-    if (/android/i.test(ua)) return /android tv|bravia|aft[a-z]|mibox|shield|googletv|\btv\b/i.test(ua) ? 'atv' : 'android';
-    if (/iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1)) return 'browser';
-    if (/windows/i.test(ua)) return 'win';
-    if (/macintosh|mac os x/i.test(ua)) return 'mac';
-    if (/linux|x11/i.test(ua) && !/cros/i.test(ua)) return 'linux';
-    return 'browser';
-  }
-  var device = detect();
-  window.iptvkzDevice = device === 'browser' ? 'browser' : device;
+  var device = window.iptvkzDevice;
   var HERO = {
     win: { label: 'Baixar grátis para Windows', direct: true },
     linux: { label: 'Baixar grátis para Linux', direct: true },

@@ -117,10 +117,10 @@ A Visualização Streaming é destaque da página, mas só existe no PR #13. A l
 
 ## 8. Suporte
 
-O botão **Ajuda**, fixo no canto da tela, abre respostas automáticas das dúvidas frequentes. Elas ficam em `public/js/help.js` e rodam no navegador, sem serviço externo.
+O botão **Ajuda**, fixo no canto da tela, abre respostas automáticas das dúvidas frequentes. Elas ficam em `public/js/help.js` e rodam no navegador, sem serviço externo. O que não resolver encaminha para `public/suporte.html`.
 
-Quando não resolve, "Falar com a equipe" abre um formulário com tipo, parte do app, momento, aparelho (já detectado), versão e mensagem. Todas as listas têm a opção "Outro", que pede para preencher. Na TV, só as respostas ficam disponíveis, com um aviso para enviar o relato pelo celular.
+A página de suporte traz o formulário: tipo, parte do app, momento, aparelho (já detectado), versão e mensagem. Todas as listas têm a opção "Outro", que pede para preencher. Em TV, a página orienta a usar o celular ou o computador.
 
 `public/_worker.js` recebe o formulário e cria o chamado com etiquetas `tipo:`, `area:` e `aparelho:`, para filtrar no GitHub. O relato é público, então links, credenciais e menções são removidos. A função também tem limite por IP e armadilhas contra robôs.
 
-**Configuração no Cloudflare Pages:** criar um token do GitHub de acesso restrito a este repositório, com permissão de escrita em Issues, e guardá-lo como segredo `GITHUB_TOKEN`. Sem ele, o formulário oferece enviar pelo GitHub.
+**Configuração no Cloudflare Pages:** criar um token do GitHub de acesso restrito a este repositório, com permissão de escrita em Issues, e guardá-lo como segredo `GITHUB_TOKEN`. Sem ele, a página oferece enviar pelo GitHub.

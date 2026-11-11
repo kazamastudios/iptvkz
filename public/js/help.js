@@ -1,9 +1,8 @@
-// IPTVKZ: ajuda da landing. Respostas automáticas a partir das dúvidas abaixo, sem serviço externo,
-// e um formulário simples que vira um chamado para a equipe. ES5, para rodar também em TVs antigas.
+// IPTVKZ: ajuda da landing. Respostas automáticas a partir das dúvidas abaixo, sem serviço externo.
+// O que não resolver vai para a página de suporte. ES5, para rodar também em TVs antigas.
 (function () {
   'use strict';
 
-  var ISSUES = 'https://github.com/lucasyemz/iptvkz/issues/new';
   var root = document.documentElement;
   var isTv = root.classList.contains('tv');
 
@@ -25,11 +24,6 @@
     { t: 'O que são os dois visuais?', k: ['visual', 'classica', 'classico', 'streaming', 'aparencia', 'trocar visual', 'layout'], a: 'O Visual Clássico mostra a grade de capas e categorias. O Visual Streaming mostra um destaque grande com fileiras de cards. Você troca nos botões ao lado da busca, em cada aparelho.' },
   ];
   var POPULARES = [4, 3, 2, 5, 7, 0];
-
-  var TIPOS = [['erro', 'Algo deu errado'], ['sugestao', 'Sugestão'], ['duvida', 'Dúvida']];
-  var AREAS = [['', 'Escolha uma opção'], ['instalacao', 'Instalação do app'], ['lista', 'Adicionar ou atualizar lista'], ['qr', 'QR Code e celular'], ['aovivo', 'TV ao vivo'], ['guia', 'Guia de programação'], ['filmes', 'Filmes'], ['series', 'Séries'], ['player', 'Player de vídeo'], ['historico', 'Continuar assistindo e Histórico'], ['favoritos', 'Favoritos e Minha lista'], ['busca', 'Busca'], ['config', 'Configurações'], ['pais', 'Controle dos pais'], ['backup', 'Baixar e carregar lista'], ['site', 'Este site'], ['outro', 'Outro']];
-  var MOMENTOS = [['', 'Escolha uma opção'], ['abrir', 'Ao abrir o app'], ['carregar', 'Ao carregar a lista'], ['navegar', 'Ao navegar pelas telas'], ['iniciar', 'Ao iniciar um vídeo'], ['assistindo', 'Durante o vídeo'], ['trocar', 'Ao trocar de canal ou episódio'], ['salvar', 'Ao salvar uma configuração'], ['instalar', 'Ao instalar ou atualizar'], ['sempre', 'Acontece sempre'], ['outro', 'Outro']];
-  var APARELHOS = [['', 'Escolha uma opção'], ['lg', 'TV LG'], ['atv', 'Android TV'], ['android', 'Celular Android'], ['win', 'Windows'], ['mac', 'macOS'], ['linux', 'Linux'], ['browser', 'Pelo navegador'], ['outro', 'Outro']];
 
   var STOP = ' a o as os de da do das dos e em no na nos nas um uma uns umas que para pra por com como meu minha eu me se ja nao esta estou tem ter ta to e isso esse essa ai la '.split(' ').reduce(function (m, w) { if (w) m[w] = 1; return m; }, {});
   function norm(s) { return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
@@ -69,16 +63,14 @@
   var chips = el('div', { class: 'help__chips' });
   var input = el('input', { class: 'help__input', type: 'text', maxlength: '200', autocomplete: 'off', placeholder: 'Escreva sua dúvida', 'aria-label': 'Sua dúvida' });
   var ask = el('form', { class: 'help__ask', on: { submit: function (e) { e.preventDefault(); perguntar(input.value); } } }, [input, el('button', { class: 'btn btn--primary', type: 'submit', text: 'Enviar' })]);
-  var toForm = el('button', { type: 'button', class: 'help__report', text: 'Não achei a resposta. Falar com a equipe', on: { click: function () { abrirForm(); } } });
-  var tvNote = el('p', { class: 'help__tvnote', text: 'Para escrever para a equipe, abra iptvkz.kazamastudios.com.br no celular e toque em Ajuda.' });
+  var toForm = el('a', { class: 'help__report', href: 'suporte.html', text: 'Não achei a resposta. Falar com a equipe' });
+  var tvNote = el('p', { class: 'help__tvnote', text: 'Para escrever para a equipe, abra iptvkz.kazamastudios.com.br/suporte.html no celular.' });
   var chat = el('div', { class: 'help__view' }, [log, chips, ask, toForm, tvNote]);
-  var formView = el('div', { class: 'help__view help__view--form', hidden: '' });
 
   var title = el('h2', { class: 'help__title', text: 'Ajuda do IPTVKZ' });
-  var backBtn = el('button', { type: 'button', class: 'help__icon', 'aria-label': 'Voltar para as dúvidas', hidden: '', on: { click: function () { mostrarChat(); } } }, [icon('i-chevron-left')]);
   var closeBtn = el('button', { type: 'button', class: 'help__icon', 'aria-label': 'Fechar a ajuda', on: { click: function () { fechar(); } } }, [icon('i-x')]);
   var panel = el('section', { class: 'help__panel', role: 'dialog', 'aria-label': 'Ajuda do IPTVKZ', tabindex: '-1' }, [
-    el('header', { class: 'help__head' }, [backBtn, title, closeBtn]), chat, formView,
+    el('header', { class: 'help__head' }, [title, closeBtn]), chat,
   ]);
   var fab = el('button', { type: 'button', class: 'help__fab', 'aria-expanded': 'false', on: { click: function () { panel.classList.contains('is-open') ? fechar() : abrir(); } } }, [icon('i-message'), el('span', { text: 'Ajuda' })]);
   document.body.appendChild(el('div', { class: 'help' }, [panel, fab]));
@@ -116,7 +108,9 @@
     }
     var achados = buscar(texto);
     if (!achados.length) {
-      fala('Ainda não sei responder isso. Veja se uma destas dúvidas ajuda, ou fale com a equipe.', 'bot');
+      var b = fala('Ainda não sei responder isso. Veja se uma destas dúvidas ajuda, ou ', 'bot');
+      if (!isTv) b.appendChild(el('a', { href: 'suporte.html', text: 'fale com a equipe.' }));
+      else b.textContent = 'Ainda não sei responder isso. Veja se uma destas dúvidas ajuda.';
       opcoes(POPULARES);
       return;
     }
@@ -125,110 +119,17 @@
     opcoes(extra.length ? extra : POPULARES.filter(function (i) { return i !== achados[0].i; }).slice(0, 4));
   }
 
-  // ---------- formulário ----------
-  var form = null, abertoEm = 0;
-  function seletor(nome, label, itens, inicial) {
-    var select = el('select', { id: 'h-' + nome, name: nome, required: '' });
-    itens.forEach(function (o) { select.appendChild(el('option', { value: o[0], text: o[1] })); });
-    if (inicial) select.value = inicial;
-    var outro = null, kids = [el('label', { for: 'h-' + nome, text: label }), select];
-    if (itens.some(function (o) { return o[0] === 'outro'; })) {
-      outro = el('input', { type: 'text', name: nome + 'Outro', maxlength: '80', placeholder: 'Conte qual', 'aria-label': label + ': qual?', hidden: '' });
-      kids.push(outro);
-      select.addEventListener('change', function () {
-        var sim = select.value === 'outro';
-        outro.hidden = !sim;
-        if (sim) { outro.required = true; outro.focus(); } else { outro.required = false; outro.value = ''; }
-      });
-    }
-    return el('div', { class: 'help__field' }, kids);
-  }
-  function montarForm(tipoInicial) {
-    formView.textContent = '';
-    abertoEm = Date.now();
-    var status = el('p', { class: 'help__status', role: 'status' });
-    var msg = el('textarea', { id: 'h-mensagem', name: 'mensagem', rows: '4', required: '', minlength: '10', maxlength: '3000', placeholder: 'Conte o que você fez e o que apareceu na tela' });
-    var enviar = el('button', { class: 'btn btn--primary', type: 'submit', text: 'Enviar para a equipe' });
-    form = el('form', { class: 'help__form', novalidate: '', on: { submit: function (e) { e.preventDefault(); envio(status, enviar); } } }, [
-      seletor('tipo', 'O que você quer contar?', TIPOS, tipoInicial || 'erro'),
-      seletor('area', 'Em que parte do app?', AREAS),
-      seletor('momento', 'Em que momento?', MOMENTOS),
-      seletor('aparelho', 'Em qual aparelho?', APARELHOS, window.iptvkzDevice || ''),
-      el('div', { class: 'help__field' }, [el('label', { for: 'h-versao', text: 'Versão do app (opcional, aparece no menu)' }), el('input', { id: 'h-versao', name: 'versao', type: 'text', maxlength: '30', autocomplete: 'off' })]),
-      el('div', { class: 'help__field' }, [el('label', { for: 'h-mensagem', text: 'O que aconteceu?' }), msg]),
-      el('div', { class: 'help__trap', 'aria-hidden': 'true' }, [el('label', { text: 'Empresa' }), el('input', { type: 'text', name: 'empresa', tabindex: '-1', autocomplete: 'off' })]),
-      el('p', { class: 'help__privacy', text: 'Seu relato fica público para ajudar outras pessoas. Não escreva links, usuários ou senhas das suas listas.' }),
-      status, enviar,
-    ]);
-    formView.appendChild(form);
-  }
-  function dados() {
-    var d = { tempo: Date.now() - abertoEm };
-    Array.prototype.forEach.call(form.elements, function (c) { if (c.name) d[c.name] = c.value; });
-    return d;
-  }
-  function validar(d) {
-    if (!d.area) return 'Escolha em que parte do app aconteceu.';
-    if (!d.momento) return 'Escolha em que momento aconteceu.';
-    if (!d.aparelho) return 'Escolha o aparelho.';
-    if ((d.area === 'outro' && !d.areaOutro.trim()) || (d.momento === 'outro' && !d.momentoOutro.trim()) || (d.aparelho === 'outro' && !d.aparelhoOutro.trim())) return 'Preencha o campo “Outro”.';
-    if (d.mensagem.trim().length < 10) return 'Conte um pouco mais do que aconteceu.';
-    return '';
-  }
-  function linkReserva(d) {
-    var pick = function (lista, v, outro) { var o = lista.filter(function (x) { return x[0] === v; })[0]; return v === 'outro' ? outro : (o ? o[1] : v); };
-    var corpo = 'Onde: ' + pick(AREAS, d.area, d.areaOutro) + '\nQuando: ' + pick(MOMENTOS, d.momento, d.momentoOutro) + '\nAparelho: ' + pick(APARELHOS, d.aparelho, d.aparelhoOutro) + '\nVersão: ' + (d.versao || 'não informada') + '\n\n' + d.mensagem;
-    return ISSUES + '?title=' + encodeURIComponent('[Suporte] ' + d.mensagem.slice(0, 60)) + '&body=' + encodeURIComponent(corpo.slice(0, 1500));
-  }
-  function envio(status, botao) {
-    var d = dados(), erro = validar(d);
-    status.className = 'help__status';
-    status.textContent = erro;
-    if (erro) { status.classList.add('is-bad'); return; }
-    botao.disabled = true;
-    status.textContent = 'Enviando…';
-    fetch('/api/relato', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(d) }).then(function (r) {
-      if (r.ok) return sucesso();
-      throw new Error(String(r.status));
-    }).catch(function (e) {
-      botao.disabled = false;
-      status.textContent = e.message === '429' ? 'Muitos envios em pouco tempo. Tente de novo em alguns minutos.' : 'Não foi possível enviar agora. Tente de novo em instantes ou ';
-      status.classList.add('is-bad');
-      if (e.message !== '429') status.appendChild(el('a', { href: linkReserva(d), target: '_blank', rel: 'noopener', text: 'envie pelo GitHub.' }));
-    });
-  }
-  function sucesso() {
-    formView.textContent = '';
-    formView.appendChild(el('div', { class: 'help__done' }, [
-      el('h3', { text: 'Recebemos, obrigado!' }),
-      el('p', { text: 'Seu relato chegou à equipe e ajuda a melhorar o IPTVKZ para todo mundo.' }),
-      el('button', { type: 'button', class: 'btn btn--ghost', text: 'Voltar para as dúvidas', on: { click: function () { mostrarChat(); } } }),
-    ]));
-  }
-
   // ---------- abrir e fechar ----------
-  function mostrarChat() {
-    formView.hidden = true; chat.hidden = false; backBtn.hidden = true;
-    title.textContent = 'Ajuda do IPTVKZ';
-  }
-  function abrirForm(tipo) {
-    if (isTv) return;
-    montarForm(tipo);
-    chat.hidden = true; formView.hidden = false; backBtn.hidden = false;
-    title.textContent = 'Falar com a equipe';
-    panel.scrollTop = 0;
-  }
   var iniciado = false;
-  function abrir(modo) {
+  function abrir() {
     if (!iniciado) {
       iniciado = true;
       fala('Oi! Sou o assistente automático do IPTVKZ. Escreva sua dúvida ou escolha uma opção.', 'bot');
       opcoes(POPULARES);
     }
-    if (modo === 'form') abrirForm(); else mostrarChat();
     panel.classList.add('is-open');
     fab.setAttribute('aria-expanded', 'true');
-    var alvo = isTv ? chips.firstChild : (matchMedia('(hover: hover) and (pointer: fine)').matches && modo !== 'form' ? input : panel);
+    var alvo = isTv ? chips.firstChild : (matchMedia('(hover: hover) and (pointer: fine)').matches ? input : panel);
     if (alvo) alvo.focus();
   }
   function fechar() {
@@ -239,8 +140,5 @@
 
   document.addEventListener('keydown', function (e) {
     if (panel.classList.contains('is-open') && (e.keyCode === 27 || e.keyCode === 461)) { e.preventDefault(); fechar(); }
-  });
-  Array.prototype.forEach.call(document.querySelectorAll('[data-help-open]'), function (a) {
-    a.addEventListener('click', function (e) { e.preventDefault(); abrir(a.getAttribute('data-help-open')); });
   });
 })();
