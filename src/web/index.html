@@ -20,8 +20,11 @@
         var tv = s != null ? s === '1' : /web0s|webos|smart-?tv|netcast|tizen|hbbtv|appletv|crkey|aft[a-z]/i.test(navigator.userAgent);
         if (tv) {
           document.documentElement.className += ' tv';
-          // mesmo zoom de js/tv.js: sem isso a logo nasce pequena e cresce quando o app carrega
-          document.documentElement.style.zoom = Math.max(1, Math.min(2, window.innerWidth / 1420)).toFixed(2);
+          // mesmo zoom de js/tv.js (applyTv): sem isso a abertura mudava de tamanho quando o app carregava
+          var fit = window.innerWidth / 1420;
+          var z = Math.min(2, navigator.maxTouchPoints > 0 ? Math.max(1, fit) : Math.max(0.5, fit)).toFixed(2);
+          document.documentElement.style.zoom = z;
+          document.documentElement.style.setProperty('--tvz', z);
         }
       } catch (e) {}
     })();
@@ -34,6 +37,7 @@
     <div class="sp-glow a"></div><div class="sp-glow b"></div><div class="sp-glow c"></div><div class="sp-sweep"></div>
     <img class="sp-logo" src="/img/logo-horizontal.webp" alt="IPTVKZ" />
     <div class="sp-bar"><i></i></div>
+    <div class="sp-msg">Abrindo</div>
   </div>
   <div id="app">
     <aside class="sidebar">

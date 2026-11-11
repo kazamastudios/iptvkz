@@ -121,11 +121,12 @@ public class MainActivity extends Activity {
         float dp = getResources().getDisplayMetrics().density;
         int width = getResources().getDisplayMetrics().widthPixels;
         box.setBackground(splashBackground(width));
-        // o texto fica abaixo da barra; este espaço equivalente mantém logo e barra no centro exato
-        int textHeight = (int) (56 * dp);
+        // Mesmas medidas da abertura da LG e da interface (em fração da largura, referência 1920px): logo 39,4%,
+        // barra 25%. O texto fica abaixo da barra; o espaço igual em cima mantém logo e barra no centro exato.
+        int textHeight = Math.round(width * 0.03229f);
         box.addView(new View(this), new LinearLayout.LayoutParams(1, textHeight));
         ImageView logo = new ImageView(this);
-        int logoWidth = Math.max(Math.min(width * 34 / 100, (int) (560 * dp)), (int) (260 * dp));
+        int logoWidth = Math.round(width * 0.39375f);
         int logoHeight = logoWidth / 3;
         try (InputStream in = getAssets().open("logo-horizontal.webp")) {
             Bitmap image = BitmapFactory.decodeStream(in);
@@ -142,12 +143,13 @@ public class MainActivity extends Activity {
         bar.setProgressTintList(red);
         bar.setIndeterminateTintList(red);
         bar.setProgressBackgroundTintList(ColorStateList.valueOf(Color.argb(31, 255, 255, 255)));
-        LinearLayout.LayoutParams barSize = new LinearLayout.LayoutParams((int) (180 * dp), Math.max(2, (int) (3 * dp)));
-        barSize.topMargin = (int) (44 * dp);
+        LinearLayout.LayoutParams barSize = new LinearLayout.LayoutParams(Math.round(width * 0.25f), Math.max(2, Math.round(width * 0.003125f)));
+        barSize.topMargin = Math.round(width * 0.025f);
         box.addView(bar, barSize);
         message = new TextView(this);
         message.setTextColor(Color.rgb(201, 201, 216));
-        message.setTextSize(16);
+        message.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, width * 0.01458f);
+        message.setPadding(0, Math.round(width * 0.01146f), 0, 0);
         message.setGravity(Gravity.CENTER);
         message.setText("Verificando se há atualizações");
         box.addView(message, new LinearLayout.LayoutParams(-1, textHeight));

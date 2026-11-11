@@ -68,6 +68,7 @@ export function applyTv() {
   const fit = window.innerWidth / 1420;
   const zoom = TV.on ? Math.min(2, touch ? Math.max(1, fit) : Math.max(0.5, fit)) : 1;
   html.style.zoom = TV.on ? zoom.toFixed(2) : '';
+  html.style.setProperty('--tvz', TV.on ? zoom.toFixed(2) : '1'); // a abertura usa para medir em fração da tela
   // as regras de tela estreita do CSS (@media max-width) olham a largura real, não a com zoom: na TV
   // sem toque o layout já é o largo, então elas ficam desligadas (html.tv-wide no app.css)
   html.classList.toggle('tv-wide', TV.on && !touch);
@@ -339,7 +340,13 @@ export function focusFirst(root) {
     const r = el.getBoundingClientRect();
     return r.top >= 0 && r.bottom <= window.innerHeight;
   });
-  focusEl(inView('.ch-card, .poster, .ep, .g-prog') || inView('.cat-item.on, .btn.primary', true) || inView('*') || els[0]);
+  // na tela de um filme ou série, o Assistir (o botão principal) vem antes do Voltar, mesmo mais abaixo:
+  // ela monta em partes, e quando o foco era escolhido o Assistir ainda podia estar fora da metade de cima
+  const detailMain = () => {
+    const b = scope.querySelector('#view .detail .btn.primary');
+    return b && visible(b) ? b : null;
+  };
+  focusEl(inView('.ch-card, .poster, .ep, .g-prog') || detailMain() || inView('.cat-item.on, .btn.primary', true) || inView('*') || els[0]);
 }
 
 // Botões dentro de um cartão (ex.: ★) só são alcançáveis a partir do próprio cartão.

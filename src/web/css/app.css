@@ -966,6 +966,16 @@ input, select, textarea { font: inherit; color: inherit; }
 .tv #splash { transition: opacity .7s ease; will-change: opacity; }
 .tv .sp-glow { display: none; }
 .tv .sp-bar i { will-change: transform; }
+/* Abertura igual em toda TV (LG, Android TV) e igual às aberturas nativas (platforms/webos/index.html e
+   MainActivity.createSplash): medidas em fração da largura da tela, a referência é 1920px. O zoom do app
+   multiplica até o vw, por isso a divisão por --tvz. */
+.tv .sp-logo { width: calc(39.375vw / var(--tvz, 1)); max-width: none; min-width: 0; }
+.tv .sp-bar { width: calc(25vw / var(--tvz, 1)); height: calc(.3125vw / var(--tvz, 1)); margin-top: calc(2.5vw / var(--tvz, 1)); border-radius: calc(.3125vw / var(--tvz, 1)); background: rgba(255, 255, 255, .14); }
+/* as aberturas nativas da LG e do Android terminam com a barra cheia e "Abrindo": esta começa igual, parada */
+.tv .sp-bar i { width: 100%; border-radius: inherit; animation: none; transform: none; }
+.sp-msg { display: none; }
+.tv .sp-msg { display: block; height: calc(2.083vw / var(--tvz, 1)); margin-top: calc(1.146vw / var(--tvz, 1)); font-size: calc(1.458vw / var(--tvz, 1)); line-height: 1.4; color: #c9c9d8; }
+.tv #splash::before { content: ""; height: calc(3.229vw / var(--tvz, 1)); } /* equilibra o texto: logo e barra no centro */
 
 /* ---------- destaque do controle remoto (não depende do :focus) ---------- */
 .tv .tv-focus { outline: none; box-shadow: 0 0 0 3px var(--accent); }

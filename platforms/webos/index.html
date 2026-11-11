@@ -6,18 +6,22 @@
 <style>
   html, body { height: 100%; margin: 0; overflow: hidden; color: #f4f4f8; font-family: "LG Smart", "Segoe UI", Arial, sans-serif; background: radial-gradient(ellipse at 20% 0%, #4d0d12 0%, rgba(77, 13, 18, 0) 60%), radial-gradient(ellipse at 90% 100%, #3a0716 0%, rgba(58, 7, 22, 0) 55%), #060609; }
   #boot { height: 100%; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; }
-  img { width: 756px; height: auto; }
-  #track { position: relative; width: 480px; height: 6px; margin-top: 48px; border-radius: 6px; overflow: hidden; background: rgba(255, 255, 255, .14); }
-  #fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 6px; background: #ff2a2a; }
+  /* medidas em fração da largura (referência 1920px): iguais à abertura do app e à do Android TV, no pacote
+     1920x1080 e no 1280x720. O espaço vazio em cima equilibra o texto embaixo: logo e barra no centro. */
+  #top { height: 3.229vw; }
+  img { width: 39.375vw; height: auto; }
+  #track { position: relative; width: 25vw; height: .3125vw; margin-top: 2.5vw; border-radius: .3125vw; overflow: hidden; background: rgba(255, 255, 255, .14); }
+  #fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: .3125vw; background: #ff2a2a; }
   #fill.wait { width: 35%; -webkit-animation: wait 1.2s ease-in-out infinite; animation: wait 1.2s ease-in-out infinite; }
   @-webkit-keyframes wait { from { -webkit-transform: translateX(-110%); } to { -webkit-transform: translateX(300%); } }
   @keyframes wait { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
-  #msg { height: 40px; margin-top: 22px; font-size: 28px; color: #c9c9d8; text-align: center; }
-  #retry { display: none; margin-top: 14px; padding: 18px 28px; font-size: 26px; color: #fff; cursor: pointer; }
+  #msg { height: 2.083vw; margin-top: 1.146vw; font-size: 1.458vw; color: #c9c9d8; text-align: center; }
+  #retry { display: none; margin-top: .729vw; padding: .938vw 1.458vw; font-size: 1.354vw; color: #fff; cursor: pointer; }
 </style>
 </head>
 <body>
 <div id="boot">
+  <div id="top"></div>
   <img src="logo-horizontal.webp" alt="IPTVKZ" />
   <div id="track"><div id="fill" class="wait"></div></div>
   <div id="msg" role="status">Carregando</div>
