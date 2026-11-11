@@ -86,7 +86,8 @@ html.tv .hero h1 { font-size: 4.2rem; }
 .cta { display: flex; flex-wrap: wrap; margin: 1.9rem -.35rem -.35rem; }
 .cta .btn { margin: .35rem; }
 
-.switch { display: flex; justify-content: flex-end; margin-bottom: .7rem; }
+.switch { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; margin-bottom: .7rem; }
+.switch__hint { margin-right: auto; color: var(--muted); font-size: .9rem; }
 .switch button { display: flex; align-items: center; min-height: 2.5rem; padding: 0 .9rem; margin-left: .35rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .875rem; font-weight: 600; transition: background-color .15s, color .15s, border-color .15s; }
 .switch .ic { width: 1rem; height: 1rem; margin-right: .45rem; }
 .switch button:hover, .switch button:focus { color: var(--text); border-color: var(--line-2); }
@@ -225,6 +226,8 @@ html.tv .head h2 { font-size: 3.1rem; }
 .doc ul.alpha li { margin: .5rem 0; }
 .doc a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
 
+.motion .topbar, .motion .hero__text > *, .motion .hero__stage { opacity: 0; }
+
 /* moldura do foco (controle e teclado): um elemento só, movido por transform */
 .ring { position: fixed; left: 0; top: 0; z-index: 60; border: 3px solid var(--accent); border-radius: 12px; pointer-events: none; opacity: 0; transition: transform .16s ease-out, opacity .12s; will-change: transform; }
 html.kb .ring.is-on { opacity: 1; }
@@ -250,6 +253,8 @@ html.kb .ring.is-on { opacity: 1; }
 @media (max-width: 640px) {
   .nav { display: none; }
   .topbar .btn { margin-left: auto; }
+  .switch__hint { width: 100%; margin-bottom: .5rem; }
+  .switch button { margin: 0 .35rem 0 0; }
   .brand img { width: 7.5rem; }
   .hero h1 { font-size: 2.6rem; }
   .cta .btn { flex: 1 1 100%; }

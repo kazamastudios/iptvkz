@@ -35,7 +35,7 @@ Não entram agora: blog, comparativo com outros apps e doações.
 
 ### 2.2 Números
 
-Quatro fatos de venda: R$ 0 de mensalidade, 0 anúncios, 1 QR Code e 1,4 MB na TV LG. Licença, estrelas e GitHub ficam fora do início, no bloco "Ajude a melhorar" e no rodapé. O total de downloads substitui "0 anúncios" sozinho a partir de 1.000.
+Quatro fatos de venda: R$ 0 de mensalidade, 0 anúncios, QR Code (aponte a câmera e vincule à TV) e 1,4 MB na TV LG. Licença, estrelas e GitHub ficam fora do início, no bloco "Ajude a melhorar" e no rodapé. O total de downloads substitui "0 anúncios" sozinho a partir de 1.000.
 
 **Regras de texto:** não citar concorrentes nem preços deles, não dizer "o melhor" sem prova, não prometer gratuidade "para sempre" e sempre falar em app pago de player, nunca em conteúdo grátis.
 
@@ -94,8 +94,8 @@ Na TV, corpo de texto de pelo menos 24 px em 1920x1080.
 
 ## 5. Limites técnicos
 
-- Sem bibliotecas: saem Three.js, GSAP e ScrollTrigger, que somam 792 KB.
-- JavaScript próprio de até 15 KB comprimido e primeira carga de até 300 KB.
+- Sai o Three.js (676 KB). GSAP e ScrollTrigger (116 KB sem compressão) só carregam fora da TV, depois da página, para fade in, fade out e rolagem suave. Na TV, o equivalente é a moldura deslizante e a troca suave de telas.
+- JavaScript próprio de até 15 KB comprimido e primeira carga de até 300 KB, sem contar o GSAP, que não bloqueia a página.
 - Animar só `transform` e `opacity`, um elemento por vez, nada fora da tela, e respeitar "reduzir movimento".
 - Compatível com Chromium 53 (webOS 4): sem `aspect-ratio`, `gap` em flex, `:has`, `?.` ou `??`.
 - Sem JavaScript, todo o conteúdo aparece e o download leva às releases.

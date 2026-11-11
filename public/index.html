@@ -29,6 +29,15 @@
   <link rel="apple-touch-icon" href="images/brand/apple-touch-icon.png">
   <link rel="preload" href="fonts/inter-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/style.css">
+  <script>
+    // Esconde o topo só até a animação começar. Se ela não carregar, a página aparece igual.
+    (function () {
+      var r = document.documentElement, tv = /web0s|webos|smart-?tv|netcast|tizen|hbbtv|appletv|crkey|aft[a-z]|android tv|bravia|googletv|mibox/i.test(navigator.userAgent) || /[?&]tv=1\b/.test(location.search);
+      if (tv || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      r.classList.add('motion');
+      setTimeout(function () { if (!r.classList.contains('motion-ready')) r.classList.remove('motion'); }, 3000);
+    })();
+  </script>
 
   <script type="application/ld+json">
   {
@@ -78,9 +87,10 @@
           </div>
         </div>
         <figure class="hero__stage">
-          <div class="switch" role="group" aria-label="Visualização">
-            <button type="button" data-view="classica" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>Clássica</button>
-            <button type="button" data-view="streaming" aria-pressed="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d="M3 5h18v10H3zM5 20h3M10.5 20h3M16 20h3"/></svg>Streaming</button>
+          <div class="switch" role="group" aria-label="Visuais do aplicativo">
+            <span class="switch__hint">O app tem dois visuais. Experimente:</span>
+            <button type="button" data-view="classica" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>Visual Clássico</button>
+            <button type="button" data-view="streaming" aria-pressed="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d="M3 5h18v10H3zM5 20h3M10.5 20h3M16 20h3"/></svg>Visual Streaming</button>
           </div>
           <div class="frame">
             <img data-hero-img src="images/screens/hero-streaming-1280.webp"
@@ -97,7 +107,7 @@
       <div class="wrap stats__in">
         <div class="stat"><strong>R$ 0</strong><span>de mensalidade</span></div>
         <div class="stat" data-stat="downloads"><strong>0</strong><span>anúncios</span></div>
-        <div class="stat"><strong>1 QR</strong><span>e a lista está na TV</span></div>
+        <div class="stat"><strong>QR Code</strong><span>aponte a câmera e vincule à TV</span></div>
         <div class="stat"><strong>1,4 MB</strong><span>na TV LG</span></div>
       </div>
     </section>
@@ -201,7 +211,7 @@
         </header>
         <div class="gallery" data-gallery>
           <div class="gallery__list" role="group" aria-label="Telas do aplicativo">
-            <button type="button" class="tile is-on" data-shot="g-streaming" data-alt="Visualização Streaming com um filme fictício em destaque"><i>01</i><b>Streaming</b><span>Destaque grande e fileiras de cards.</span></button>
+            <button type="button" class="tile is-on" data-shot="g-streaming" data-alt="Visualização Streaming com um filme fictício em destaque"><i>01</i><b>Visual Streaming</b><span>Destaque grande e fileiras de cards.</span></button>
             <button type="button" class="tile" data-shot="g-ao-vivo" data-alt="TV ao vivo com player, agora e a seguir e lista de canais"><i>02</i><b>TV ao vivo</b><span>Player, agora e a seguir, e a lista ao lado.</span></button>
             <button type="button" class="tile" data-shot="g-guia" data-alt="Guia de programação em grade de horários"><i>03</i><b>Guia</b><span>Grade de horários de todos os canais.</span></button>
             <button type="button" class="tile" data-shot="g-serie" data-alt="Página de uma série com temporadas e episódios"><i>04</i><b>Séries</b><span>Temporadas, episódios e onde você parou.</span></button>

@@ -213,6 +213,17 @@
     if (e.keyCode === 9 || (isTv && e.keyCode >= 37 && e.keyCode <= 40)) { root.classList.add('kb'); kick(); }
   });
 
+  // ---------- animações: só fora da TV, e sem atrasar o resto da página ----------
+  function loadAll(list) {
+    if (!list.length) return;
+    var s = document.createElement('script');
+    s.src = list[0];
+    s.onload = function () { loadAll(list.slice(1)); };
+    s.onerror = function () { root.classList.remove('motion'); };
+    document.body.appendChild(s);
+  }
+  if (!isTv && !reduce) loadAll(['js/vendor/gsap.min.js', 'js/vendor/ScrollTrigger.min.js', 'js/motion.js']);
+
   if (!isTv) return;
 
   // Na TV, os cartões também recebem foco, para a rolagem passar por eles.
