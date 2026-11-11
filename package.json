@@ -8,9 +8,9 @@
     "desktop": "electron .",
     "build": "node scripts/build-legacy.js",
     "vendor": "node scripts/vendor.js",
-    "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux",
+    "dist:win": "node scripts/build-info.js && electron-builder --win",
+    "dist:mac": "node scripts/build-info.js && electron-builder --mac",
+    "dist:linux": "node scripts/build-info.js && electron-builder --linux",
     "ipk": "node scripts/build-ipk.js",
     "android": "node scripts/build-android.js"
   },

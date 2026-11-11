@@ -9,9 +9,12 @@ const nodeUrl = require('url');
 const zlib = require('zlib');
 const Service = require('webos-service');
 
-/* global __UPDATE_BASE__, __UPDATE_KEY__ */
+/* global __UPDATE_BASE__, __UPDATE_KEY__, __LOCAL_BUILD__ */
 const BASE = process.env.IPTVKZ_UPDATE_BASE || __UPDATE_BASE__;
 const PUBLIC_KEY = process.env.IPTVKZ_UPDATE_KEY || __UPDATE_KEY__;
+// IPK feito no PC (sem número de build): roda exatamente o que veio nele. Sem isso, a versão publicada
+// (número maior que 0) substituía o código que acabou de ser instalado para teste.
+const LOCAL_BUILD = __LOCAL_BUILD__;
 const CHECK_MS = 8000;
 const DOWNLOAD_MS = 180000;
 const BUILTIN = path.join(__dirname, 'app');
@@ -67,7 +70,7 @@ const installedDir = (v) => path.join(BUNDLES, String(v));
 // A versão que vale: a baixada, se for mais nova que a que veio no IPK.
 function activeBundle() {
   const v = readInt(CURRENT);
-  if (v > builtinVersion() && v !== readInt(REJECTED) && fs.existsSync(path.join(installedDir(v), 'server.js'))) {
+  if (!LOCAL_BUILD && v > builtinVersion() && v !== readInt(REJECTED) && fs.existsSync(path.join(installedDir(v), 'server.js'))) {
     return { version: v, dir: installedDir(v) };
   }
   return { version: builtinVersion(), dir: BUILTIN };
@@ -147,6 +150,7 @@ function rmrf(p) {
 
 // true = instalou uma versão nova. Sem internet ou GitHub fora, segue com a que já tem.
 function update() {
+  if (LOCAL_BUILD) { log('build local: sem atualização automática'); return Promise.resolve(false); }
   emit({ phase: 'checking' });
   let manifest;
   return Promise.all([get(BASE + 'webos-update.json', CHECK_MS), get(BASE + 'webos-update.json.sig', CHECK_MS)])

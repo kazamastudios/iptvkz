@@ -2,7 +2,7 @@
 import { h, ico, fmtAgo, confirmDialog, toast } from '../core/util.js';
 import {
   S, C, activeList, orderedCats, setCatHidden, setCatOrder, resetCats, setSetting, saveNow, api,
-  parentalEnabled, adultLocked, pinHash, checkPin, unlockAdult, lockAdult, setCatAdult, adultCatCount,
+  parentalEnabled, adultLocked, pinHash, checkPin, unlockAdult, lockAdult, setCatAdult, adultCatCount, buildLabel,
 } from '../core/store.js';
 import { pinDialog } from './pin.js';
 import { TV, setTvMode, exitApp, focusEl } from '../tv/tv.js';
@@ -292,11 +292,17 @@ export function settingsView(params, ctx) {
   // ---------- sobre ----------
   page.append(h('div.set-section',
     h('h3', 'Sobre'),
-    h('p', 'IPTVKZ 1.0. Os dados ficam em ', h('code', S.dataDir || 'data/'), '.'),
+    (() => {
+      const b = buildLabel();
+      return h('div.build-info',
+        h('div.row', { style: { gap: '10px', alignItems: 'center' } },
+          h('b', `IPTVKZ ${b.short}`), h('span.build-mode' + (b.dev ? '.dev' : ''), b.mode)),
+        b.detail ? h('div.muted.small', b.detail) : null);
+    })(),
+    h('p', 'Os dados ficam em ', h('code', S.dataDir || 'data/'), '.'),
     h('p.muted', 'O IPTVKZ é só um player: não fornece listas nem conteúdo, e cada usuário responde pelo que adiciona e assiste.'),
     h('div.row', { style: { marginBottom: '12px' } },
       h('button.btn.small', { onclick: () => showTermsDialog() }, ico('file'), 'Termos de uso')),
-    h('p.muted', S.vlc ? 'VLC encontrado: o botão “Abrir no VLC” está ativo.' : 'VLC não encontrado. Instale o VLC para abrir formatos que o navegador não toca.'),
     TV.on ? h('button.btn.small.ghost', {
       onclick: async () => {
         if (await confirmDialog('Sair do IPTVKZ?', 'O aplicativo será fechado nesta TV.', 'Sair')) exitApp();
