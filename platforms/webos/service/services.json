@@ -1,9 +1,9 @@
 {
-  "id": "com.lucasyemz.iptvkz.service",
+  "id": "com.kazamastudios.iptvkz.dev.service",
   "description": "Servidor interno e atualização do IPTVKZ",
   "services": [
     {
-      "name": "com.lucasyemz.iptvkz.service",
+      "name": "com.kazamastudios.iptvkz.dev.service",
       "description": "Servidor interno e atualização do IPTVKZ"
     }
   ]

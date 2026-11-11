@@ -12,8 +12,8 @@ Nada aqui publica sozinho. O envio é sempre manual, pela conta do Seller Lounge
 |---|---|---|
 | Comando | `npm run ipk` | `npm run ipk:store` |
 | Saída | `dist/webos/` | `dist/webos/store/` |
-| Id do app | `com.lucasyemz.iptvkz` | `com.kazamastudios.iptvkz` (definitivo) |
-| Fornecedor | lucasyemz | Kazama Studios (troca com `WEBOS_STORE_VENDOR`) |
+| Id do app | `com.kazamastudios.iptvkz.dev` | `com.kazamastudios.iptvkz` (definitivo) |
+| Fornecedor | Kazama Studios | Kazama Studios (troca com `WEBOS_STORE_VENDOR`) |
 | Instalação | `ares-install`, com o Modo Desenvolvedor ligado | LG Content Store |
 | Atualização | Pacote assinado do GitHub Releases, só com `BUNDLE_VERSION` (CI). O IPK feito no PC não se atualiza. | Só por um IPK novo, aprovado pela LG. O código de atualização nem entra no pacote. |
 | Pasta de dados | `$HOME/iptvkz`, a pasta do serviço ou `/media/developer/temp` (como sempre) | `/media/internal/<id>`, depois `$HOME/iptvkz` |
