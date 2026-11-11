@@ -42,6 +42,7 @@ function buildBundle(version) {
     recursive: true,
     filter: (f) => !f.endsWith('.map'),
   });
+  require('./build-info').writeBuildInfo(path.join(stage, 'src', 'web'), { build: version }); // versão e modo no app
   const zip = path.join(out, 'IPTVKZ-android-bundle.zip');
   fs.rmSync(zip, { force: true });
   run('zip', ['-q', '-r', zip, '.'], { cwd: stage });

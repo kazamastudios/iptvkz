@@ -1,8 +1,28 @@
 // Modo TV: interface maior e navegação pelas setas/OK/Voltar do controle remoto.
 // A escolha é por aparelho (localStorage), não vai para o servidor.
+import { glideTo, glideTarget } from '../core/smoothscroll.js';
+import { ringTo } from './focusring.js';
+
 const KEY = 'iptvkz.tv';
 
+// Quem pediu ao sistema menos animação recebe os saltos diretos de antes.
+const reducedMotion = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+
 export const TV = { on: false };
+
+// Modo teclado no PC: setas e Tab andam pelos itens como o controle na TV, com o mesmo destaque (moldura,
+// zoom, tela acompanhando). Liga ao usar o teclado e desliga ao usar o mouse; o foco fica onde estava.
+export const KB = { on: false };
+export function setKbNav(on) {
+  if (TV.on || KB.on === on) return;
+  KB.on = on;
+  document.documentElement.classList.toggle('kb-nav', on);
+  if (on) return syncFocus();
+  if (marked) marked.classList.remove('tv-focus');
+  marked = null;
+  ringTo(null);
+}
+const keyNav = () => TV.on || KB.on;
 
 function stored() {
   try { return localStorage.getItem(KEY) ?? localStorage.getItem('minhatv.tv'); } catch { return null; }
@@ -40,9 +60,17 @@ export function setTvMode(on) {
 export function applyTv() {
   const html = document.documentElement;
   html.classList.toggle('tv', TV.on);
-  // Tela de TV vista do sofá: tudo ~35% maior em 1080p.
-  const zoom = TV.on ? Math.max(1, Math.min(2, window.innerWidth / 1420)) : 1;
+  // Toda TV com o mesmo layout, de ~1420px de largura: a LG (1920px) amplia ~35%; o Android TV, que mostra
+  // 1080p com densidade 2 (o app vê só 960px), reduz. Antes só ampliava, e no Android TV tudo saía grande
+  // demais: título do destaque cortado, nomes dos filmes fora da tela.
+  // Com toque (o APK num celular também liga o modo TV) não reduz: lá vale o layout de celular.
+  const touch = navigator.maxTouchPoints > 0;
+  const fit = window.innerWidth / 1420;
+  const zoom = TV.on ? Math.min(2, touch ? Math.max(1, fit) : Math.max(0.5, fit)) : 1;
   html.style.zoom = TV.on ? zoom.toFixed(2) : '';
+  // as regras de tela estreita do CSS (@media max-width) olham a largura real, não a com zoom: na TV
+  // sem toque o layout já é o largo, então elas ficam desligadas (html.tv-wide no app.css)
+  html.classList.toggle('tv-wide', TV.on && !touch);
   // Com zoom, 100vh passa da tela e corta o rodapé; a altura real vem daqui.
   html.style.setProperty('--app-h', `${window.innerHeight / Number(zoom.toFixed(2))}px`);
 }
@@ -68,6 +96,7 @@ const FOCUSABLE = [
 
 const NATIVE = /^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/;
 const CARD = '.ch-card, .poster, .ep, .g-ch';
+const LAZY_BLOCK = '.shelf'; // blocos com content-visibility: auto (ver app.css)
 
 // Onde a navegação acontece: menu do player > modal > player de filme > gaveta de canais > app.
 export function navScope() {
@@ -83,6 +112,25 @@ export function navScope() {
   );
 }
 
+// Blocos com content-visibility (as fileiras do Início) não são montados fora da tela. Medir um item lá dentro
+// obriga o navegador a montar o bloco inteiro: com dezenas de fileiras, cada tecla custava ~400ms.
+// Esta checagem mede o bloco (barato) e diz se tudo dentro dele pode ser ignorado. Uma por busca: guarda as medidas.
+function farCheck() {
+  const far = new Map();
+  return (el) => {
+    const box = el.closest(LAZY_BLOCK);
+    if (!box) return false;
+    let v = far.get(box);
+    if (v === undefined) {
+      const b = box.getBoundingClientRect();
+      // uma tela de folga para cima e para baixo basta para achar a fileira vizinha
+      v = b.bottom <= -window.innerHeight || b.top >= window.innerHeight * 2;
+      far.set(box, v);
+    }
+    return v;
+  };
+}
+
 function visible(el) {
   if (el.closest('.hidden')) return false;
   const r = el.getBoundingClientRect();
@@ -96,7 +144,11 @@ export function syncFocus(el = document.activeElement) {
   if (marked === next) return;
   if (marked) marked.classList.remove('tv-focus');
   marked = next;
-  if (marked && TV.on) marked.classList.add('tv-focus');
+  if (marked && keyNav()) marked.classList.add('tv-focus');
+  ringTo(keyNav() && !reducedMotion() ? marked : null);
+  // aviso próprio de "o foco do controle/teclado chegou aqui": o focusin do navegador não dispara quando a
+  // janela não está em foco, e quem reage ao foco (ex.: o destaque do Streaming) não pode depender disso
+  if (marked && keyNav()) marked.dispatchEvent(new CustomEvent('navfocus', { bubbles: true }));
 }
 
 // Teclas do controle: algumas TVs mandam nomes antigos ou só o código numérico.
@@ -201,6 +253,42 @@ export function nativeKeyboardOpen() {
   return v === undefined ? kbOpen : !!v;
 }
 
+// Leva o item para dentro da área visível deslizando, em vez do pulo do scrollIntoView.
+// Sobe pelas áreas com rolagem (a fileira anda para o lado, a página desce) e respeita o scroll-padding.
+function revealSmooth(el, center) {
+  // Item dentro de algo fixo na tela (sticky/fixed, ex.: o destaque do Streaming) já está sempre visível:
+  // rolar a área por causa dele só tiraria do lugar o que está embaixo (o catálogo subia ao andar nos botões).
+  let pinnedInside = false;
+  for (let box = el.parentElement; box && box !== document.body; box = box.parentElement) {
+    const cs = getComputedStyle(box);
+    if (cs.position === 'sticky' || cs.position === '-webkit-sticky' || cs.position === 'fixed') { pinnedInside = true; continue; }
+    if (pinnedInside) return;
+    const canX = box.scrollWidth > box.clientWidth + 1 && /auto|scroll/.test(cs.overflowX);
+    const canY = box.scrollHeight > box.clientHeight + 1 && /auto|scroll/.test(cs.overflowY);
+    if (!canX && !canY) continue;
+    const br = box.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const z = br.width / box.offsetWidth || 1; // o zoom da TV: retângulos vêm ampliados, a rolagem não
+    const at = glideTarget(box); // compara com onde a área vai parar, não com o meio do caminho
+    // a: posição do item no conteúdo; pos: início da janela visível; view: tamanho dela
+    // data-reveal="start" na área: o item sempre para no início dela (as fileiras do Streaming sobem até logo
+    // abaixo do destaque, como nos apps de streaming); sem isso, rola só o necessário para o item aparecer
+    const start = box.dataset.reveal === 'start';
+    const axis = (a, size, view, pos, padA, padB, toStart) => {
+      if (center) return a + size / 2 - view / 2;
+      if (toStart) return Math.abs(a - padA - pos) > 1 ? a - padA : null;
+      if (a < pos + padA) return a - padA;
+      if (a + size > pos + view - padB) return a + size - view + padB;
+      return null;
+    };
+    const x = canX ? axis((r.left - br.left) / z - box.clientLeft + box.scrollLeft, r.width / z, box.clientWidth, at.x,
+      parseFloat(cs.scrollPaddingLeft) || 0, parseFloat(cs.scrollPaddingRight) || 0) : null;
+    const y = canY ? axis((r.top - br.top) / z - box.clientTop + box.scrollTop, r.height / z, box.clientHeight, at.y,
+      parseFloat(cs.scrollPaddingTop) || 0, parseFloat(cs.scrollPaddingBottom) || 0, start) : null;
+    if (x != null || y != null) glideTo(box, x, y, holding);
+  }
+}
+
 export function focusEl(el, { center = false } = {}) {
   if (!el) return;
   if (el !== nativeInput) endNativeInput();
@@ -208,6 +296,10 @@ export function focusEl(el, { center = false } = {}) {
   if (!NATIVE.test(el.tagName) && !el.hasAttribute('tabindex')) el.tabIndex = -1;
   el.focus({ preventScroll: true });
   syncFocus(el);
+  if (keyNav() && !reducedMotion()) {
+    revealSmooth(el, center);
+    return;
+  }
   try {
     el.scrollIntoView({ block: center ? 'center' : 'nearest', inline: 'nearest' });
   } catch {
@@ -220,14 +312,20 @@ export function focusEl(el, { center = false } = {}) {
 }
 
 function region(el) {
-  return el.closest('.sidebar') ? 'side' : el.closest('.cats') ? 'cats' : 'main';
+  return el.closest('.sidebar') ? 'side' : el.closest('.cats') ? 'cats' : el.closest('.topbar') ? 'top' : 'main';
 }
 
 export function focusFirst(root) {
   const scope = root || navScope();
-  const els = [...scope.querySelectorAll(FOCUSABLE)].filter((el) => visible(el) && !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+  const isFar = farCheck();
+  const els = [...scope.querySelectorAll(FOCUSABLE)].filter((el) => !isFar(el) && visible(el) && !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
   // de preferência um cartão do conteúdo; campos de texto abririam o teclado da TV
-  const inView = (sel) => els.find((el) => el.matches(sel) && el.closest('#view') && el.getBoundingClientRect().top >= 0);
+  // só o que já está na tela: um botão principal lá embaixo (ex.: em Configurações) fazia a tela abrir rolada até o fim
+  const inView = (sel) => els.find((el) => {
+    if (!el.matches(sel) || !el.closest('#view')) return false;
+    const r = el.getBoundingClientRect();
+    return r.top >= 0 && r.bottom <= window.innerHeight;
+  });
   focusEl(inView('.ch-card, .poster, .ep, .g-prog') || inView('.cat-item.on, .btn.primary') || inView('*') || els[0]);
 }
 
@@ -238,12 +336,74 @@ function reachable(el, cur) {
 }
 
 let lastMove = 0;
+let holding = false; // a seta está sendo segurada (repetições seguidas)
+
+// Navegação parada há pelo menos ms (o controle/teclado não está sendo segurado). Usado para adiar trabalho
+// pesado, como encher as fileiras de capas, enquanto a pessoa passa por elas.
+export function navIdle(ms = 350) {
+  return Date.now() - lastMove >= ms;
+}
+
+// Cabeçalho das fileiras (título, "Ver tudo", setas de página): fica fora do caminho normal do controle,
+// para ↑/↓ pularem direto de uma fileira de capas para a outra.
+const NAV_SKIP = '.shelf-head, [data-nav-skip]';
+
+// Atalho declarado no HTML: data-up="seletor" num bloco (a fileira) leva ao item do seletor mais próximo
+// (procurado subindo pelos pais), ex. as setas e o "Ver tudo" do título da fileira. Para não atrapalhar quem só
+// está passando pelas fileiras, ele só vale com o gesto ↑ ↓ ↑: subiu desta fileira, voltou para ela e subiu de
+// novo em até 3 s. ↓ de lá volta ao cartão de onde veio, se ele ainda estiver à vista.
+let upJump = null; // { from, to }
+const trail = []; // últimos movimentos: { dir, from, to, t } (from/to = fileira de origem e de destino)
+const zoneOf = (el) => (el && el.closest ? el.closest('[data-up]') : null);
+function armed(zone) {
+  const [a, b] = trail.slice(-2);
+  return !!(a && b && a.dir === 'up' && a.from === zone && b.dir === 'down' && b.to === zone && Date.now() - a.t < 3000);
+}
+function remember(dir, from, to) {
+  trail.push({ dir, from: zoneOf(from), to: zoneOf(to), t: Date.now() });
+  if (trail.length > 4) trail.shift();
+}
+
+function visibleIn(el) {
+  const r = el.getBoundingClientRect();
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const cs = getComputedStyle(p);
+    if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+    const b = p.getBoundingClientRect();
+    if (r.left < b.left - 2 || r.right > b.right + 2 || r.top < b.top - 2 || r.bottom > b.bottom + 2) return false;
+  }
+  return r.width > 2;
+}
+
+function declaredJump(dir, cur) {
+  if (dir === 'down' && upJump && upJump.to.contains(cur) && upJump.from.isConnected && visibleIn(upJump.from)) return upJump.from;
+  if (dir !== 'up') return null;
+  const zone = zoneOf(cur);
+  if (!zone || !armed(zone)) return null;
+  const sel = zone.dataset.up;
+  for (let p = zone.parentElement; p && p !== document.body; p = p.parentElement) {
+    if (!p.querySelector(sel)) continue;
+    const opts = [...p.querySelectorAll(sel)].filter((el) => !el.classList.contains('off') && el.getBoundingClientRect().width > 2);
+    if (!opts.length) return null; // nada para onde ir (ex.: a fileira cabe inteira na tela)
+    const a = cur.getBoundingClientRect();
+    const ax = a.left + a.width / 2;
+    const dist = (el) => { const r = el.getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - ax); };
+    return opts.sort((x, y) => dist(x) - dist(y))[0];
+  }
+  return null;
+}
 
 // dir: 'left' | 'right' | 'up' | 'down'. Retorna true se mudou o foco.
 export function move(dir) {
-  // tecla segurada: repetir mais rápido que a TV desenha só acumula atraso
+  // tecla segurada: repetir mais rápido que a TV desenha só acumula atraso. Na vertical da TV o limite é maior:
+  // cada fileira nova traz capas para decodificar em 4K, e segurando ↓ elas chegavam mais rápido do que a placa
+  // de vídeo dava conta, até o app travar por segundos.
   const now = Date.now();
-  if (now - lastMove < 90) return true;
+  const gap = dir === 'up' || dir === 'down' ? 260 : 90; // TV, Android TV e teclado do PC
+  if (now - lastMove < gap) return true;
+  // seta segurada (a anterior foi há pouco): a tela pula direto, sem deslizar. Cada deslize faz a TV redesenhar
+  // a tela em 4K quadro a quadro; com a tecla segurada, um atrás do outro, ela não dava conta.
+  holding = now - lastMove < 450;
   lastMove = now;
   const scope = navScope();
   const cur = document.activeElement;
@@ -251,14 +411,68 @@ export function move(dir) {
     focusFirst(scope);
     return true;
   }
+  // Área presa (data-nav-trap): as setas só andam dentro dela. Ao chegar na borda, a própria área decide o que
+  // fazer (el._navExit(dir)), por ex. o destaque aberto do Streaming devolve o foco ao card de onde se veio.
+  const trap = cur.closest && cur.closest('[data-nav-trap]');
+  const jump = trap ? null : declaredJump(dir, cur);
+  if (jump) {
+    // o cabeçalho inteiro (Ver tudo + setas) é a área de onde ↓ volta ao cartão
+    upJump = dir === 'up' ? { from: cur, to: jump.closest(NAV_SKIP) || jump.parentElement } : null;
+    remember(dir, cur, jump);
+    trail.length = 0; // usado: o próximo acesso ao cabeçalho pede o gesto de novo
+    focusEl(jump);
+    return true;
+  }
+  // ←/→ numa fileira de capas: a vizinha é a próxima capa da própria fileira. Sem medir nada: medir todos os
+  // itens da tela a cada tecla custava 60–120 ms na TV. Na primeira capa, ← segue a busca normal (vai ao menu).
+  if (!trap && (dir === 'left' || dir === 'right') && cur.matches(CARD)) {
+    const row = zoneOf(cur);
+    if (row) {
+      const cards = row.querySelectorAll(CARD);
+      const i = Array.prototype.indexOf.call(cards, cur);
+      const next = i >= 0 ? cards[i + (dir === 'right' ? 1 : -1)] : null;
+      if (next) {
+        remember(dir, cur, next);
+        focusEl(next);
+        return true;
+      }
+      if (i >= 0 && dir === 'right') return true; // última capa: fica onde está
+    }
+  }
+  // ↑/↓ numa fileira de capas: vai sempre para a fileira vizinha (na capa mais próxima na horizontal), mesmo que
+  // ela tenha poucas capas e fora do alinhamento. Só da primeira/última fileira o foco sai para o resto da tela.
+  if (!trap && (dir === 'up' || dir === 'down')) {
+    const row = zoneOf(cur);
+    if (row) {
+      const rows = [...scope.querySelectorAll('[data-up]')];
+      const ax0 = (() => { const a0 = cur.getBoundingClientRect(); return a0.left + a0.width / 2; })();
+      for (let i = rows.indexOf(row) + (dir === 'down' ? 1 : -1); i >= 0 && i < rows.length; i += dir === 'down' ? 1 : -1) {
+        const cards = [...rows[i].querySelectorAll(CARD)];
+        // fileira vizinha ainda sem capas (carrega quando chega perto da tela): rola até ela, o próximo aperto entra
+        if (!cards.length) { revealSmooth(rows[i]); return true; }
+        const dist = (el) => { const r = el.getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - ax0); };
+        const target = cards.sort((x, y) => dist(x) - dist(y))[0];
+        remember(dir, cur, target);
+        focusEl(target);
+        return true;
+      }
+    }
+  }
+  const curSkip = cur.closest && cur.closest(NAV_SKIP);
+  const across = dir === 'left' || dir === 'right';
   const a = cur.getBoundingClientRect();
   const ax = a.left + a.width / 2;
   const curRegion = region(cur);
   const ay = a.top + a.height / 2;
   let best = null;
   let bestScore = Infinity;
-  for (const el of scope.querySelectorAll(FOCUSABLE)) {
-    if (el === cur) continue;
+  // A barra do topo (busca, seletor de visualização) é o último recurso do ↑: com a página rolada, os itens de
+  // cima ficam fora da tela e a busca, fixa no topo, parecia mais perto. Só vai para ela sem nada acima na página.
+  let bestTop = null;
+  let topScore = Infinity;
+  const isFar = farCheck();
+  for (const el of (trap || scope).querySelectorAll(FOCUSABLE)) {
+    if (el === cur || isFar(el)) continue;
     const r = el.getBoundingClientRect();
     if (r.width <= 2 || r.height <= 2 || r.bottom <= -2000 || r.top >= window.innerHeight + 2000) continue;
     const cx = r.left + r.width / 2;
@@ -269,25 +483,49 @@ export function move(dir) {
     else if (dir === 'left') { if (r.right > a.left + 4 && cx >= ax - 2) continue; primary = Math.max(0, a.left - r.right); overlap = Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top); }
     else if (dir === 'down') { if (r.top < a.bottom - 4 && cy <= ay + 2) continue; primary = Math.max(0, r.top - a.bottom); overlap = Math.min(a.right, r.right) - Math.max(a.left, r.left); }
     else { if (r.bottom > a.top + 4 && cy >= ay - 2) continue; primary = Math.max(0, a.top - r.bottom); overlap = Math.min(a.right, r.right) - Math.max(a.left, r.left); }
-    const across = dir === 'left' || dir === 'right';
     // ↑/↓ não escolhem quem está ao lado, na mesma altura (ex.: o cartão vizinho)
     if (!across && overlap <= 0 && Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top) > 4) continue;
     const side = across ? Math.abs(cy - ay) : Math.abs(cx - ax);
     // sem alinhamento, pesa o vão entre as bordas: um item largo não pode perder para outro bem mais distante
     const gap = across ? Math.max(0, r.top - a.bottom, a.top - r.bottom) : Math.max(0, r.left - a.right, a.left - r.right);
     const score = primary + (overlap > 0 ? 0 : gap * 2) + side * 0.1;
-    if (score >= bestScore) continue;
+    const toTop = dir === 'up' && curRegion !== 'top' && region(el) === 'top';
+    if (score >= (toTop ? topScore : bestScore)) continue;
     // as checagens que sobem pela árvore ficam por último: só para quem pode ganhar
     if ((cur.contains(el) && !cur.matches(CARD)) || el.closest('.hidden') || !reachable(el, cur)) continue;
-    // ↑/↓ não saltam entre a barra lateral e o conteúdo
-    if ((dir === 'up' || dir === 'down') && region(el) !== curRegion) continue;
+    if (getComputedStyle(el).visibility === 'hidden') continue; // invisível mas no layout (ex.: textos no modo trailer)
+    // cabeçalho de fileira: só se o foco já estiver nele (andar entre "Ver tudo" e as setas)
+    if (!(curSkip && curSkip.contains(el)) && el.closest(NAV_SKIP)) continue;
+    // dentro do cabeçalho, ←/→ só andam entre os itens dele
+    if (curSkip && across && !curSkip.contains(el)) continue;
+    if (toTop) { topScore = score; bestTop = el; continue; }
+    // ↑/↓ não saltam entre a barra lateral e o conteúdo (da barra do topo, ↓ desce para o conteúdo)
+    const elRegion = region(el);
+    if ((dir === 'up' || dir === 'down') && elRegion !== curRegion && !(curRegion === 'top' && elRegion === 'main')) continue;
     bestScore = score;
     best = el;
   }
+  if (!best && bestTop) {
+    // nada mais acima na página, mas ela ainda está rolada (o topo do item aparece cortado): este ↑ só rola até
+    // o topo, para a pessoa ver o que há ali; o próximo ↑ vai para a barra do topo
+    for (let box = cur.parentElement; box && box !== document.body; box = box.parentElement) {
+      if (box.scrollTop > 1 && /auto|scroll/.test(getComputedStyle(box).overflowY)) {
+        glideTo(box, null, 0);
+        return true;
+      }
+    }
+    best = bestTop;
+  }
   if (best) {
+    remember(dir, cur, best);
     focusEl(best);
     return true;
   }
+  if (trap) {
+    if (trap._navExit) trap._navExit(dir);
+    return true; // presa: a tecla não escapa (nem rola a página)
+  }
+  if (curSkip && across) return true; // ponta do cabeçalho: fica onde está
   return false;
 }
 

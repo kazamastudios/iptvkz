@@ -4,7 +4,7 @@ Player IPTV pessoal que roda no PC (janela de app do Chrome), alimentado pelas l
 
 ## 1. Escopo da v1
 
-**Dentro:** listas M3U/M3U8 (link ou arquivo) e Xtream Codes; TV ao Vivo, Filmes, Séries, Guia (EPG); várias listas com troca rápida; áudio e legenda; "Abrir no VLC".
+**Dentro:** listas M3U/M3U8 (link ou arquivo) e Xtream Codes; TV ao Vivo, Filmes, Séries, Guia (EPG); várias listas com troca rápida; áudio e legenda. Tudo toca dentro do app, sem abrir outros programas.
 
 **Fora:** conversão com ffmpeg (planejada pra v2), gravação, multi-tela, Chromecast, PIN/controle parental, outros idiomas além de PT-BR.
 
@@ -16,7 +16,6 @@ Player IPTV pessoal que roda no PC (janela de app do Chrome), alimentado pelas l
   - `/api/state/*`: guarda os dados em `data/*.json`;
   - `/api/catalog`: baixa e normaliza a lista (M3U ou Xtream) em um catálogo único, com cache em `data/`;
   - `/api/epg`: baixa e processa o XMLTV (inclusive `.gz`), guarda de −6h a +24h e responde só os canais pedidos;
-  - `/api/vlc`: abre o VLC instalado tocando a URL;
   - desliga sozinho após **5 min** sem a janela aberta (heartbeat).
 - **Front-end:** HTML/CSS/JS (módulos ES) sem build. Players: `hls.js`, `mpegts.js` e `<video>` nativo.
 - **Abrir:** atalho "IPTVKZ" na área de trabalho → `platforms/windows/start.vbs` sobe o servidor escondido (se ainda não estiver no ar) e abre o **Chrome em modo app** (`--app`).
@@ -57,9 +56,9 @@ Tema escuro estilo streaming, destaque **vermelho `#FF2A2A`** (da logo), capas g
 
 ## 8. Player
 - Motor escolhido pela URL: `.m3u8` → hls.js; `.ts` ou ao vivo sem extensão → mpegts.js; o resto → nativo.
-- 3 tentativas automáticas → URL alternativa → erro claro + **"Abrir no VLC"** (que abre o VLC direto).
+- 3 tentativas automáticas → URL alternativa → erro claro, com a sugestão de outra versão do título quando o formato não toca.
 - Menu ⚙️:
-  - **Áudio:** faixas do HLS. No MP4/MKV o navegador não permite trocar, então aparece o aviso + VLC.
+  - **Áudio:** faixas do HLS. No MP4/MKV o navegador não permite trocar, então aparece o aviso sugerindo outra versão do título.
   - **Legenda:** faixas do HLS, **arquivo .srt/.vtt** do PC (UTF-8 ou Windows-1252) ou desligada.
   - **Qualidade:** níveis do HLS.
   - Legenda: **atraso** (±0,5s), **tamanho** (P/M/G/GG), **fundo** (nenhum/sombra/caixa).
@@ -82,7 +81,7 @@ Procura em canais, filmes e séries ao mesmo tempo, com os resultados em três b
 - O atalho da área de trabalho abre o app numa janela própria.
 
 ## 12. Modo TV (v1.1): navegador da TV + PC como servidor
-- **Acesso pela rede:** desligado por padrão. Liga em Configurações → *TV e outros aparelhos*, que mostra o endereço pra digitar na TV (`http://IP-do-PC:8787`). Só aceita aparelhos da rede privada. Pela rede, VLC, "Fechar" e "Iniciar com o Windows" ficam bloqueados. Com o acesso ligado, o servidor não desliga sozinho.
+- **Acesso pela rede:** desligado por padrão. Liga em Configurações → *TV e outros aparelhos*, que mostra o endereço pra digitar na TV (`http://IP-do-PC:8787`). Só aceita aparelhos da rede privada. Pela rede, "Fechar" e "Iniciar com o Windows" ficam bloqueados. Com o acesso ligado, o servidor não desliga sozinho.
 - **Iniciar com o Windows** (opcional, desligado): atalho na pasta Inicializar → `platforms/windows/start.vbs /server` (sobe só o servidor, sem janela).
 - **Modo TV** (por aparelho, liga sozinho em TVs; `?tv=1` / `?tv=0` força): interface ~35% maior e navegação espacial por ←↑→↓ + OK; Voltar = Back do controle LG (461) / Esc.
   - TV ao Vivo: canal em tela cheia; ▲▼/CH± troca de canal, ◀ abre a gaveta de canais, OK mostra o banner agora/a seguir.

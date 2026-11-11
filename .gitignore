@@ -2,3 +2,5 @@ node_modules/
 data/
 .claude/
 dist/
+# gerado na hora do build (scripts/build-info.js): versão, build e modo mostrados no app
+src/web/build-info.json
