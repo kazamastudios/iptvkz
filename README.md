@@ -44,7 +44,7 @@ As telas abaixo usam uma lista de demonstração com canais, filmes e séries fi
   </tr>
   <tr>
     <td><img src="docs/screenshots/desktop-serie.webp" alt="Página de uma série com temporadas e episódios assistidos" /><p align="center"><sub>Séries: temporadas, episódios e próximo episódio</sub></p></td>
-    <td><img src="docs/screenshots/desktop-player.webp" alt="Player de vídeo com barra de progresso e controles" /><p align="center"><sub>Player com áudio, legendas, PiP e VLC</sub></p></td>
+    <td><img src="docs/screenshots/desktop-player.webp" alt="Player de vídeo com barra de progresso e controles" /><p align="center"><sub>Player com áudio, legendas e PiP</sub></p></td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/desktop-busca.webp" alt="Busca mostrando canais, filmes e séries" /><p align="center"><sub>Busca em canais, filmes e séries</sub></p></td>
@@ -77,7 +77,7 @@ Letras maiores e navegação pelas setas, OK e Voltar do controle remoto.
 - **TV ao vivo:** categorias, favoritos, recentes, busca e agora/a seguir do guia. Ao assistir, a lista lateral permite zapear com ↑/↓.
 - **Filmes e séries:** prateleiras, “Continuar assistindo”, temporadas e episódios, próximo episódio automático. Versões **Dublado/Legendado** do mesmo título viram um cartão só.
 - **Guia (EPG):** XMLTV (inclusive `.gz`) em grade de horários, com ajuste de fuso por lista.
-- **Player:** HLS (hls.js), MPEG-TS (mpegts.js) e nativo. Troca de **áudio**, **legendas** (do stream ou arquivo `.srt`/`.vtt`, com atraso, tamanho e fundo), qualidade, picture-in-picture e **“Abrir no VLC”** para formatos que o navegador não toca.
+- **Player:** HLS (hls.js), MPEG-TS (mpegts.js) e nativo. Troca de **áudio**, **legendas** (do stream ou arquivo `.srt`/`.vtt`, com atraso, tamanho e fundo), qualidade e picture-in-picture. Tudo acontece dentro do app, sem abrir outros programas.
 - **Modo TV:** navegação pelo controle remoto, zapping em tela cheia, busca por voz com o teclado do sistema na LG e no Android. Compatível com TVs antigas (webOS 4+).
 - **Lista pelo celular:** nos apps da LG e do Android TV, a TV mostra um QR Code e você preenche a lista no celular, pela rede de casa, sem digitar com o controle.
 - **Levar uma lista para outro aparelho:** em Configurações, o botão “Baixar lista” de cada lista gera um arquivo (`iptvkz-lista-….json`) com a lista, os favoritos e o histórico dela; na TV, ele mostra um QR Code para baixar no celular. Para usar em outro aparelho (ou depois de reinstalar), abra “Adicionar lista”: na TV, escaneie o QR Code e use “Carregar lista” no celular; no computador, use a aba “Carregar lista”. A lista entra junto com as que já estão lá. O arquivo contém a senha da lista: guarde com cuidado.

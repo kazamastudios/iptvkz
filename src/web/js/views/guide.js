@@ -78,7 +78,7 @@ export function guideView(params, ctx) {
     const progs = epgFor(ch.id);
     box.replaceChildren();
     if (!progs || !progs.length) {
-      box.append(h('div.g-empty', epgState().status === 'loading' ? 'Carregando…' : 'Sem programação'));
+      box.append(h('div.g-empty', epgState().status === 'loading' ? 'Carregando...' : 'Sem programação'));
       return;
     }
     const now = Date.now();
@@ -118,8 +118,8 @@ export function guideView(params, ctx) {
 
   function showStatus(st) {
     const map = {
-      loading: 'Baixando o guia de programação… (listas grandes podem levar alguns minutos)',
-      refreshing: 'Atualizando o guia…',
+      loading: 'Baixando o guia de programação... (listas grandes podem levar alguns minutos)',
+      refreshing: 'Atualizando o guia...',
       none: 'Esta lista não tem guia. Adicione uma URL de EPG nas configurações da lista.',
       error: 'Erro ao baixar o guia: ' + (st.message || ''),
     };

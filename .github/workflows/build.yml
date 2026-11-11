@@ -41,10 +41,13 @@ jobs:
           npm run vendor
 
       - name: Compilar instaladores
-        run: npx electron-builder ${{ matrix.target }} --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+        run: |
+          node scripts/build-info.js
+          npx electron-builder ${{ matrix.target }} --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          BUNDLE_VERSION: ${{ github.run_number }} # número da build mostrado no app (scripts/build-info.js)
 
       - uses: actions/upload-artifact@v4
         with:
@@ -147,20 +150,28 @@ jobs:
       - name: Instalar NDK
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
 
-      - name: Preparar chaves de assinatura
-        if: startsWith(github.ref, 'refs/tags/v')
+      # Chave do APK também nos PRs deste repositório (de forks não, que nem recebem secrets): o APK de teste
+      # instala por cima do oficial e de outros testes, sem desinstalar e perder as listas.
+      - name: Preparar chave de assinatura do APK
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          UPDATE_KEY: ${{ secrets.ANDROID_UPDATE_KEY }}
         run: |
           echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
-          echo "$UPDATE_KEY" > "$RUNNER_TEMP/update.pem"
           {
             echo "ANDROID_KEYSTORE=$RUNNER_TEMP/release.jks"
             echo "ANDROID_KEYSTORE_PASSWORD=$PASSWORD"
-            echo "ANDROID_UPDATE_KEY=$RUNNER_TEMP/update.pem"
           } >> "$GITHUB_ENV"
+
+      # Chave das atualizações automáticas: só nas versões oficiais. Um PR nunca vira atualização para os aparelhos.
+      - name: Preparar chave de atualização
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          UPDATE_KEY: ${{ secrets.ANDROID_UPDATE_KEY }}
+        run: |
+          echo "$UPDATE_KEY" > "$RUNNER_TEMP/update.pem"
+          echo "ANDROID_UPDATE_KEY=$RUNNER_TEMP/update.pem" >> "$GITHUB_ENV"
 
       - name: Compilar APK da Android TV
         run: npm run android

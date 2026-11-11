@@ -5,7 +5,6 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn } = require('child_process');
 const { Readable } = require('stream');
 
 const { UA } = require('./util');
@@ -21,6 +20,22 @@ const backup = require('./backup');
 let PORT = Number(process.env.PORT) || 8787; // porta real (pode mudar no app de computador)
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC = process.env.IPTVKZ_WEB || path.join(__dirname, '..', 'web');
+
+// Versão, número da build e modo (produção/desenvolvimento), mostrados em Configurações → Sobre.
+// scripts/build-info.js grava o arquivo na pasta da interface ao gerar cada pacote; rodando pelo código não há
+// arquivo, e aí é desenvolvimento com a versão do package.json. Lido uma vez: uma atualização reinicia o app.
+let buildCache = null;
+function buildInfo() {
+  if (buildCache) return buildCache;
+  try {
+    buildCache = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'build-info.json'), 'utf8'));
+  } catch {
+    let version = null;
+    try { version = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8')).version; } catch {}
+    buildCache = { version, build: null, channel: 'desenvolvimento', source: 'codigo', commit: null, date: null };
+  }
+  return buildCache;
+}
 const IDLE_MS = 5 * 60 * 1000;
 const KEEPALIVE = (process.env.IPTVKZ_KEEPALIVE || process.env.MINHATV_KEEPALIVE) === '1';
 
@@ -172,30 +187,6 @@ async function handleProxy(req, res, query) {
     .pipe(res);
 }
 
-// ---------- VLC ----------
-
-function findVlc() {
-  const candidates = [
-    process.env.VLC_PATH,
-    'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe',
-    'C:\\Program Files (x86)\\VideoLAN\\VLC\\vlc.exe',
-    '/Applications/VLC.app/Contents/MacOS/VLC',
-    '/usr/bin/vlc',
-  ].filter(Boolean);
-  return candidates.find((p) => fs.existsSync(p)) || null;
-}
-
-function openVlc(url, title) {
-  const vlc = findVlc();
-  if (!vlc) throw Object.assign(new Error('VLC não encontrado. Instale em videolan.org.'), { status: 404 });
-  const args = ['--no-one-instance'];
-  if (title) args.push('--meta-title=' + title);
-  args.push(url);
-  const child = spawn(vlc, args, { detached: true, stdio: 'ignore', windowsHide: false });
-  child.on('error', () => {});
-  child.unref();
-}
-
 // ---------- API ----------
 
 const catalogText = new Map(); // listId -> { updatedAt, text }
@@ -277,7 +268,7 @@ async function handleApi(req, res, url) {
   }
 
   if (p === '/api/state' && m === 'GET') {
-    return sendJson(res, 200, { ...store.getState(), dataDir: store.DATA, vlc: req.isLocal && !!findVlc(), local: req.isLocal, host: req.isLocal ? os.hostname() : null });
+    return sendJson(res, 200, { ...store.getState(), dataDir: store.DATA, local: req.isLocal, host: req.isLocal ? os.hostname() : null, build: buildInfo() });
   }
 
   if (p === '/api/info' && m === 'GET') {
@@ -292,7 +283,7 @@ async function handleApi(req, res, url) {
   }
 
   // Daqui pra baixo, ações que só fazem sentido no próprio PC.
-  if (!req.isLocal && ['/api/vlc', '/api/quit', '/api/autostart'].includes(p)) {
+  if (!req.isLocal && ['/api/quit', '/api/autostart'].includes(p)) {
     return sendJson(res, 403, { error: 'Disponível só no computador.' });
   }
 
@@ -386,13 +377,6 @@ async function handleApi(req, res, url) {
     const list = requireList(body.list);
     const cached = store.readJson(`catalog-${list.id}.json`, null);
     return sendJson(res, 200, epg.query(list, cached, body.chans, { force: !!body.force }));
-  }
-
-  if (p === '/api/vlc' && m === 'POST') {
-    const body = await readJsonBody(req);
-    if (!/^https?:\/\//i.test(body.url || '')) return sendJson(res, 400, { error: 'URL inválida' });
-    openVlc(body.url, body.title);
-    return sendJson(res, 200, { ok: true });
   }
 
   if (p === '/api/quit' && m === 'POST') {

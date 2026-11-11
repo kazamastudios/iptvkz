@@ -1,5 +1,5 @@
 // Player: escolhe o motor (hls.js / mpegts.js / nativo), tenta de novo em falhas,
-// controla áudio, legenda (renderizada pelo app), qualidade, versão e "Abrir no VLC".
+// controla áudio, legenda (renderizada pelo app), qualidade e versão.
 import { h, ico, fmtTime, toast } from '../core/util.js';
 import { icon } from '../core/icons.js';
 import { flushSaves, S, C, setSetting, api } from '../core/store.js';
@@ -26,6 +26,23 @@ function trackLabel(t, i) {
 
 // Celular/tablet: sem mouse; o toque mostra ou esconde os controles.
 const isTouch = () => !TV.on && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+// Pede só o primeiro byte do vídeo: erro HTTP ou página no lugar do vídeo é recusa do servidor, não formato.
+async function sourceRefused(src) {
+  if (!src) return false;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const r = await fetch(src, { headers: { Range: 'bytes=0-0' }, signal: ctl.signal, cache: 'no-store' });
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
+    return !r.ok || /text\/html|application\/json/.test(ct);
+  } catch {
+    return true;
+  } finally {
+    clearTimeout(timer);
+    ctl.abort(); // não mantém a conexão com a lista aberta
+  }
+}
 
 // Quanto esperar pelo primeiro quadro de cada tentativa (a TV demora mais para abrir o decodificador).
 const START_TIMEOUT = 20000;
@@ -91,7 +108,6 @@ export class Player {
       this.toggleMenu();
     });
     this.btnPip = this._btn('pip', 'Picture-in-picture', () => this.togglePip());
-    this.btnVlc = this._btn('external', 'Abrir no VLC', () => this.openVlc());
     this.timeEl = h('span.ptime');
     this.btnNext = o.next ? h('button.btn.small', { onclick: () => this._goNext(), title: 'Próximo episódio' }, ico('next'), 'Próximo') : null;
 
@@ -123,7 +139,7 @@ export class Player {
 
     // ao vivo na TV já é tela cheia, e o menu seria quase só legenda, que canais não têm
     const liveTv = TV.on && o.live;
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, liveTv ? null : this.btnGear, TV.on || isTouch() ? null : this.btnPip, S.vlc && !TV.on && !isTouch() ? this.btnVlc : null, liveTv ? null : this.btnFs);
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, liveTv ? null : this.btnGear, TV.on || isTouch() ? null : this.btnPip, liveTv ? null : this.btnFs);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
@@ -131,15 +147,18 @@ export class Player {
     top.push(this.titleEl);
     this.top = h('div.ptop', top);
 
-    // antes do primeiro quadro, a mesma cara da splash (classes .sp-* do app.css); depois, só o spinner
-    this.center = h('div.center', h('img.sp-logo', { src: '/img/logo-horizontal.webp', alt: '' }), h('div.sp-bar', h('i')), h('div.spinner'));
+    // Antes do primeiro quadro: fundo escuro com a logo pequena do menu e o anel girando (diferente da splash,
+    // para não parecer que o app reabriu). Some com um fade quando o vídeo começa. Depois, nas travadinhas, só o anel.
+    this.cover = h('div.pl-cover', h('img', { src: '/img/logo-sidebar.png', alt: '' }), h('div.spinner'));
+    this.center = h('div.center', h('div.spinner'));
     this.errorEl = h('div.perror.hidden');
     this.menu = h('div.pmenu.hidden');
     this.nextCard = null;
 
     this.flashEl = h('div.seek-flash');
+    this.ppEl = h('div.pp-flash'); // ícone de play/pause no centro, só ao apertar
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
-    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.noImageEl, this.top, this.center, this.flashEl, this.bottom, this.menu, this.errorEl);
+    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
     this.host.append(this.root);
   }
 
@@ -212,7 +231,12 @@ export class Player {
     on('error', () => {
       if (this.engine !== 'native') return;
       const code = v.error && v.error.code;
-      this._fail(code === 4 || code === 3 ? 'format' : 'network', this.gen);
+      const gen = this.gen;
+      if (code === 3) return this._fail('format', gen);
+      if (code !== 4) return this._fail('network', gen);
+      // O navegador dá o mesmo código para "formato não suportado" e "o servidor recusou"
+      // (limite de conexões da lista, link expirado). Pergunta ao servidor antes de culpar o formato.
+      sourceRefused(v.currentSrc || v.src).then((refused) => this._fail(refused ? 'network' : 'format', gen));
     });
     v.addEventListener('click', () => {
       if (!this.menu.classList.contains('hidden')) return this.closeMenu();
@@ -523,12 +547,10 @@ export class Player {
 
   _showError(kind) {
     const fmt = kind === 'format';
-    // TV e celular não têm VLC para oferecer: o botão abriria no computador
-    const vlc = S.vlc && !TV.on && !isTouch();
     const slow = kind === 'timeout';
-    const title = fmt ? (vlc ? 'O navegador não toca este formato' : 'Este aparelho não toca este formato') : this.opts.live ? 'Canal indisponível' : slow ? 'O servidor da lista não mandou o vídeo' : 'Não foi possível carregar';
+    const title = fmt ? 'Este aparelho não toca este formato' : this.opts.live ? 'Canal indisponível' : slow ? 'O servidor da lista não mandou o vídeo' : 'Não foi possível carregar';
     const text = fmt
-      ? (vlc ? 'Isso é comum com MKV, áudio AC3/E-AC3 ou vídeo H.265. O VLC toca normalmente.' : 'Isso é comum em arquivos MKV. Tente outra versão do título, se houver, ou assista em outro aparelho.')
+      ? 'Isso é comum com MKV, áudio AC3/E-AC3 ou vídeo H.265. Tente outra versão do título, se houver, ou assista em outro aparelho.'
       : slow
         ? 'O servidor aceitou o pedido, mas o vídeo não chegou. Costuma ser sobrecarga do provedor ou link fora do ar. Tente de novo em instantes.'
         : 'O canal pode estar fora do ar, ou o servidor da lista recusou a conexão. Tente de novo em instantes.';
@@ -537,8 +559,7 @@ export class Player {
       h('h3', title),
       h('p', text),
       h('div.acts',
-        h('button.btn', { onclick: () => this.retry() }, ico('refresh'), 'Tentar de novo'),
-        vlc ? h('button.btn.primary', { onclick: () => this.openVlc() }, ico('external'), 'Abrir no VLC') : null),
+        h('button.btn', { onclick: () => this.retry() }, ico('refresh'), 'Tentar de novo')),
     );
     this.errorEl.classList.remove('hidden');
     if (TV.on) focusEl(this.errorEl.querySelector('.btn')); // senão o controle fica preso atrás do player
@@ -570,7 +591,22 @@ export class Player {
         try { const b = v.buffered; if (b.length) v.currentTime = b.end(b.length - 1) - 1; } catch {}
       }
       v.play().catch(() => {});
-    } else v.pause();
+      this._flashPlay(true);
+    } else {
+      v.pause();
+      this._flashPlay(false);
+    }
+  }
+
+  // Confirma no meio da tela o que o aperto fez (como no YouTube): ▶ ao continuar, ❚❚ ao pausar.
+  _flashPlay(playing) {
+    const el = this.ppEl;
+    el.innerHTML = icon(playing ? 'play' : 'pause');
+    el.classList.remove('on');
+    void el.offsetWidth; // recomeça a animação a cada aperto
+    el.classList.add('on');
+    clearTimeout(this._ppT);
+    this._ppT = setTimeout(() => el.classList.remove('on'), 700);
   }
 
   toggleMute() {
@@ -621,16 +657,6 @@ export class Player {
       else await this.video.requestPictureInPicture();
     } catch {
       toast('Picture-in-picture indisponível para este vídeo', 'error');
-    }
-  }
-
-  async openVlc() {
-    try {
-      await api('/api/vlc', { method: 'POST', body: JSON.stringify({ url: this.currentUrl(), title: this.titleEl.textContent }) });
-      this.video.pause();
-      toast('Abrindo no VLC…', 'ok');
-    } catch (e) {
-      toast(e.message, 'error');
     }
   }
 
@@ -940,9 +966,7 @@ export class Player {
     } else if (this.engine === 'hls') {
       m.append(h('div.note', 'Este stream tem uma faixa de áudio só.'));
     } else {
-      const note = h('div.note', 'O navegador não deixa escolher o áudio neste formato. ');
-      if (S.vlc) note.append(h('a', { onclick: () => this.openVlc() }, 'Abrir no VLC'), ' pra trocar a faixa.');
-      m.append(note);
+      m.append(h('div.note', 'Este formato não deixa escolher o áudio. Se o título tiver outra versão (Dublado, Legendado), troque por ela.'));
     }
 
     // Legenda
@@ -953,9 +977,9 @@ export class Player {
       m.append(opt(s.label, cur && cur.type === 'hls' && cur.index === s.i, () => { this.setSub({ type: 'hls', index: s.i }); this._renderMenu(); }));
     }
     if (cur && cur.type === 'ext') m.append(opt(cur.name, true, () => {}));
-    m.append(h('button.opt', { onclick: () => this._pickSubFile() }, h('span.ck', ico('upload')), h('span', 'Carregar arquivo .srt / .vtt…')));
+    m.append(h('button.opt', { onclick: () => this._pickSubFile() }, h('span.ck', ico('upload')), h('span', 'Carregar arquivo .srt / .vtt...')));
     if (!this.hls && this.engine !== 'mpegts') {
-      m.append(h('div.note', 'Legendas embutidas em MP4/MKV não aparecem no navegador; use um arquivo .srt ou o VLC.'));
+      m.append(h('div.note', 'Legendas embutidas em MP4/MKV não aparecem aqui; use um arquivo .srt ou .vtt.'));
     }
 
     if (cur) {
@@ -1034,8 +1058,8 @@ export class Player {
     const code = e.keyCode;
     // teclas de mídia do controle remoto
     if (k === 'MediaPlayPause' || code === 179) { this.togglePlay(); this._showCtrl(); return true; }
-    if (k === 'MediaPlay' || code === 415) { this.video.play().catch(() => {}); this._showCtrl(); return true; }
-    if (k === 'MediaPause' || code === 19) { this.video.pause(); return true; }
+    if (k === 'MediaPlay' || code === 415) { this.video.play().catch(() => {}); this._flashPlay(true); this._showCtrl(); return true; }
+    if (k === 'MediaPause' || code === 19) { this.video.pause(); this._flashPlay(false); return true; }
     if (k === 'MediaFastForward' || code === 417) { this.seekBy(30); return true; }
     if (k === 'MediaRewind' || code === 412) { this.seekBy(-30); return true; }
     if (k === 'MediaStop' || code === 413) { if (this.opts.onBack) this.opts.onBack(); else this.video.pause(); return true; }

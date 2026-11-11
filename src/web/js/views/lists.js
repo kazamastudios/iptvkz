@@ -95,7 +95,7 @@ async function confirmRestore(s, token, closeForm) {
 
 // TV: QR Code para baixar uma lista no celular (com favoritos e histórico dela).
 export function openListSave(list) {
-  const status = h('p.muted', 'Preparando o QR Code…');
+  const status = h('p.muted', 'Preparando o QR Code...');
   const qrBox = h('div.pair-box.hidden');
   let token = null;
   let timer = null;
@@ -141,7 +141,7 @@ export function openListSave(list) {
       h('img.pair-qr', { src: qr.createDataURL(6, 3), alt: 'QR Code para baixar a lista no celular' }),
       h('div', h('b', 'Pelo celular'), h('p.muted', 'Escaneie com a câmera, no mesmo Wi-Fi da TV, e toque em “Baixar lista”. O arquivo leva a lista, os favoritos e o histórico dela, com a senha da lista: guarde com cuidado.')));
     qrBox.classList.remove('hidden');
-    status.textContent = 'Aguardando o download no celular…';
+    status.textContent = 'Aguardando o download no celular...';
     poll();
   })().catch(() => { status.textContent = 'Não foi possível preparar o QR Code. Tente de novo.'; });
 }
@@ -188,12 +188,12 @@ export function openListForm(existing, onSaved, onDelete) {
 
   const err = h('div.error-box.hidden');
   const name = h('input.input', { value: ex.name || '', placeholder: 'Ex.: Minha lista' });
-  const url = h('input.input', { value: ex.url || '', placeholder: 'http://…/lista.m3u' });
+  const url = h('input.input', { value: ex.url || '', placeholder: 'http://.../lista.m3u' });
   const server = h('input.input', { value: ex.server || '', placeholder: 'http://servidor.com:8080' });
   const user = h('input.input', { value: ex.username || '', autocomplete: 'off' });
   const pass = h('input.input', { value: ex.password || '', type: 'password', autocomplete: 'new-password' });
   const showPass = h('button.icon-btn', { type: 'button', title: 'Mostrar senha', onclick: () => { pass.type = pass.type === 'password' ? 'text' : 'password'; } }, ico('eye'));
-  const epgUrl = h('input.input', { value: ex.epgUrl || '', placeholder: 'Opcional: http://…/guia.xml(.gz)' });
+  const epgUrl = h('input.input', { value: ex.epgUrl || '', placeholder: 'Opcional: http://.../guia.xml(.gz)' });
   const tz = h('select.input');
   for (let i = -12; i <= 12; i++) tz.append(h('option', { value: i, selected: Number(ex.tzOffset || 0) === i }, i === 0 ? 'Sem ajuste' : `${i > 0 ? '+' : ''}${i} h`));
   const fileInput = h('input', { type: 'file', accept: '.m3u,.m3u8,.txt', style: { display: 'none' } });
@@ -354,7 +354,7 @@ export function openListForm(existing, onSaved, onDelete) {
     if (dup) return showErr(`Lista já adicionada: esta conta já está salva como “${dup.name}”.`);
 
     saveBtn.disabled = true;
-    saveBtn.replaceChildren(h('div.spinner.small'), 'Salvando…');
+    saveBtn.replaceChildren(h('div.spinner.small'), 'Salvando...');
     try {
       if (tab === 'file' && pickedFile) {
         await api(`/api/m3u?list=${encodeURIComponent(list.id)}`, { method: 'POST', body: pickedFile });
