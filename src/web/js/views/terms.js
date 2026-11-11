@@ -3,7 +3,7 @@ import { h, ico, modal } from '../core/util.js';
 import { S, setSetting, saveNow } from '../core/store.js';
 import { focusEl, TV } from '../tv/tv.js';
 
-export const TERMS_VERSION = 2;
+export const TERMS_VERSION = 3;
 
 let cache = null;
 async function termsText() {

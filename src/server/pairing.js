@@ -21,12 +21,13 @@ function current(token) {
 }
 
 // address: informado pelo app nativo onde o Node não pode listar as redes (Android 11+).
-function begin(port, address) {
+// list: a chave aberta para "Baixar lista no celular" só entrega essa lista, e nenhuma outra.
+function begin(port, address, list) {
   if (!enabled) return { available: false };
   const given = /^\d+\.\d+\.\d+\.\d+$/.test(address || '') && net.isPrivate(address) && !net.isLoopback(address);
   const addr = given ? { address } : net.lanAddresses().find((a) => !a.virtual);
   if (!addr) return { available: false };
-  session = { token: crypto.randomBytes(16).toString('hex'), expires: Date.now() + TTL, received: null, used: false };
+  session = { token: crypto.randomBytes(16).toString('hex'), expires: Date.now() + TTL, received: null, used: false, list: typeof list === 'string' ? list : null };
   return { available: true, token: session.token, url: `http://${addr.address}:${port}/pair/${session.token}` };
 }
 
@@ -143,7 +144,7 @@ function readBody(req) {
 }
 
 function sendList(res, s, listId) {
-  const data = backup.build(listId);
+  const data = (!s.list || s.list === listId) && backup.build(listId);
   if (!data) { res.writeHead(404, HEADERS); return res.end(EXPIRED); }
   s.downloaded = true;
   res.writeHead(200, {

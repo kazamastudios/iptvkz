@@ -12,7 +12,9 @@
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
     "ipk": "node scripts/build-ipk.js",
-    "android": "node scripts/build-android.js"
+    "ipk:store": "node scripts/build-ipk.js --store",
+    "android": "node scripts/build-android.js",
+    "test": "node --test scripts/test-server.js"
   },
   "engines": {
     "node": ">=18"

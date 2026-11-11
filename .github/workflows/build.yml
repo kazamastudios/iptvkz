@@ -58,7 +58,10 @@ jobs:
           retention-days: 14
 
   webos:
-    # App da LG. BUNDLE_VERSION cresce a cada build, como no Android.
+    # App da LG em dois canais:
+    # - Developer (dist/webos): BUNDLE_VERSION cresce a cada build, como no Android; vai para a Release.
+    # - Store (dist/webos/store): IPK da LG Content Store, sem atualização automática. Só artefato:
+    #   o envio ao LG Seller Lounge é manual, e nada aqui publica na loja.
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -89,6 +92,12 @@ jobs:
         env:
           BUNDLE_VERSION: ${{ github.run_number }}
 
+      - name: Testes do servidor
+        run: npm test
+
+      - name: Gerar IPK da LG Content Store
+        run: npm run ipk:store
+
       - name: Anexar à Release
         if: startsWith(github.ref, 'refs/tags/v')
         run: gh release upload "$GITHUB_REF_NAME" dist/webos/*.ipk dist/webos/IPTVKZ-webos-bundle.gz dist/webos/webos-update.json dist/webos/webos-update.json.sig --clobber
@@ -103,6 +112,13 @@ jobs:
             dist/webos/IPTVKZ-webos-bundle.gz
           if-no-files-found: error
           retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IPTVKZ-webOS-Store
+          path: dist/webos/store/*.ipk
+          if-no-files-found: error
+          retention-days: 30
 
   android:
     # Depois dos instaladores, para anexar ao mesmo rascunho de Release.

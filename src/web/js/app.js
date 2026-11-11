@@ -10,6 +10,7 @@ import { vodHome, movieView, serieView } from './views/vod.js';
 import { historyView } from './views/history.js';
 import { myListView } from './views/mylist.js';
 import { favoritesView } from './views/favorites.js';
+import { startLifeline } from './core/lifeline.js';
 import { guideView } from './views/guide.js';
 import { searchView } from './views/search.js';
 import { settingsView } from './views/settings.js';
@@ -680,7 +681,7 @@ document.addEventListener('keydown', (e) => {
 window.addEventListener('hashchange', route);
 window.addEventListener('iptvkz:counts', debounce(() => renderNav(), 200));
 window.addEventListener('pagehide', flushSaves);
-setInterval(() => fetch('/api/ping').catch(() => {}), 60000);
+startLifeline();
 setInterval(() => { if (S.lists.length && !document.hidden) checkListStatus(); }, STATUS_EVERY);
 setInterval(() => { if (!document.hidden) checkNet(); }, NET_EVERY);
 window.addEventListener('focus', refreshIfStale);

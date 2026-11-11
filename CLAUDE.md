@@ -15,7 +15,7 @@ Toda pasta tem uma função só. Antes de criar um arquivo ou pasta, encaixe nes
 
 ## Regras
 
-1. **Saída de build só em `dist/<plataforma>/`.** Hoje são `dist/desktop`, `dist/webos` e `dist/android`. Nunca crie pastas como `dist-tv` ou `build-x` na raiz.
+1. **Saída de build só em `dist/<plataforma>/`.** Hoje são `dist/desktop`, `dist/webos` (com `dist/webos/store` para o IPK da LG Content Store) e `dist/android`. Nunca crie pastas como `dist-tv` ou `build-x` na raiz.
 2. **Cada build escreve só na própria subpasta**, sem mexer na de outra plataforma.
 3. **Plataforma nova** ganha `platforms/<nome>/`, `dist/<nome>/`, `scripts/build-<nome>.js` e um comando em `package.json`.
 4. **O que serve a mais de uma plataforma fica em `src/`.** Em `platforms/` entra só o que é específico daquela plataforma.

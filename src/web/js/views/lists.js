@@ -120,7 +120,7 @@ export function openListSave(list) {
   (async () => {
     const native = window.IPTVKZAndroid;
     const address = native && native.lanAddress ? native.lanAddress() : undefined;
-    const r = await api('/api/pair/start', { method: 'POST', body: JSON.stringify({ address }) }).catch(() => null);
+    const r = await api('/api/pair/start', { method: 'POST', body: JSON.stringify({ address, list: list.id }) }).catch(() => null);
     if (stopped) return;
     if (!r || !r.available) {
       if (nativeTvApp()) {

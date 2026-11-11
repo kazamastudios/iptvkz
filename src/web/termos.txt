@@ -1,5 +1,5 @@
 ﻿TERMOS DE USO DO IPTVKZ
-Versão 2 — novembro de 2026
+Versão 3 — novembro de 2026
 
 Ao instalar ou usar o IPTVKZ, você declara que leu e concorda com estes termos. Se não concordar, não use o aplicativo.
 
@@ -27,7 +27,12 @@ c) por danos, perdas ou prejuízos, diretos ou indiretos, decorrentes do uso ou 
 O IPTVKZ é fornecido "no estado em que se encontra" (as is), sem garantias de qualquer tipo, expressas ou implícitas, conforme a Licença MIT que acompanha o software. Não há garantia de funcionamento contínuo, livre de erros ou compatível com qualquer lista, aparelho ou formato.
 
 6. PRIVACIDADE
-O IPTVKZ não coleta, não envia e não vende dados pessoais. As listas, senhas, favoritos e preferências ficam guardados apenas no dispositivo onde o aplicativo está instalado. O aplicativo se conecta somente aos endereços das listas e guias que você cadastrar e, para mostrar se há internet, a serviços públicos de teste de conexão (do Google e da Microsoft), para os quais nenhum dado da sua conta ou das suas listas é enviado. Trailers são abertos no YouTube somente quando você pede, e nesse caso se aplicam as regras do YouTube.
+O IPTVKZ não coleta, não envia e não vende dados pessoais, e não tem anúncios, contas, análise de uso nem relatórios de erro. As listas, senhas, favoritos, histórico e preferências ficam guardados apenas no dispositivo onde o aplicativo está instalado. O aplicativo se conecta somente:
+a) aos endereços das listas, guias, imagens e vídeos que você cadastrar, para mostrar e reproduzir esse conteúdo;
+b) a serviços públicos de teste de conexão (do Google e da Microsoft), para mostrar se há internet, sem enviar nenhum dado da sua conta ou das suas listas;
+c) ao YouTube, somente quando você pede um trailer; nesse caso se aplicam as regras do YouTube;
+d) na versão para TV LG e no APK para Android instalados fora das lojas, ao GitHub, para verificar e baixar atualizações assinadas; as versões da LG Content Store e da Google Play são atualizadas só pelas próprias lojas, e a de computador não procura atualizações sozinha.
+Quando você cadastra uma lista pelo celular ou baixa uma lista para outro aparelho, os dados vão direto entre os seus aparelhos, pela rede de casa, sem passar por serviços de fora. O arquivo baixado contém o usuário e a senha da lista: guarde com cuidado e não compartilhe.
 
 7. MARCAS E DIREITOS DE TERCEIROS
 Nomes, logotipos e marcas de canais, programas ou serviços que eventualmente apareçam no aplicativo vêm das listas do usuário e pertencem aos seus respectivos titulares. Sua exibição não indica qualquer vínculo, patrocínio ou autorização.
