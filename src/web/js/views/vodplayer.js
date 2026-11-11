@@ -1,7 +1,7 @@
 // Player de filmes/episódios em tela cheia na janela, com progresso e próximo episódio.
 import { h } from '../core/util.js';
 import { Player } from '../player/player.js';
-import { setProgress, getProgress, setSetting } from '../core/store.js';
+import { setProgress, getProgress, setSetting, versionNames } from '../core/store.js';
 import { TV, focusFirst } from '../tv/tv.js';
 
 let active = null; // { player, el, close }
@@ -63,7 +63,7 @@ function resumePoint(id) {
 export function playMovie(movie, version, { fromStart = false, onClose } = {}) {
   const startAt = fromStart ? 0 : resumePoint(movie.id);
   open({
-    title: movie.name + (movie.versions.length > 1 ? ` · ${version.label}` : ''),
+    title: movie.name + (movie.versions.length > 1 ? ` · ${versionNames(movie.versions)[version.label]}` : ''),
     versions: movie.versions,
     version,
     startAt,

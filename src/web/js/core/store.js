@@ -494,9 +494,70 @@ export async function movieDetail(movie) {
   return api(`/api/vod?list=${encodeURIComponent(current.listId)}&xid=${encodeURIComponent(v.xid)}`);
 }
 
+// ---------- idioma do áudio de cada versão ----------
+// A lista nem sempre diz se a versão é dublada. Quando um vídeo toca, o player conta quais idiomas de
+// áudio ele tem; o app guarda isso neste aparelho e passa a mostrar "Português", "Inglês"... no lugar de "Versão".
+const AUDIO_KEY = 'iptvkz.audioLang';
+const AUDIO_MAX = 800;
+const LANG_NAMES = {
+  pt: 'Português', por: 'Português', pob: 'Português', 'pt-br': 'Português', en: 'Inglês', eng: 'Inglês', es: 'Espanhol', spa: 'Espanhol',
+  fr: 'Francês', fre: 'Francês', fra: 'Francês', de: 'Alemão', ger: 'Alemão', deu: 'Alemão', it: 'Italiano', ita: 'Italiano',
+  ja: 'Japonês', jpn: 'Japonês', ko: 'Coreano', kor: 'Coreano',
+};
+const langKey = (l) => {
+  const k = String(l || '').toLowerCase();
+  const name = LANG_NAMES[k] || LANG_NAMES[k.split('-')[0]];
+  return name ? name : null;
+};
+let audioMap = null;
+function audioStore() {
+  if (!audioMap) {
+    try { audioMap = JSON.parse(localStorage.getItem(AUDIO_KEY)) || {}; } catch { audioMap = {}; }
+  }
+  return audioMap;
+}
+
+// langs: códigos de idioma das faixas de áudio do vídeo que está tocando ("pt", "eng"...).
+export function learnAudio(url, langs) {
+  const names = [...new Set((langs || []).map(langKey).filter(Boolean))];
+  if (!url || !names.length) return;
+  const m = audioStore();
+  const value = names.join('+');
+  if (m[url] === value) return;
+  delete m[url];
+  m[url] = value; // reinserido no fim: os mais antigos saem primeiro
+  const keys = Object.keys(m);
+  for (let i = 0; i < keys.length - AUDIO_MAX; i++) delete m[keys[i]];
+  try { localStorage.setItem(AUDIO_KEY, JSON.stringify(m)); } catch {}
+}
+
+const learned = (v) => (v && v.url ? audioStore()[v.url] : null);
+
+// Nome de cada versão para mostrar: "Versão 2 4K" vira "Português 4K" depois que alguém assistiu;
+// duas ou mais línguas no mesmo arquivo viram "Dual áudio". Rótulos que já dizem o idioma ficam como estão.
+export function versionNames(versions) {
+  const out = {};
+  for (const v of versions || []) {
+    const l = learned(v);
+    const m = v.label.match(/^Versão(?: \d+)?(.*)$/);
+    out[v.label] = l && m ? (l.includes('+') ? 'Dual áudio' : l) + m[1] : v.label;
+  }
+  // dois com o mesmo nome (duas versões em português): volta o número para diferenciar
+  const seen = {};
+  for (const v of versions || []) seen[out[v.label]] = (seen[out[v.label]] || 0) + 1;
+  for (const v of versions || []) {
+    if (seen[out[v.label]] > 1 && out[v.label] !== v.label) out[v.label] = `${out[v.label]} (${v.label})`;
+  }
+  return out;
+}
+
 export function preferredVersion(versions) {
   const pref = S.settings.versionPref;
-  return versions.find((v) => v.label === pref) || versions[0];
+  const exact = versions.find((v) => v.label === pref);
+  if (exact) return exact;
+  // versão sem marcação, mas que o app já viu tocar no idioma preferido
+  const want = S.settings.audioLang === 'en' ? 'Inglês' : S.settings.audioLang === 'orig' ? null : 'Português';
+  return (want && versions.find((v) => /^Versão/.test(v.label) && learned(v) === want)) || versions[0];
 }
 
 // ---------- guia (EPG) ----------

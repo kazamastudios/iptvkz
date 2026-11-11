@@ -21,31 +21,82 @@ function versionLabel(tag) {
   return 'Original';
 }
 
-function splitVersion(name) {
+// Qualidade no nome ("Filme 4K", "Filme [1080p]"): sai do título, para juntar com as outras versões, e entra no rótulo.
+const QUALITY_BRACKET = /\s*[\[\(]\s*(4k|uhd|2160p|fhd|full\s*hd|1080p|720p|hdr)\s*[\]\)]\s*/i;
+const QUALITY_TRAILING = /[\s\-_|]+(4k|uhd|2160p|fhd|full\s*hd|1080p|720p|hdr)\s*$/i;
+
+function qualityLabel(tag) {
+  const t = tag.toLowerCase().replace(/\s+/g, '');
+  if (t === '4k' || t === 'uhd' || t === '2160p') return '4K';
+  if (t === 'fhd' || t === 'fullhd' || t === '1080p') return 'Full HD';
+  if (t === '720p') return 'HD';
+  return 'HDR';
+}
+
+function cut(base, m) {
+  return (base.slice(0, m.index) + ' ' + base.slice(m.index + m[0].length))
+    .replace(/[\s\-_|.]+$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// Sem marcação no nome, a categoria da lista costuma dizer ("Filmes Dublados", "Lançamentos 4K").
+function groupLang(group) {
+  const g = String(group || '').toLowerCase();
+  if (/dublad|\bdub\b/.test(g)) return 'Dublado';
+  if (/legendad|\bleg\b/.test(g)) return 'Legendado';
+  if (/nacionai?s?\b/.test(g)) return 'Nacional';
+  if (/\bdual\b/.test(g)) return 'Dual áudio';
+  return null;
+}
+
+// Versão sem idioma conhecido: "Versão" (numerada depois, se houver mais de uma). O app troca pelo idioma
+// do áudio depois que alguém assiste.
+function splitVersion(name, group) {
   let base = String(name || '').trim();
-  let label = 'Original';
+  let lang = null;
+  let quality = null;
   const m = base.match(TAG_BRACKET) || base.match(TAG_TRAILING);
   if (m) {
-    label = versionLabel(m[1]);
-    base = (base.slice(0, m.index) + ' ' + base.slice(m.index + m[0].length))
-      .replace(/[\s\-_|.]+$/, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
+    lang = versionLabel(m[1]);
+    base = cut(base, m);
   }
+  const q = base.match(QUALITY_BRACKET) || base.match(QUALITY_TRAILING);
+  if (q) {
+    quality = qualityLabel(q[1]);
+    base = cut(base, q);
+    if (!lang) { // a marcação de idioma pode vir antes da qualidade: "Filme [L] 4K"
+      const m2 = base.match(TAG_BRACKET) || base.match(TAG_TRAILING);
+      if (m2) { lang = versionLabel(m2[1]); base = cut(base, m2); }
+    }
+  }
+  if (!lang) lang = groupLang(group);
+  if (!quality && /\b(4k|uhd)\b/i.test(String(group || ''))) quality = '4K';
+  const label = [lang || 'Versão', quality].filter(Boolean).join(' ');
   return { base: base || String(name || '').trim(), label };
 }
 
-const VERSION_ORDER = ['Dublado', 'Dual áudio', 'Nacional', 'Legendado', 'Original'];
+const VERSION_ORDER = ['Dublado', 'Dual áudio', 'Nacional', 'Legendado', 'Versão'];
+const kindOf = (label) => VERSION_ORDER.find((k) => label.startsWith(k)) || 'Versão';
 function sortVersions(vs) {
-  vs.sort((a, b) => VERSION_ORDER.indexOf(a.label.replace(/ \d+$/, '')) - VERSION_ORDER.indexOf(b.label.replace(/ \d+$/, '')));
+  vs.sort((a, b) => VERSION_ORDER.indexOf(kindOf(a.label)) - VERSION_ORDER.indexOf(kindOf(b.label)));
+  // várias sem idioma: Versão 1, Versão 2... (o número segue a ordem da lista)
+  const unknown = vs.filter((v) => v.label === 'Versão');
+  if (unknown.length > 1) unknown.forEach((v, i) => { v.label = `Versão ${i + 1}`; });
   return vs;
 }
 
+// Mesmo rótulo de novo: o nome da categoria diferencia ("Dublado · Lançamentos"); sem isso, um número.
 function addVersion(list, v) {
   let label = v.label;
+  if (label !== 'Versão' && list.some((x) => x.label === label) && v.group) {
+    const withGroup = `${v.label} · ${v.group}`;
+    if (!list.some((x) => x.label === withGroup)) label = withGroup;
+  }
   let n = 2;
-  while (list.some((x) => x.label === label)) label = `${v.label} ${n++}`;
-  list.push({ ...v, label });
+  while (label !== 'Versão' && list.some((x) => x.label === label)) label = `${v.label} ${n++}`;
+  const { group, ...rest } = v;
+  list.push({ ...rest, label });
 }
 
 function yearOf(name) {
@@ -57,7 +108,7 @@ function yearOf(name) {
 function mergeMovies(raw) {
   const groups = new Map();
   for (const r of raw) {
-    const { base, label } = splitVersion(r.name);
+    const { base, label } = splitVersion(r.name, r.group);
     const key = norm(base);
     let g = groups.get(key);
     if (!g) {
@@ -76,7 +127,7 @@ function mergeMovies(raw) {
     if (!g.poster && r.poster) g.poster = r.poster;
     if (!g.rating && r.rating) g.rating = r.rating;
     if (r.added > g.added) g.added = r.added;
-    addVersion(g.versions, { label, url: r.url, xid: r.xid });
+    addVersion(g.versions, { label, url: r.url, xid: r.xid, group: r.group });
   }
   const items = [...groups.values()];
   for (const it of items) sortVersions(it.versions);
@@ -200,7 +251,7 @@ function buildFromM3U(text, list) {
     else if (lower.includes('/movie/')) kind = 'movie';
     else if (VOD_EXT.has(ext)) kind = 'vod';
 
-    const { base, label } = splitVersion(e.name);
+    const { base, label } = splitVersion(e.name, e.group);
     const epInfo = kind === 'live' || kind === 'movie' ? null : parseEpisode(base);
     if (kind === 'vod') kind = epInfo ? 'series' : 'movie';
 
@@ -217,7 +268,7 @@ function buildFromM3U(text, list) {
         url,
       });
     } else if (kind === 'movie') {
-      movieRaw.push({ name: e.name, poster: logo, cat: movieCats.add(e.group), url });
+      movieRaw.push({ name: e.name, poster: logo, cat: movieCats.add(e.group), group: e.group, url });
     } else {
       const info = epInfo || { show: base, season: 1, ep: 0, rest: '' };
       const key = norm(info.show);
@@ -251,7 +302,7 @@ function buildFromM3U(text, list) {
         };
         season.set(epNum, ep);
       }
-      addVersion(ep.versions, { label, url });
+      addVersion(ep.versions, { label, url, group: e.group });
     }
   }
 
@@ -342,8 +393,12 @@ async function buildFromXtream(list) {
     alt: x.live(s.stream_id, 'ts'),
   }));
 
+  const catName = (arr) => new Map((Array.isArray(arr) ? arr : []).map((c) => [String(c.category_id), c.category_name || '']));
+  const vodCatName = catName(vodCats);
+  const serCatName = catName(serCats);
   const movieRaw = (Array.isArray(vodStreams) ? vodStreams : []).map((s) => ({
     name: s.name || 'Filme',
+    group: vodCatName.get(String(s.category_id)) || '',
     poster: s.stream_icon || '',
     cat: String(s.category_id),
     url: x.movie(s.stream_id, s.container_extension),
@@ -356,7 +411,8 @@ async function buildFromXtream(list) {
   // Séries: versões (DUB/LEG) do mesmo título viram um item só; episódios carregam sob demanda.
   const seriesMap = new Map();
   for (const s of Array.isArray(serList) ? serList : []) {
-    const { base, label } = splitVersion(s.name || 'Série');
+    const group = serCatName.get(String(s.category_id)) || '';
+    const { base, label } = splitVersion(s.name || 'Série', group);
     const key = norm(base);
     let g = seriesMap.get(key);
     if (!g) {
@@ -374,7 +430,7 @@ async function buildFromXtream(list) {
       seriesMap.set(key, g);
     }
     if (!g.poster && s.cover) g.poster = s.cover;
-    addVersion(g.versions, { label, xid: s.series_id });
+    addVersion(g.versions, { label, xid: s.series_id, group });
   }
   if (!live.length && !movieRaw.length && !seriesMap.size) {
     throw new Error('O servidor não enviou nenhum canal, filme ou série. Tente de novo.');
@@ -424,7 +480,7 @@ async function xtreamSeriesInfo(list, xid) {
           img: e.info?.movie_image || '',
           dur: durToSec(e.info?.duration_secs) || durToSec(e.info?.duration),
           plot: e.info?.plot || '',
-          versions: [{ label: 'Original', url: x.episode(e.id, e.container_extension) }],
+          versions: [{ label: 'Versão', url: x.episode(e.id, e.container_extension) }],
         }))
         .sort((a, b) => a.num - b.num),
     }))

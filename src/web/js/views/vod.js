@@ -3,7 +3,7 @@ import { h, ico, img, windowed, matcher, debounce, fmtDur, fmtTime, toast, modal
 import { starIcon } from '../core/icons.js';
 import {
   C, S, visibleCats, visibleItems, favItems, isFav, toggleFav, getProgress, setProgress, clearProgress, isWatched, isStarted,
-  continueMovies, continueSeries, clearContinue, catItems, isLater, toggleLater, laterItems, adultLocked, isAdultItem, seriesDetail, movieDetail, preferredVersion, setSetting,
+  continueMovies, continueSeries, clearContinue, catItems, isLater, toggleLater, laterItems, adultLocked, isAdultItem, seriesDetail, movieDetail, preferredVersion, versionNames, setSetting,
 } from '../core/store.js';
 import { playMovie, playEpisode } from './vodplayer.js';
 import { TV, KB, focusEl } from '../tv/tv.js';
@@ -20,7 +20,7 @@ const cfg = {
 
 function versionTags(item) {
   const vs = item.versions || [];
-  const tags = [...new Set(vs.map((v) => SHORT[v.label.replace(/ \d+$/, '')]).filter(Boolean))];
+  const tags = [...new Set(vs.map((v) => SHORT[Object.keys(SHORT).find((k) => v.label.startsWith(k))]).filter(Boolean))];
   return tags.length ? h('div.tags', tags.map((t) => h('span.badge', t))) : null;
 }
 
@@ -376,7 +376,7 @@ export function streamHero(ctx) {
         version = item.versions.find((v) => v.label === l);
         setSetting('versionPref', l);
         renderActs();
-      });
+      }, versionNames(item.versions));
       acts.replaceChildren(...movieActions(item, version, trailer, renderActs, acts));
     } else {
       versions.replaceChildren();
@@ -779,12 +779,13 @@ function openTrailer(name, id) {
   });
 }
 
-function versionChips(container, labels, current, onPick) {
+// names: rótulo → nome para mostrar (com o idioma que o app já viu tocar); sem ele, o próprio rótulo.
+function versionChips(container, labels, current, onPick, names = {}) {
   container.replaceChildren();
   if (labels.length < 2) return;
   container.append(h('span.lbl', 'Versão'));
   for (const l of labels) {
-    container.append(h('button.chip' + (l === current ? '.on' : ''), { onclick: () => onPick(l) }, l));
+    container.append(h('button.chip' + (l === current ? '.on' : ''), { onclick: () => onPick(l) }, names[l] || l));
   }
 }
 
@@ -808,7 +809,7 @@ export function movieView(params, ctx) {
       version = movie.versions.find((v) => v.label === l);
       setSetting('versionPref', l);
       renderActs();
-    });
+    }, versionNames(movie.versions));
     d.acts.replaceChildren(...movieActions(movie, version, trailer, renderActs, d.acts));
   }
   renderActs();

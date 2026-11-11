@@ -2,7 +2,7 @@
 // controla áudio, legenda (renderizada pelo app), qualidade e versão.
 import { h, ico, fmtTime, toast } from '../core/util.js';
 import { icon } from '../core/icons.js';
-import { flushSaves, S, C, setSetting, api } from '../core/store.js';
+import { flushSaves, S, C, setSetting, api, learnAudio, versionNames } from '../core/store.js';
 import { SeekPreview } from './seekpreview.js';
 import { claimScreen, heartbeat, endScreen } from './sessions.js';
 import { readSubFile, cuesAt, subHtml } from './subs.js';
@@ -116,9 +116,14 @@ export class Player {
       this.video.muted = this.video.volume === 0;
     });
     this.btnFs = this._btn('fullscreen', 'Tela cheia (F)', () => this.toggleFullscreen());
-    this.btnGear = this._btn('settings', 'Áudio, legenda e qualidade', (e) => {
+    this.btnGear = this._btn('settings', 'Estilo da legenda e qualidade', (e) => {
       e.stopPropagation();
-      this.toggleMenu();
+      this.toggleMenu('settings');
+    });
+    // como nos streamings: versão (Dublado, Legendado...), faixa de áudio e legenda num botão só, perto do volume
+    this.btnAV = this._btn('cc', 'Áudio e legendas', (e) => {
+      e.stopPropagation();
+      this.toggleMenu('av');
     });
     this.btnPip = this._btn('pip', 'Picture-in-picture', () => this.togglePip());
     this.timeEl = h('span.ptime');
@@ -147,12 +152,14 @@ export class Player {
       left.push(this._holdBtn('back10', 'Voltar 10 segundos (segure para ir mais rápido)', -1));
       left.push(this._holdBtn('fwd10', 'Avançar 10 segundos (segure para ir mais rápido)', 1));
     }
-    left.push(h('div.vol', this.btnMute, this.volRange));
-    left.push(o.live ? h('span.badge.onair.live-badge', 'AO VIVO') : this.timeEl);
-
     // ao vivo na TV já é tela cheia, e o menu seria quase só legenda, que canais não têm
     const liveTv = TV.on && o.live;
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, liveTv ? null : this.btnGear, TV.on || isTouch() ? null : this.btnPip, liveTv ? null : this.btnFs);
+    left.push(h('div.vol', this.btnMute, this.volRange));
+    if (!liveTv) left.push(this.btnAV);
+    left.push(o.live ? h('span.badge.onair.live-badge', 'AO VIVO') : this.timeEl);
+
+    // filmes e séries já abrem ocupando a tela: tela cheia só no ao vivo, que no PC toca numa janela ao lado da lista
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, liveTv ? null : this.btnGear, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
@@ -226,6 +233,7 @@ export class Player {
       if (this.playFrom == null) this.playFrom = v.currentTime;
       this.hadFrame = true;
       this._hideError();
+      setTimeout(() => !this.destroyed && this._learnAudio(), 1500);
     });
     on('canplay', () => this._spin(false));
     on('volumechange', () => {
@@ -267,7 +275,7 @@ export class Player {
     this._onFs = () => this._setIcon(this.btnFs, document.fullscreenElement ? 'exitFs' : 'fullscreen');
     document.addEventListener('fullscreenchange', this._onFs);
     this._onDocClick = (e) => {
-      if (!this.menu.contains(e.target) && e.target !== this.btnGear) this.closeMenu();
+      if (!this.menu.contains(e.target) && !this.btnGear.contains(e.target) && !this.btnAV.contains(e.target)) this.closeMenu();
     };
     document.addEventListener('mousedown', this._onDocClick);
     this._onKeyUp = (e) => {
@@ -930,6 +938,7 @@ export class Player {
 
   // Faixas do player nativo: na primeira vez segue a preferência de legenda; numa nova tentativa, repete a escolha.
   _syncNativeTracks() {
+    this._learnAudio();
     const exo = this.exo;
     if (!exo || exo.synced || (!exo.audio.length && !exo.text.length)) return;
     exo.synced = true;
@@ -946,6 +955,19 @@ export class Player {
     if (mode === 'always' && ptSub >= 0) pick = ptSub;
     if (mode === 'auto' && audioIsPt === false && ptSub >= 0) pick = ptSub;
     if (pick >= 0) this.setSub({ type: 'hls', index: pick });
+  }
+
+  // Guarda os idiomas de áudio desta versão: nos próximos acessos, "Versão 2" aparece como "Português".
+  _learnAudio() {
+    if (!this.src || this.learnedGen === this.gen) return;
+    let langs = [];
+    if (this.exo) langs = this.exo.audio.map((a) => a.lang);
+    else if (this.hls) langs = this.hls.audioTracks.map((t) => t.lang);
+    else if (this.video.audioTracks) langs = [...this.video.audioTracks].map((t) => t.language);
+    langs = langs.filter((l) => l && !/^und/i.test(l));
+    if (!langs.length) return;
+    this.learnedGen = this.gen;
+    learnAudio(this.currentUrl(), langs);
   }
 
   _activeTextTrack() {
@@ -1003,8 +1025,11 @@ export class Player {
   }
 
   // ---------- menu ⚙️ ----------
-  toggleMenu() {
-    if (this.menu.classList.contains('hidden')) {
+  toggleMenu(mode = 'av') {
+    const open = !this.menu.classList.contains('hidden');
+    if (!open || this.menuMode !== mode) {
+      this.menuMode = mode;
+      this.menu.classList.toggle('left', mode === 'av');
       this._renderMenu();
       this.menu.classList.remove('hidden');
       this._showCtrl();
@@ -1015,7 +1040,7 @@ export class Player {
   closeMenu() {
     const wasOpen = !this.menu.classList.contains('hidden');
     this.menu.classList.add('hidden');
-    if (wasOpen && TV.on && this.menu.contains(document.activeElement)) focusEl(this.btnGear);
+    if (wasOpen && TV.on && this.menu.contains(document.activeElement)) focusEl(this.menuMode === 'av' ? this.btnAV : this.btnGear);
   }
 
   _ctrlFocused() {
@@ -1033,12 +1058,15 @@ export class Player {
     const seg = (values, cur, fn) =>
       h('div.seg', values.map(([v, l]) => h('button' + (v === cur ? '.on' : ''), { onclick: () => { fn(v); this._renderMenu(); } }, l)));
 
-    // Versão (Dublado/Legendado)
+    if (this.menuMode === 'settings') return this._renderSettings(m, seg, opt);
+
+    // Versão (Dublado/Legendado): nomes com o idioma que o app já viu tocando
     const vs = this.opts.versions;
     if (vs && vs.length > 1) {
+      const names = versionNames(vs);
       m.append(h('h4', 'Versão'));
       for (const v of vs) {
-        m.append(opt(v.label, v.label === this.opts.version, () => {
+        m.append(opt(names[v.label], v.label === this.opts.version, () => {
           if (v.label === this.opts.version) return;
           this.closeMenu();
           this.opts.onVersion && this.opts.onVersion(v.label, this.video.currentTime);
@@ -1055,7 +1083,7 @@ export class Player {
     } else if (this.engine === 'hls') {
       m.append(h('div.note', 'Este stream tem uma faixa de áudio só.'));
     } else {
-      m.append(h('div.note', 'Este formato não deixa escolher o áudio. Se o título tiver outra versão (Dublado, Legendado), troque por ela.'));
+      m.append(h('div.note', vs && vs.length > 1 ? 'Este vídeo tem um áudio só. Para outro idioma, troque a versão acima.' : 'Este vídeo tem um áudio só.'));
     }
 
     // Legenda
@@ -1077,9 +1105,13 @@ export class Player {
       const step = (d) => { this.subDelay = Math.round((this.subDelay + d) * 10) / 10; this.lastSubText = null; this._renderMenu(); };
       m.append(h('div.delay', h('button', { onclick: () => step(-0.5), title: 'Legenda mais cedo' }, '−'), val, h('button', { onclick: () => step(0.5), title: 'Legenda mais tarde' }, '+')));
     }
-    m.append(h('h4', 'Tamanho'));
+  }
+
+  // Engrenagem: aparência da legenda, qualidade e o que está tocando.
+  _renderSettings(m, seg, opt) {
+    m.append(h('h4', 'Legenda: tamanho'));
     m.append(seg([['P', 'P'], ['M', 'M'], ['G', 'G'], ['GG', 'GG']], S.settings.subSize, (v) => { setSetting('subSize', v); this._applySubStyle(); }));
-    m.append(h('h4', 'Fundo'));
+    m.append(h('h4', 'Legenda: fundo'));
     m.append(seg([['none', 'Nenhum'], ['shadow', 'Sombra'], ['box', 'Caixa']], S.settings.subBg, (v) => { setSetting('subBg', v); this._applySubStyle(); }));
 
     // Qualidade
