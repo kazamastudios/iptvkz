@@ -64,7 +64,7 @@
 
   if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
     window.addEventListener('wheel', function (e) {
-      if (e.ctrlKey || e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      if (e.ctrlKey || e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY) || (e.target.closest && e.target.closest('.help__panel'))) return;
       e.preventDefault();
       var unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
       target = Math.max(0, Math.min(maxY(), target + e.deltaY * unit));

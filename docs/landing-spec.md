@@ -114,3 +114,13 @@ Na TV, corpo de texto de pelo menos 24 px em 1920x1080.
 ## 7. Dependência
 
 A Visualização Streaming é destaque da página, mas só existe no PR #13. A landing deve entrar no ar junto com uma versão publicada que inclua esse recurso, com o bug do celular deitado corrigido.
+
+## 8. Suporte
+
+O botão **Ajuda**, fixo no canto da tela, abre respostas automáticas das dúvidas frequentes. Elas ficam em `public/js/help.js` e rodam no navegador, sem serviço externo.
+
+Quando não resolve, "Falar com a equipe" abre um formulário com tipo, parte do app, momento, aparelho (já detectado), versão e mensagem. Todas as listas têm a opção "Outro", que pede para preencher. Na TV, só as respostas ficam disponíveis, com um aviso para enviar o relato pelo celular.
+
+`public/_worker.js` recebe o formulário e cria o chamado com etiquetas `tipo:`, `area:` e `aparelho:`, para filtrar no GitHub. O relato é público, então links, credenciais e menções são removidos. A função também tem limite por IP e armadilhas contra robôs.
+
+**Configuração no Cloudflare Pages:** criar um token do GitHub de acesso restrito a este repositório, com permissão de escrita em Issues, e guardá-lo como segredo `GITHUB_TOKEN`. Sem ele, o formulário oferece enviar pelo GitHub.

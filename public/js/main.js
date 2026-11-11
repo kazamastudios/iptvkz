@@ -22,6 +22,7 @@
     return 'browser';
   }
   var device = detect();
+  window.iptvkzDevice = device === 'browser' ? 'browser' : device;
   var HERO = {
     win: { label: 'Baixar grátis para Windows', direct: true },
     linux: { label: 'Baixar grátis para Linux', direct: true },
@@ -220,7 +221,8 @@
     var r = el.getBoundingClientRect();
     if (!r.width || !r.height || el.classList.contains('skip')) return false;
     var parent = el.parentNode.closest && el.parentNode.closest('details:not([open])');
-    return !parent || el.tagName === 'SUMMARY';
+    if (parent && el.tagName !== 'SUMMARY') return false;
+    return getComputedStyle(el).visibility !== 'hidden';
   }
   function reveal(el) {
     var r = el.getBoundingClientRect();
@@ -234,7 +236,8 @@
     if (!cur || cur === document.body) return focusFirst();
     var c = cur.getBoundingClientRect(), cx = c.left + c.width / 2, cy = c.top + c.height / 2;
     var best = null, score = Infinity;
-    $$(SELECTOR).forEach(function (el) {
+    var panel = $('.help__panel.is-open');
+    $$(SELECTOR, panel || document).forEach(function (el) {
       if (el === cur || !usable(el)) return;
       var r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
       var main, cross;
@@ -245,7 +248,7 @@
       var s = Math.max(main, 0) + cross * 3;
       if (s < score) { score = s; best = el; }
     });
-    if (best) { best.focus(); reveal(best); kick(); }
+    if (best) { best.focus(); if (!panel) reveal(best); kick(); }
   }
   function focusFirst() {
     var first = $('[data-hero-cta]');
