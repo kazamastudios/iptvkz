@@ -489,7 +489,7 @@ const server = http.createServer((req, res) => {
     openStreams++;
     res.on('close', () => { openStreams--; });
     const n = (k) => Math.max(0, Number(url.searchParams.get(k)) || 0);
-    ffmpeg.stream(req, res, localProxy(url.searchParams.get('url')), { start: n('start'), audio: n('audio'), hevc: url.searchParams.get('hevc') === '1' });
+    ffmpeg.stream(req, res, localProxy(url.searchParams.get('url')), { start: n('start'), audio: n('audio'), hevc: url.searchParams.get('hevc') === '1', video: String(url.searchParams.get('video') || '').slice(0, 20) });
     return;
   }
   if (url.pathname.startsWith('/api/')) {

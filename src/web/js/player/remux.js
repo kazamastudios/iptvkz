@@ -42,7 +42,9 @@ export const browserAudio = (codec) => /^(aac|mp3|mp2|opus|vorbis|flac)$/.test(c
 
 const OWN = ['currentTime', 'duration', 'buffered', 'audioTracks', 'webkitAudioDecodedByteCount'];
 const REAL = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
-const CODEC = { ac3: 'AC3', eac3: 'E-AC3', dts: 'DTS', truehd: 'TrueHD', aac: 'AAC', mp3: 'MP3', opus: 'Opus', flac: 'FLAC', vorbis: 'Vorbis' };
+const CODEC = { ac3: 'AC3', eac3: 'E-AC3', dts: 'DTS', truehd: 'TrueHD', aac: 'AAC', mp3: 'MP3', mp2: 'MP2', opus: 'Opus', flac: 'FLAC', vorbis: 'Vorbis' };
+// vídeos antigos que o componente converte para H.264 (o resto passa sem mexer)
+const OLD_VIDEO = /^(mpeg4|msmpeg4v[123]|mpeg2video|mpeg1video|wmv[123]|vc1|h263|flv1|rv[1-4]0|theora|mjpeg)$/;
 
 export class RemuxVideo {
   constructor(video, info) {
@@ -84,8 +86,9 @@ export class RemuxVideo {
   _load(start, play) {
     const v = this.v;
     this.offset = start;
-    const hevc = this.info.video && /hevc|h265/.test(this.info.video.codec) ? '&hevc=1' : '';
-    v.src = `/remux?url=${encodeURIComponent(this.url)}&start=${start.toFixed(2)}&audio=${this.audio}${hevc}`;
+    const vc = (this.info.video && this.info.video.codec) || '';
+    const hevc = /hevc|h265/.test(vc) ? '&hevc=1' : '';
+    v.src = `/remux?url=${encodeURIComponent(this.url)}&start=${start.toFixed(2)}&audio=${this.audio}${hevc}&video=${encodeURIComponent(vc)}`;
     if (play) v.play().catch(() => {});
   }
 
@@ -93,8 +96,9 @@ export class RemuxVideo {
   describe() {
     const a = this.info.audio[this.audio];
     const vc = this.info.video && this.info.video.codec;
-    const name = { h264: 'H.264', hevc: 'H.265', av1: 'AV1', vp9: 'VP9', mpeg4: 'MPEG-4' }[vc] || (vc || '').toUpperCase();
-    return ['componente de vídeo do PC', name, a ? `áudio ${CODEC[a.codec] || a.codec} convertido` : ''].filter(Boolean).join(' · ');
+    const name = { h264: 'H.264', hevc: 'H.265', av1: 'AV1', vp9: 'VP9', mpeg4: 'MPEG-4', mpeg2video: 'MPEG-2', mpeg1video: 'MPEG-1', vc1: 'VC-1' }[vc] || (vc || '').toUpperCase();
+    const video = OLD_VIDEO.test(vc || '') ? `vídeo ${name} convertido` : name;
+    return ['componente de vídeo do PC', video, a ? `áudio ${CODEC[a.codec] || a.codec.toUpperCase()} convertido` : ''].filter(Boolean).join(' · ');
   }
 
   close() {

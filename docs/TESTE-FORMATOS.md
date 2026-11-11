@@ -23,7 +23,7 @@ Abra o item e espere uns 10 s. No botão de áudio (onda sonora), a última linh
 |---|---|
 | Android (Mecool, celular) | Filmes e séries: player do Android. Áudio AC3, E-AC3, DTS e TrueHD pelo decodificador do app |
 | LG | Player da própria TV |
-| PC (app ou navegador) | Navegador. MKV/AVI com áudio que o navegador não toca passam pelo componente de vídeo opcional |
+| PC (app ou navegador) | Navegador. O que ele não toca passa pelo FFmpeg que vem com o app: converte o áudio (AC3, DTS...) e o vídeo antigo (AVI, MPG, WMV) |
 
 ## Desempenho: FPS e milissegundos
 
@@ -49,6 +49,18 @@ Os vídeos do grupo "Teste | FPS" são o mesmo trecho em cada taxa de quadros. E
 | Aparelho Full HD | 4K não é exigido: o app já abre a versão Full HD quando ela existe |
 
 A LG costuma não informar FPS ao app ("FPS não informado por este player"). Nela, avalie a fluidez a olho.
+
+## Resultado no PC (11/11/2026, app pelo código, Windows, FFmpeg 9 do PC)
+
+Todos os 29 vídeos tocaram com imagem e som. Na grande maioria, 0 quadros perdidos e abertura abaixo de 1 s.
+- **Navegador direto:** MP4, MKV, MOV, WebM, H.265 (até 4K 10-bit e 4K a 60 fps), AV1, FLAC, Opus, legenda mov_text, todos os FPS.
+- **TS:** pelo player de TS (mpegts.js).
+- **Pelo FFmpeg:**
+  - FLV;
+  - AVI (Xvid) e MPG (MPEG-2), com o vídeo convertido;
+  - AC3, E-AC3, DTS e TrueHD;
+  - o MKV com dois áudios.
+- **Único com perda:** H.264 4K (0,6% de quadros perdidos), dentro do limite.
 
 ## O que se espera hoje
 

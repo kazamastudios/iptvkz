@@ -121,11 +121,38 @@ function probe(input) {
 }
 
 // Vídeo copiado + áudio em AAC estéreo, em MP4 fragmentado, a partir de "start" segundos (a busca recomeça daqui).
-function stream(req, res, input, { start = 0, audio = 0, hevc = false } = {}) {
+// Vídeo que o navegador não decodifica (AVI com Xvid/DivX, MPG com MPEG-2, WMV...): esse é convertido para H.264.
+// São arquivos antigos e de resolução baixa, leves para o PC. O resto (H.264, H.265, VP9, AV1) passa sem mexer.
+const OLD_VIDEO = /^(mpeg4|msmpeg4v[123]|mpeg2video|mpeg1video|wmv[123]|vc1|h263|flv1|rv[1-4]0|theora|mjpeg)$/;
+let encoders = null;
+function h264Encoder() {
+  if (encoders === null) {
+    try {
+      encoders = require('child_process').execFileSync(BIN, ['-hide_banner', '-encoders'], { windowsHide: true }).toString();
+    } catch {
+      encoders = '';
+    }
+  }
+  // por ordem: o da placa de vídeo do sistema (rápido, leve) e depois os de software
+  const opts = {
+    h264_mf: ['-c:v', 'h264_mf', '-b:v', '6M', '-pix_fmt', 'nv12'],
+    h264_videotoolbox: ['-c:v', 'h264_videotoolbox', '-b:v', '6M', '-realtime', '1'],
+    libx264: ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p'],
+    libopenh264: ['-c:v', 'libopenh264', '-b:v', '6M', '-pix_fmt', 'yuv420p'],
+  };
+  const order = process.platform === 'win32' ? ['libx264', 'h264_mf', 'libopenh264'] : ['h264_videotoolbox', 'libx264', 'libopenh264'];
+  const name = order.find((n) => encoders.split(/\s+/).includes(n));
+  return name ? opts[name] : null;
+}
+
+function stream(req, res, input, { start = 0, audio = 0, hevc = false, video = '' } = {}) {
   const args = ['-hide_banner', '-loglevel', 'error', '-nostdin'];
   if (start > 0) args.push('-ss', String(start));
-  args.push('-i', input, '-map', '0:v:0?', '-map', `0:a:${audio}?`, '-c:v', 'copy');
-  if (hevc) args.push('-tag:v', 'hvc1'); // o Chrome só aceita H.265 em MP4 com esta marcação
+  args.push('-i', input, '-map', '0:v:0?', '-map', `0:a:${audio}?`);
+  const enc = OLD_VIDEO.test(video) ? h264Encoder() : null;
+  if (enc) args.push(...enc, '-vf', "scale='min(1920,iw)':-2", '-g', '48');
+  else args.push('-c:v', 'copy');
+  if (hevc && !enc) args.push('-tag:v', 'hvc1'); // o Chrome só aceita H.265 em MP4 com esta marcação
   args.push('-c:a', 'aac', '-ac', '2', '-b:a', '192k', '-sn', '-dn',
     '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', 'pipe:1');
   const p = spawn(BIN, args, { windowsHide: true });
