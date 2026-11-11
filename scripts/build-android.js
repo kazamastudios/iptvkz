@@ -12,8 +12,17 @@ const android = path.join(root, 'platforms', 'android');
 const out = path.join(root, 'dist', 'android');
 const NODE_VERSION = 'v18.20.4';
 
+const WIN = process.platform === 'win32';
+const TAR = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe'); // o do Windows, não o do Git
+
 function run(cmd, args, opts = {}) {
-  execFileSync(cmd, args, { stdio: 'inherit', ...opts });
+  execFileSync(cmd, args, { stdio: 'inherit', shell: WIN && /\.(bat|cmd)$/.test(cmd), ...opts });
+}
+
+// Linux e Mac usam zip/unzip; no Windows, o tar que vem com o sistema lê e grava zip.
+function zipDir(zip, cwd) {
+  if (WIN) run(TAR, ['-a', '-cf', zip, ...fs.readdirSync(cwd)], { cwd });
+  else run('zip', ['-q', '-r', zip, '.'], { cwd });
 }
 
 function props() {
@@ -29,7 +38,8 @@ function ensureLibnode() {
   const zip = `nodejs-mobile-${NODE_VERSION}-android.zip`;
   run('gh', ['release', 'download', NODE_VERSION, '--repo', 'nodejs-mobile/nodejs-mobile', '-p', zip, '-D', tmp]);
   fs.mkdirSync(target, { recursive: true });
-  run('unzip', ['-q', '-o', path.join(tmp, zip), 'bin/armeabi-v7a/*', 'bin/arm64-v8a/*', 'include/*', '-d', target]);
+  if (WIN) run(TAR, ['-xf', path.join(tmp, zip), '-C', target, 'bin/armeabi-v7a', 'bin/arm64-v8a', 'include']);
+  else run('unzip', ['-q', '-o', path.join(tmp, zip), 'bin/armeabi-v7a/*', 'bin/arm64-v8a/*', 'include/*', '-d', target]);
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
@@ -45,7 +55,7 @@ function buildBundle(version) {
   require('./build-info').writeBuildInfo(path.join(stage, 'src', 'web'), { build: version }); // versão e modo no app
   const zip = path.join(out, 'IPTVKZ-android-bundle.zip');
   fs.rmSync(zip, { force: true });
-  run('zip', ['-q', '-r', zip, '.'], { cwd: stage });
+  zipDir(zip, stage);
   fs.rmSync(stage, { recursive: true, force: true });
   const assets = path.join(android, 'app', 'src', 'main', 'assets');
   fs.mkdirSync(assets, { recursive: true });
@@ -58,13 +68,16 @@ const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file
 
 function main() {
   const v = props();
-  const bundleVersion = Number(process.env.BUNDLE_VERSION || v.bundleVersion);
+  // Sem a chave oficial (build no PC), sai o app "IPTVKZ Dev", ao lado do oficial. Com versão de pacote alta,
+  // ele não troca o código local pelo da última versão publicada.
+  const local = !process.env.ANDROID_KEYSTORE;
+  const bundleVersion = Number(process.env.BUNDLE_VERSION || (local ? 1000000000 : v.bundleVersion));
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
 
   ensureLibnode();
   const bundle = buildBundle(bundleVersion);
-  run('./gradlew', ['--no-daemon', 'assembleRelease'], {
+  run(WIN ? path.join(android, 'gradlew.bat') : './gradlew', ['--no-daemon', 'assembleRelease'], {
     cwd: android,
     env: { ...process.env, BUNDLE_VERSION: String(bundleVersion) },
   });

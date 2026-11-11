@@ -46,7 +46,16 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig System.getenv('ANDROID_KEYSTORE') ? signingConfigs.release : signingConfigs.debug
+            if (System.getenv('ANDROID_KEYSTORE')) {
+                signingConfig signingConfigs.release
+                manifestPlaceholders = [appLabel: 'IPTVKZ']
+            } else {
+                // build no PC, sem a chave oficial: outro app, instalado ao lado do oficial
+                signingConfig signingConfigs.debug
+                applicationIdSuffix '.dev'
+                versionNameSuffix '-dev'
+                manifestPlaceholders = [appLabel: 'IPTVKZ Dev']
+            }
         }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
