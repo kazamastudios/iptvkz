@@ -505,7 +505,17 @@ export function move(dir) {
     bestScore = score;
     best = el;
   }
-  if (!best) best = bestTop;
+  if (!best && bestTop) {
+    // nada mais acima na página, mas ela ainda está rolada (o topo do item aparece cortado): este ↑ só rola até
+    // o topo, para a pessoa ver o que há ali; o próximo ↑ vai para a barra do topo
+    for (let box = cur.parentElement; box && box !== document.body; box = box.parentElement) {
+      if (box.scrollTop > 1 && /auto|scroll/.test(getComputedStyle(box).overflowY)) {
+        glideTo(box, null, 0);
+        return true;
+      }
+    }
+    best = bestTop;
+  }
   if (best) {
     remember(dir, cur, best);
     focusEl(best);
