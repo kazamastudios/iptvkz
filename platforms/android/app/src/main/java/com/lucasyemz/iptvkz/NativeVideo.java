@@ -23,6 +23,7 @@ import androidx.media3.common.VideoSize;
 import androidx.media3.common.text.Cue;
 import androidx.media3.common.text.CueGroup;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.DecoderCounters;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
@@ -229,6 +230,12 @@ final class NativeVideo implements Player.Listener {
                 .put("p", !player.getPlayWhenReady())
                 .put("r", player.getPlaybackState() == Player.STATE_READY ? 4 : player.getPlaybackState() == Player.STATE_BUFFERING ? 1 : 0)
                 .put("w", vw).put("h", vh);
+        // quadros mostrados e perdidos (para medir FPS e engasgos na linha "Reprodução" do menu)
+        DecoderCounters c = player.getVideoDecoderCounters();
+        if (c != null) {
+            c.ensureUpdated();
+            j.put("fr", c.renderedOutputBufferCount).put("fd", c.droppedBufferCount);
+        }
         return j;
     }
 
@@ -293,7 +300,7 @@ final class NativeVideo implements Player.Listener {
             for (int i = 0; i < group.length; i++) {
                 if (!group.isTrackSelected(i)) continue;
                 Format f = group.getTrackFormat(i);
-                if (type == C.TRACK_TYPE_VIDEO) playing.put("video", String.valueOf(f.sampleMimeType)).put("height", f.height);
+                if (type == C.TRACK_TYPE_VIDEO) playing.put("video", String.valueOf(f.sampleMimeType)).put("height", f.height).put("fps", f.frameRate > 0 ? f.frameRate : 0);
                 if (type == C.TRACK_TYPE_AUDIO) playing.put("audio", String.valueOf(f.sampleMimeType)).put("ch", f.channelCount);
             }
             if (type != C.TRACK_TYPE_AUDIO && type != C.TRACK_TYPE_TEXT) continue;

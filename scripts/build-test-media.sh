@@ -68,6 +68,16 @@ make 25-mkv-h264-opus.mkv           "${H264[@]}" -c:a libopus -b:a 128k
 make 26-mp4-h264-eac3.mp4           "${H264[@]}" "${SURR[@]}" -c:a eac3 -b:a 640k -movflags +faststart
 make 27-ts-h264-ac3.ts              "${H264[@]}" "${SURR[@]}" -c:a ac3 -b:a 448k -f mpegts
 
+# --- FPS: o mesmo trecho em cada taxa de quadros (o trailer é 24 fps; acima disso os quadros são repetidos,
+# o que basta para medir se o aparelho decodifica e mostra todos sem perder nenhum) ---
+make 40-fps-23.976-1080p-h264.mp4   "${H264[@]}" -vf fps=24000/1001 -c:a aac -b:a 160k -movflags +faststart
+make 41-fps-25-1080p-h264.mp4       "${H264[@]}" -vf fps=25 -c:a aac -b:a 160k -movflags +faststart
+make 42-fps-29.97-1080p-h264.mp4    "${H264[@]}" -vf fps=30000/1001 -c:a aac -b:a 160k -movflags +faststart
+make 43-fps-50-1080p-h264.mp4       "${H264[@]}" -vf fps=50 -c:a aac -b:a 160k -movflags +faststart
+make 44-fps-59.94-1080p-h264.mp4    "${H264[@]}" -vf fps=60000/1001 -c:a aac -b:a 160k -movflags +faststart
+make 45-fps-60-1080p-h265.mp4       -c:v libx265 -preset fast -crf 26 -tag:v hvc1 -vf fps=60 -c:a aac -b:a 160k -movflags +faststart
+make 46-fps-60-4k-h265.mkv          -c:v libx265 -preset ultrafast -crf 28 -vf "fps=60,scale=3840:-2" -c:a aac -b:a 160k
+
 # --- várias faixas e legendas ---
 n=$((n + 1)); echo "[$n] 30-mkv-dois-audios-legendas.mkv"
 ffmpeg -hide_banner -loglevel error -y -ss 4 -t 30 -i "$SRC" -i "$WORK/pt.srt" -i "$WORK/en.srt" \

@@ -25,6 +25,31 @@ Abra o item e espere uns 10 s. No botão de áudio (onda sonora), a última linh
 | LG | Player da própria TV |
 | PC (app ou navegador) | Navegador. MKV/AVI com áudio que o navegador não toca passam pelo componente de vídeo opcional |
 
+## Desempenho: FPS e milissegundos
+
+No mesmo menu, a linha "Desempenho" mede o vídeo enquanto ele toca. Ela mostra quatro números:
+- o **FPS real** na tela;
+- os **ms por quadro**;
+- os **quadros perdidos**;
+- **quanto tempo o vídeo levou para abrir**, do play até a primeira imagem.
+
+Os vídeos do grupo "Teste | FPS" são o mesmo trecho em cada taxa de quadros. Espere 30 s em cada um e anote a linha.
+
+| Requisito | Para passar |
+|---|---|
+| FPS | Igual ao do vídeo (24, 25, 30, 50 ou 60), com até 1 de diferença |
+| ms por quadro | O do vídeo: 41,7 ms a 24 fps, 40 ms a 25, 33,4 ms a 30, 20 ms a 50 e 16,7 ms a 60 |
+| Quadros perdidos | Menos de 1% depois de 30 s; o ideal é 0 |
+| Abrir | Até 3.000 ms num arquivo; até 5.000 ms num canal ao vivo (depende da internet e do servidor) |
+
+| Aparelho | FPS que precisa aguentar |
+|---|---|
+| Todos (TV, Android TV, PC, celular) | Até 60 fps em 1080p, H.264 e H.265 |
+| Aparelho 4K | Também 60 fps em 4K H.265 |
+| Aparelho Full HD | 4K não é exigido: o app já abre a versão Full HD quando ela existe |
+
+A LG costuma não informar FPS ao app ("FPS não informado por este player"). Nela, avalie a fluidez a olho.
+
 ## O que se espera hoje
 
 | Item | Android | LG | PC |

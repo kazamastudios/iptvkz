@@ -48,6 +48,21 @@ https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/26-mp4-
 #EXTINF:-1 group-title="Teste | Áudio",Sintel · TS · AC3 5.1
 https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/27-ts-h264-ac3.ts
 
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 23,976 fps · 1080p · H.264
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/40-fps-23.976-1080p-h264.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 25 fps · 1080p · H.264
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/41-fps-25-1080p-h264.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 29,97 fps · 1080p · H.264
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/42-fps-29.97-1080p-h264.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 50 fps · 1080p · H.264
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/43-fps-50-1080p-h264.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 59,94 fps · 1080p · H.264
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/44-fps-59.94-1080p-h264.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 60 fps · 1080p · H.265
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/45-fps-60-1080p-h265.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 60 fps · 4K · H.265 (o mais pesado)
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/46-fps-60-4k-h265.mkv
+
 #EXTINF:-1 group-title="Teste | Faixas e legendas",Sintel · MKV · 2 áudios (pt AAC, en AC3) e 2 legendas
 https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/30-mkv-dois-audios-legendas.mkv
 #EXTINF:-1 group-title="Teste | Faixas e legendas",Sintel · MP4 · legenda embutida (mov_text)

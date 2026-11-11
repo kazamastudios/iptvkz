@@ -8,7 +8,7 @@ const bridge = () => window.IPTVKZVideo;
 export const nativeVideoAvailable = () => !!(bridge() && bridge().open);
 
 const OWN = ['currentTime', 'duration', 'paused', 'readyState', 'volume', 'muted', 'videoWidth', 'videoHeight', 'buffered',
-  'error', 'audioTracks', 'textTracks', 'currentSrc', 'play', 'pause', 'load', 'requestPictureInPicture', 'webkitAudioDecodedByteCount'];
+  'error', 'audioTracks', 'textTracks', 'currentSrc', 'play', 'pause', 'load', 'requestPictureInPicture', 'webkitAudioDecodedByteCount', 'getVideoPlaybackQuality'];
 const EVENTS = new Set(['loadedmetadata', 'canplay', 'playing', 'waiting', 'play', 'pause', 'ended', 'resize']);
 
 function realGet(v, k) {
@@ -72,6 +72,8 @@ export class NativeVideo {
     fn('pause', () => { st.p = true; bridge().pause(); });
     fn('load', () => {});
     fn('requestPictureInPicture', () => Promise.reject(new Error('pip')));
+    // quadros do player nativo, no mesmo formato do navegador (para FPS e quadros perdidos)
+    fn('getVideoPlaybackQuality', () => ({ totalVideoFrames: (st.fr || 0) + (st.fd || 0), droppedVideoFrames: st.fd || 0 }));
 
     this.probe = document.createElement('div');
     this.probe.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;visibility:hidden;pointer-events:none';
@@ -127,7 +129,7 @@ export class NativeVideo {
     const st = this.st;
     const moved = m.t !== st.t;
     const grew = m.b !== st.b;
-    Object.assign(st, { t: m.t, d: m.d === 0 && m.r < 4 ? NaN : m.d, b: m.b, p: m.p, r: m.r, w: m.w, h: m.h });
+    Object.assign(st, { t: m.t, d: m.d === 0 && m.r < 4 ? NaN : m.d, b: m.b, p: m.p, r: m.r, w: m.w, h: m.h, fr: m.fr, fd: m.fd });
     if (EVENTS.has(m.e)) v.dispatchEvent(new Event(m.e));
     if (moved) v.dispatchEvent(new Event('timeupdate'));
     if (grew) v.dispatchEvent(new Event('progress'));

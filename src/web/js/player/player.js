@@ -234,6 +234,7 @@ export class Player {
       this._clearStartTimer();
       if (this.playFrom == null) this.playFrom = v.currentTime;
       this.hadFrame = true;
+      if (this.openMs == null && this.loadAt) this.openMs = Math.round(performance.now() - this.loadAt);
       this._hideError();
       setTimeout(() => !this.destroyed && this._learnAudio(), 1500);
     });
@@ -293,6 +294,7 @@ export class Player {
     document.addEventListener('visibilitychange', this._onHide);
 
     this._subTimer = setInterval(() => this._renderSubs(), 100);
+    this._perfTimer = setInterval(() => this._samplePerf(), 1000);
     this._watchdog = setInterval(() => { this._checkStall(); this._checkImage(); this._checkSound(); }, 5000);
     this._showCtrl();
   }
@@ -300,6 +302,9 @@ export class Player {
   // ---------- carregamento ----------
   load(src) {
     this.src = src;
+    this.loadAt = performance.now(); // para o "abriu em N ms" do menu
+    this.openMs = null;
+    this.perf = null;
     this.hadFrame = false;
     this.attempts = 0;
     this.usingAlt = false;
@@ -453,6 +458,8 @@ export class Player {
 
   _start(url) {
     this._teardown();
+    this._perfPrev = null;
+    this.perf = null;
     const gen = (this.gen = (this.gen || 0) + 1);
     this._spin(true);
     this.lastProgressAt = Date.now();
@@ -1218,7 +1225,39 @@ export class Player {
       }
     }
 
-    m.append(h('div.sep'), h('div.note.playing-info', `Reprodução: ${this._playingInfo()}`));
+    m.append(h('div.sep'), h('div.note.playing-info', `Reprodução: ${this._playingInfo()}`), h('div.note.playing-perf', this._perfInfo()));
+  }
+
+  // FPS real e quadros perdidos, medidos a cada segundo enquanto o vídeo anda. Funciona igual no navegador e no
+  // player do Android (que manda os contadores no mesmo formato). Na LG o player da TV costuma não informar.
+  _samplePerf() {
+    const v = this.video;
+    const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+    if (!q || v.paused || !q.totalVideoFrames) return;
+    const now = performance.now();
+    const prev = this._perfPrev;
+    this._perfPrev = { at: now, total: q.totalVideoFrames, dropped: q.droppedVideoFrames };
+    if (!prev || q.totalVideoFrames < prev.total) return;
+    const dt = (now - prev.at) / 1000;
+    const shown = (q.totalVideoFrames - q.droppedVideoFrames) - (prev.total - prev.dropped);
+    const fps = dt > 0 ? shown / dt : 0;
+    // média curta: um segundo isolado oscila
+    this.perf = { fps: this.perf ? this.perf.fps * 0.6 + fps * 0.4 : fps, total: q.totalVideoFrames, dropped: q.droppedVideoFrames };
+    const line = this.menu.querySelector('.playing-perf');
+    if (line) line.textContent = this._perfInfo();
+  }
+
+  _perfInfo() {
+    const nf = (n, d = 0) => n.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const parts = [];
+    const p = this.perf;
+    if (p && p.fps > 0.5) {
+      parts.push(`${nf(p.fps, 1)} fps`, `${nf(1000 / p.fps, 1)} ms por quadro`);
+      const pct = p.total ? (p.dropped / p.total) * 100 : 0;
+      parts.push(`${nf(p.dropped)} de ${nf(p.total)} quadros perdidos${p.dropped ? ` (${nf(pct, 1)}%)` : ''}`);
+    } else parts.push('FPS não informado por este player');
+    if (this.openMs != null) parts.push(`abriu em ${nf(this.openMs)} ms`);
+    return `Desempenho: ${parts.join(' · ')}`;
   }
 
   // Quem está tocando (navegador ou player do Android) e, quando se sabe, os formatos de vídeo e áudio.
@@ -1331,6 +1370,7 @@ export class Player {
     this._report();
     this.destroyed = true;
     clearInterval(this._subTimer);
+    clearInterval(this._perfTimer);
     clearInterval(this._watchdog);
     clearTimeout(this._retryT);
     this._clearStartTimer();
