@@ -253,6 +253,9 @@ export function nativeKeyboardOpen() {
   return v === undefined ? kbOpen : !!v;
 }
 
+// Blocos que aparecem inteiros quando o foco entra neles (ver revealSmooth).
+const REVEAL_UNIT = '.shelf, .list-card, [data-reveal-unit]';
+
 // Leva o item para dentro da área visível deslizando, em vez do pulo do scrollIntoView.
 // Sobe pelas áreas com rolagem (a fileira anda para o lado, a página desce) e respeita o scroll-padding.
 function revealSmooth(el, center) {
@@ -283,7 +286,16 @@ function revealSmooth(el, center) {
     };
     const x = canX ? axis((r.left - br.left) / z - box.clientLeft + box.scrollLeft, r.width / z, box.clientWidth, at.x,
       parseFloat(cs.scrollPaddingLeft) || 0, parseFloat(cs.scrollPaddingRight) || 0) : null;
-    const y = canY ? axis((r.top - br.top) / z - box.clientTop + box.scrollTop, r.height / z, box.clientHeight, at.y,
+    // Na vertical, o item leva junto o bloco dele (a fileira com o título, o cartão da lista em Configurações):
+    // subindo, aparece o bloco desde o topo, e não só o botão ou a capa sem o título de cima. Só se o bloco couber.
+    let top = r.top;
+    const unit = canY && !start && el.closest(REVEAL_UNIT);
+    if (unit && box.contains(unit) && unit !== box) {
+      const u = unit.getBoundingClientRect();
+      const pads = (parseFloat(cs.scrollPaddingTop) || 0) + (parseFloat(cs.scrollPaddingBottom) || 0);
+      if ((r.bottom - u.top) / z <= box.clientHeight - pads) top = u.top;
+    }
+    const y = canY ? axis((top - br.top) / z - box.clientTop + box.scrollTop, (r.bottom - top) / z, box.clientHeight, at.y,
       parseFloat(cs.scrollPaddingTop) || 0, parseFloat(cs.scrollPaddingBottom) || 0, start) : null;
     if (x != null || y != null) glideTo(box, x, y, holding);
   }
