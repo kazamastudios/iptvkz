@@ -24,6 +24,8 @@ if (!app.requestSingleInstanceLock()) {
   // Dados do usuário fora da pasta do programa (que é somente leitura depois de instalado).
   process.env.IPTVKZ_DATA = path.join(app.getPath('userData'), 'data');
   process.env.IPTVKZ_KEEPALIVE = '1';
+  // FFmpeg que vem com o app (áudio AC3/DTS e MKV): ver scripts/build-desktop.js e src/server/ffmpeg.js
+  process.env.IPTVKZ_FFMPEG = path.join(process.resourcesPath || '', 'ffmpeg', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
   boot();
 }
 

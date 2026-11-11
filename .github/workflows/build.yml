@@ -13,7 +13,40 @@ permissions:
   contents: write
 
 jobs:
+  # FFmpeg reduzido que vai dentro do app de PC (scripts/build-ffmpeg.sh): lê MKV/TS/AVI, copia o vídeo e converte
+  # só o áudio (AC3, DTS...) para AAC. Licença LGPL, sem partes GPL. O Windows é compilado no Linux.
+  ffmpeg:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: win-x64, os: ubuntu-latest }
+          - { target: linux-x64, os: ubuntu-latest }
+          - { target: mac-arm64, os: macos-latest }
+          - { target: mac-x64, os: macos-13 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: dist/desktop/componentes
+          key: ffmpeg-${{ matrix.target }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+      - name: Ferramentas
+        if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nasm mingw-w64 zip > /dev/null
+      - name: Ferramentas (Mac)
+        if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'macOS'
+        run: brew install nasm > /dev/null
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-ffmpeg.sh ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: dist/desktop/componentes/*.zip
+
   build:
+    needs: ffmpeg
     strategy:
       fail-fast: false
       matrix:
@@ -39,6 +72,13 @@ jobs:
         run: |
           npm run build
           npm run vendor
+
+      - name: FFmpeg para o app
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ffmpeg-*
+          path: dist/desktop/componentes
+          merge-multiple: true
 
       - name: Compilar instaladores
         run: |

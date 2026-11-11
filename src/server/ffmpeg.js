@@ -16,12 +16,15 @@ const DIR = path.join(DATA, 'componentes');
 const OS = { win32: 'win', darwin: 'mac', linux: 'linux' }[process.platform];
 const KEY = OS && (process.arch === 'x64' || process.arch === 'arm64') ? `${OS}-${process.arch}` : null;
 const ENTRY = KEY ? (MANIFEST.files || {})[KEY] : null;
-const BIN = path.join(DIR, `ffmpeg-${MANIFEST.version}${process.platform === 'win32' ? '.exe' : ''}`);
+// O app de PC traz o FFmpeg junto (scripts/build-desktop.js põe em resources/ffmpeg e o main.js avisa por
+// IPTVKZ_FFMPEG). Sem ele (rodando pelo código, versões antigas), vale o baixado sob demanda.
+const BUNDLED = process.env.IPTVKZ_FFMPEG && fs.existsSync(process.env.IPTVKZ_FFMPEG) ? process.env.IPTVKZ_FFMPEG : null;
+const BIN = BUNDLED || path.join(DIR, `ffmpeg-${MANIFEST.version}${process.platform === 'win32' ? '.exe' : ''}`);
 
 let job = null; // download em andamento: { got, total, error, done }
 
 function available() {
-  return !!(ENTRY && ENTRY.url && ENTRY.sha256);
+  return !!(BUNDLED || (ENTRY && ENTRY.url && ENTRY.sha256)) || installed();
 }
 
 function installed() {

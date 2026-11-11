@@ -33,11 +33,12 @@ SRT
 
 IN=(-hide_banner -loglevel error -y -ss 4 -t 30 -i "$SRC")
 H264=(-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p)
-SURR=(-af "pan=5.1|FL=FL|FR=FR|FC=0.5*FL+0.5*FR|LFE=0.1*FL+0.1*FR|SL=FL|SR=FR")
+SURR=(-af "pan=5.1|FL=FL|FR=FR|FC=0.5*FL+0.5*FR|LFE=0.1*FL+0.1*FR|BL=FL|BR=FR")
 n=0
 make() { # make <arquivo> <args...>
   local name="$1"; shift
   n=$((n + 1))
+  if [ -s "$OUT/$name" ]; then echo "[$n] $name (já existe)"; return; fi
   echo "[$n] $name"
   ffmpeg "${IN[@]}" "$@" "$OUT/$name"
 }
@@ -55,7 +56,10 @@ make 08-webm-vp9-opus.webm          -c:v libvpx-vp9 -b:v 2M -deadline realtime -
 # --- vídeo ---
 make 10-mp4-h265-aac.mp4            -c:v libx265 -preset fast -crf 26 -tag:v hvc1 -c:a aac -b:a 160k -movflags +faststart
 make 11-mkv-h265-10bit-4k-aac.mkv   -c:v libx265 -preset ultrafast -crf 26 -pix_fmt yuv420p10le -vf scale=3840:-2 -c:a aac -b:a 160k
-make 12-mp4-av1-aac.mp4             -c:v libsvtav1 -preset 10 -crf 35 -vf scale=-2:720 -c:a aac -b:a 160k -movflags +faststart
+# AV1: SVT-AV1 (Ubuntu) ou libaom (outras builds do FFmpeg, ex. a do Windows)
+if ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libsvtav1; then AV1=(-c:v libsvtav1 -preset 10 -crf 35)
+else AV1=(-c:v libaom-av1 -cpu-used 8 -row-mt 1 -crf 38 -b:v 0); fi
+make 12-mp4-av1-aac.mp4             "${AV1[@]}" -vf scale=-2:720 -c:a aac -b:a 160k -movflags +faststart
 make 13-mp4-h264-4k-aac.mp4         "${H264[@]}" -vf scale=3840:-2 -c:a aac -b:a 160k -movflags +faststart
 
 # --- áudio (MKV, H.264), os que mais aparecem em filmes de listas ---
