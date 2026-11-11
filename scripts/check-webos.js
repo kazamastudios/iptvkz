@@ -40,7 +40,7 @@ function check({ appDir, serviceDir, channel, appId, serviceId }) {
     const size = file && fs.existsSync(file) ? pngSize(file) : null;
     need(size && size[0] === want[0] && size[1] === want[1], `appinfo.json: ${k} deve ser PNG ${want.join('x')} (${size ? size.join('x') : 'ausente'})`);
   }
-  need(info.resolution === '1920x1080', 'appinfo.json: resolution deve ser 1920x1080');
+  need(['1920x1080', '1280x720'].includes(info.resolution), 'appinfo.json: resolution deve ser 1920x1080 ou 1280x720');
   need(info.disableBackHistoryAPI === true, 'appinfo.json: o app trata o Voltar sozinho (disableBackHistoryAPI: true)');
   if (info.appDescription) need(info.appDescription.length <= 60, 'appinfo.json: appDescription passa de 60 caracteres');
   // webOS TV 27+: requiredACG é obrigatório. O serviço usa o Activity Manager (activity.operation).

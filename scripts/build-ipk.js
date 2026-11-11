@@ -2,6 +2,7 @@
 //
 //   npm run ipk         Developer: dist/webos/            (GitHub, Modo Desenvolvedor, se atualiza sozinho)
 //   npm run ipk:store   Store:     dist/webos/store/      (LG Content Store, só a loja atualiza)
+//   npm run ipk:store:fhd          dist/webos/store-fhd/  (o mesmo, em 1280x720: sem ele a loja não mostra o app nas TVs Full HD)
 //
 // Developer, opcionais: BUNDLE_VERSION (número da build; sem ele o IPK não se atualiza sozinho)
 // e ANDROID_UPDATE_KEY (PEM usado para assinar o manifesto de atualização).
@@ -16,11 +17,12 @@ const esbuild = require('esbuild');
 
 const STORE = process.argv.includes('--store') || process.env.WEBOS_CHANNEL === 'store';
 const CHANNEL = STORE ? 'store' : 'developer';
+const FHD = STORE && process.argv.includes('--fhd');
 
 const root = path.join(__dirname, '..');
 const webos = path.join(root, 'platforms', 'webos');
 const base = path.join(root, 'dist', 'webos');
-const out = STORE ? path.join(base, 'store') : base;
+const out = STORE ? path.join(base, FHD ? 'store-fhd' : 'store') : base;
 const appDir = path.join(out, 'app');
 const serviceDir = path.join(out, 'service');
 const bundleDir = path.join(serviceDir, 'app');
@@ -58,7 +60,7 @@ const writeJson = (file, value) => fs.writeFileSync(file, JSON.stringify(value, 
 // Cada canal limpa só o que é dele: o Developer não apaga a pasta store/.
 if (STORE) fs.rmSync(out, { recursive: true, force: true });
 else if (fs.existsSync(out)) {
-  for (const name of fs.readdirSync(out)) if (name !== 'store') fs.rmSync(path.join(out, name), { recursive: true, force: true });
+  for (const name of fs.readdirSync(out)) if (!name.startsWith('store')) fs.rmSync(path.join(out, name), { recursive: true, force: true });
 }
 fs.mkdirSync(appDir, { recursive: true });
 fs.mkdirSync(bundleDir, { recursive: true });
@@ -72,6 +74,7 @@ const { version } = readJson(path.join(root, 'package.json'));
 const info = path.join(appDir, 'appinfo.json');
 const appinfo = { ...readJson(info), id: APP_ID, version };
 if (VENDOR) appinfo.vendor = VENDOR;
+if (FHD) appinfo.resolution = '1280x720';
 writeJson(info, appinfo);
 // a abertura chama o serviço pelo nome: troca o do Developer pelo do canal
 const splash = path.join(appDir, 'index.html');
