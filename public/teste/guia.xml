@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Guia de exemplo da lista de teste do IPTVKZ. Programas fictícios, cobrindo vários anos para não expirar. -->
+<tv generator-info-name="IPTVKZ test">
+  <channel id="demo1"><display-name>Demo 1</display-name></channel>
+  <channel id="demo2"><display-name>Demo 2</display-name></channel>
+  <channel id="demo3"><display-name>Demo 3</display-name></channel>
+  <programme start="20260101000000 +0000" stop="20360101000000 +0000" channel="demo1"><title lang="pt">Transmissão de teste</title><desc lang="pt">Stream público de teste.</desc></programme>
+  <programme start="20260101000000 +0000" stop="20360101000000 +0000" channel="demo2"><title lang="pt">Big Buck Bunny</title><desc lang="pt">Filme aberto da Blender Foundation (CC BY).</desc></programme>
+  <programme start="20260101000000 +0000" stop="20360101000000 +0000" channel="demo3"><title lang="pt">Tears of Steel</title><desc lang="pt">Filme aberto da Blender Foundation (CC BY).</desc></programme>
+</tv>

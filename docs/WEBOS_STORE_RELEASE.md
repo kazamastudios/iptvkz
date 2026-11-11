@@ -70,7 +70,7 @@ Atenção: com o Modo Desenvolvedor ligado, a TV pode não aplicar o ACG como um
 
 1. **Id do app:** `com.kazamastudios.iptvkz`, decidido (igual ao da Google Play). Depois do primeiro envio, não muda mais. Não use `WEBOS_STORE_ID` nos builds de envio.
 2. **Versões do webOS.** Marque só **webOS TV 5.0 ou mais novo**. O serviço precisa de Node 8 ou mais novo, e o webOS 4.x tem Node 0.12.
-3. **Política de privacidade pública.** Publique uma página com o texto abaixo, por exemplo no GitHub Pages, e use o endereço no cadastro.
+3. **Política de privacidade pública.** Publicada em https://iptvkz.kazamastudios.com.br/privacidade.html (termos em `/termos.html`). Use esse endereço no cadastro.
 4. **Ícone de 400×400 para a loja**, a partir de `assets/brand/icon-1024.png`, e capturas de tela (veja abaixo).
 5. **Botões só de ícone no modo TV:** ajuste os que ficam abaixo de 75×75 px (auditoria, item 15).
 6. **Conta de vendedor** no Seller Lounge em nome de Kazama Studios, pessoa física ou jurídica, conforme o cadastro da LG.
@@ -113,7 +113,7 @@ Em inglês:
 
 ## Política de privacidade (texto para a página pública)
 
-Igual à seção 6 dos Termos, versão 3:
+A versão oficial está em https://iptvkz.kazamastudios.com.br/privacidade.html. Resumo, igual à seção 6 dos Termos, versão 4:
 
 - O IPTVKZ não coleta, não envia e não vende dados pessoais.
 - Não tem anúncios, contas, análise de uso nem relatórios de erro.
@@ -162,7 +162,7 @@ Não mostre nomes ou logotipos de canais reais.
 Texto para o campo de notas ao QA, em inglês:
 
 > IPTVKZ is a media player only; it ships with no content. To test playback, add this test playlist on the first screen:
-> **Add playlist → M3U link →** `<URL of a test playlist hosted by Kazama Studios>`
+> **Add playlist → M3U link →** `https://iptvkz.kazamastudios.com.br/teste/lista.m3u`
 > The test playlist contains only freely licensed or public test streams (e.g. Blender Foundation open movies under CC-BY, and public HLS test streams), plus a sample XMLTV guide.
 >
 > Navigation: arrows move the focus, OK selects, Back goes to the previous screen; on the home screen Back asks to exit. The Magic Remote pointer works on every screen. The phone QR-code flow is optional and needs a phone on the same Wi-Fi.
