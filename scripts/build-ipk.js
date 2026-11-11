@@ -75,6 +75,8 @@ const info = path.join(appDir, 'appinfo.json');
 const appinfo = { ...readJson(info), id: APP_ID, version };
 if (VENDOR) appinfo.vendor = VENDOR;
 if (FHD) appinfo.resolution = '1280x720';
+// Developer fora da versão publicada (build no PC ou de um PR): o app de testes aparece como "IPTVKZ Beta".
+if (!STORE && require('./build-info').buildInfo().channel !== 'producao') appinfo.title = 'IPTVKZ Beta';
 writeJson(info, appinfo);
 // a abertura chama o serviço pelo nome: troca o do Developer pelo do canal
 const splash = path.join(appDir, 'index.html');

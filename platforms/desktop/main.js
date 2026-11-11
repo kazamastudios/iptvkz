@@ -6,6 +6,16 @@ const { app, BrowserWindow, Menu, Tray, shell, nativeImage, dialog } = require('
 
 const BACKGROUND = process.argv.includes('--background');
 
+// Builds de teste (fora da versão publicada) aparecem como "IPTVKZ Beta", como no Android e na LG.
+const APP_NAME = (() => {
+  try {
+    const info = require('../../src/web/build-info.json');
+    return info.channel === 'producao' ? 'IPTVKZ' : 'IPTVKZ Beta';
+  } catch {
+    return 'IPTVKZ Beta'; // rodando direto pelo código
+  }
+})();
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -50,7 +60,7 @@ function boot() {
       });
       baseUrl = `http://127.0.0.1:${port}`;
     } catch (err) {
-      dialog.showErrorBox('IPTVKZ', 'Não foi possível iniciar o servidor interno: ' + err.message);
+      dialog.showErrorBox(APP_NAME, 'Não foi possível iniciar o servidor interno: ' + err.message);
       app.quit();
       return;
     }
@@ -73,7 +83,7 @@ function showWindow() {
     minWidth: 900,
     minHeight: 600,
     show: false,
-    title: 'IPTVKZ',
+    title: APP_NAME,
     backgroundColor: '#08080b',
     icon: iconPath(process.platform === 'win32' ? '../../platforms/windows/iptvkz.ico' : 'icon-1024.png'),
     autoHideMenuBar: true,
@@ -123,7 +133,7 @@ function createTray() {
     ? nativeImage.createFromPath(iconPath('../../platforms/windows/iptvkz.ico'))
     : nativeImage.createFromPath(iconPath('icon-small-64.png')).resize({ width: 22, height: 22 });
   tray = new Tray(img);
-  tray.setToolTip('IPTVKZ');
+  tray.setToolTip(APP_NAME);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Abrir IPTVKZ', click: () => showWindow() },
     { type: 'separator' },

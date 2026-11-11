@@ -48,7 +48,8 @@ android {
             minifyEnabled false
             if (System.getenv('ANDROID_KEYSTORE')) {
                 signingConfig signingConfigs.release
-                manifestPlaceholders = [appLabel: 'IPTVKZ']
+                // build de PR (teste) também aparece como Beta; só a versão publicada (tag v*) é "IPTVKZ"
+                manifestPlaceholders = [appLabel: (System.getenv('GITHUB_REF') ?: '').startsWith('refs/tags/v') ? 'IPTVKZ' : 'IPTVKZ Beta']
             } else {
                 // build no PC, sem a chave oficial: outro app, instalado ao lado do oficial
                 signingConfig signingConfigs.debug
