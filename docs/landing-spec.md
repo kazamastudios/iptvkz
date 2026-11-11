@@ -35,7 +35,7 @@ Não entram agora: blog, comparativo com outros apps e doações.
 
 ### 2.2 Promessas
 
-Três frases curtas logo abaixo do topo, sem números soltos: grátis de verdade, lista por QR Code e leve até em TV antiga. Licença, estrelas e GitHub ficam no bloco "Ajude a melhorar" e no rodapé.
+Três frases curtas logo abaixo do topo, sem números soltos: grátis de verdade, lista por QR Code e feito para não travar. Licença, estrelas e GitHub ficam no bloco "Ajude a melhorar" e no rodapé.
 
 **Regras de texto:** não citar concorrentes nem preços deles, não dizer "o melhor" sem prova, não prometer gratuidade "para sempre" e sempre falar em app pago de player, nunca em conteúdo grátis.
 
