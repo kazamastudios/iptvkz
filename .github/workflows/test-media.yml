@@ -1,0 +1,22 @@
+# Vídeos da lista de teste de formatos (public/teste/formatos.m3u), gerados do trailer do Sintel (CC BY).
+# Roda quando o script muda ou à mão; os arquivos ficam como artefato e são publicados na release "teste-formatos".
+name: Vídeos de teste
+
+on:
+  push:
+    paths:
+      - scripts/build-test-media.sh
+      - .github/workflows/test-media.yml
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+      - run: bash scripts/build-test-media.sh "$RUNNER_TEMP/teste-formatos"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: teste-formatos
+          path: ${{ runner.temp }}/teste-formatos/*
