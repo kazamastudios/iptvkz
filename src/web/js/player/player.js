@@ -116,7 +116,7 @@ export class Player {
       this.video.muted = this.video.volume === 0;
     });
     this.btnFs = this._btn('fullscreen', 'Tela cheia (F)', () => this.toggleFullscreen());
-    this.btnGear = this._btn('audioMix', 'Versão, áudio e qualidade', (e) => {
+    this.btnGear = this._btn('audioLang', 'Versão, áudio e qualidade', (e) => {
       e.stopPropagation();
       this.toggleMenu('settings');
     });
@@ -1085,7 +1085,7 @@ export class Player {
     m.append(seg([['none', 'Nenhum'], ['shadow', 'Sombra'], ['box', 'Caixa']], S.settings.subBg, (v) => { setSetting('subBg', v); this._applySubStyle(); }));
   }
 
-  // Botão de áudio (mixer): versão, faixa de áudio, qualidade e o que está tocando.
+  // Botão de áudio (balão de fala): versão, faixa de áudio, qualidade e o que está tocando.
   _renderSettings(m, seg, opt) {
     // Versão (Dublado/Legendado): nomes com o idioma que o app já viu tocando
     const vs = this.opts.versions;
