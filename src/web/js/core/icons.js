@@ -25,8 +25,8 @@ const P = {
   fullscreen: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',
   exitFs: '<path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/>',
   pip: '<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor"/>',
-  // balão de fala, como o "idioma do áudio" dos streamings
-  audioLang: '<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M7.5 9.5h9M7.5 13h6"/>',
+  // onda sonora (barras simétricas, mais altas no meio): idioma do áudio, como nos streamings. Desenho próprio.
+  audioLang: '<path d="M3 11v2M6 9v6M9 6v12M12 3v18M15 6v12M18 9v6M21 11v2"/>',
   cc: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10.5 10.2a2.2 2.2 0 1 0 0 3.6M17 10.2a2.2 2.2 0 1 0 0 3.6"/>',
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
