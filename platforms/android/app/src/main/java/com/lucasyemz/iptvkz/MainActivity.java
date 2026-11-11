@@ -233,13 +233,17 @@ public class MainActivity extends Activity {
 
     /** Abre o teclado do sistema no campo que a interface acabou de focar. */
     private void showKeyboard() {
-        web.requestFocus();
+        // Só pede o foco se o WebView ainda não tem: com ele já focado, o pedido faz a página "entrar de novo" e o
+        // foco pula para o primeiro item (o logo do menu); o campo perde o foco e o teclado, recém-aberto, fecha.
+        if (!web.hasFocus()) web.requestFocus();
         InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
         if (imm != null) imm.showSoftInput(web, 0);
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     private void createWebView() {
+        // app Beta (build no PC): a página pode ser inspecionada pelo PC (chrome://inspect), para testar no aparelho
+        if (getPackageName().endsWith(".beta")) WebView.setWebContentsDebuggingEnabled(true);
         web = new WebView(this);
         web.setBackgroundColor(Color.BLACK);
         WebSettings s = web.getSettings();

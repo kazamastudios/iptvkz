@@ -502,6 +502,9 @@ export function move(dir) {
     if (toTop) { topScore = score; bestTop = el; continue; }
     // ↑/↓ não saltam entre a barra lateral e o conteúdo (da barra do topo, ↓ desce para o conteúdo)
     const elRegion = region(el);
+    // ←/→ não atravessam entre a barra do topo e o conteúdo: do seletor de visualização, → vai ao "Conectado",
+    // não a um campo da página; de um campo da página, → não sobe para a busca. O menu lateral continua alcançável.
+    if (across && elRegion !== 'side' && curRegion !== 'side' && (elRegion === 'top') !== (curRegion === 'top')) continue;
     if ((dir === 'up' || dir === 'down') && elRegion !== curRegion && !(curRegion === 'top' && elRegion === 'main')) continue;
     bestScore = score;
     best = el;
