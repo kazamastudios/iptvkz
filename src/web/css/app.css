@@ -12,7 +12,13 @@
   --faint: #6b6b80;
   --accent: #ff2a2a;
   --accent-2: #ff5050;
-  --accent-soft: rgba(255, 42, 42, 0.15);
+  --accent-rgb: 255, 42, 42;
+  --accent-soft: rgba(var(--accent-rgb), 0.15);
+  --on-accent: #fff; /* texto sobre a cor de destaque */
+  --danger: #ff2a2a; /* erro (conexão ruim etc.): vermelho também no Beta */
+  --danger-rgb: 255, 42, 42;
+  --splash-1: 77, 13, 18; /* fundo da abertura */
+  --splash-2: 58, 7, 22;
   --good: #3ddc97;
   --warn: #ffb547;
   --radius: 14px;
@@ -22,6 +28,17 @@
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   color-scheme: dark;
+}
+
+/* App Beta (todo build fora da versão publicada): âmbar no lugar do vermelho, para nunca confundir com o oficial.
+   O servidor põe a classe no <html> ao entregar a página (src/server/index.js). */
+html.beta {
+  --accent: #ffb547;
+  --accent-2: #ffc670;
+  --accent-rgb: 255, 181, 71;
+  --on-accent: #1d1305;
+  --splash-1: 77, 50, 8;
+  --splash-2: 58, 36, 6;
 }
 
 * { box-sizing: border-box; }
@@ -36,7 +53,7 @@ body {
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; }
 input, select, textarea { font: inherit; color: inherit; }
-::selection { background: var(--accent); color: #fff; }
+::selection { background: var(--accent); color: var(--on-accent); }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
@@ -137,7 +154,7 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .btn:hover { background: #2b2b3c; }
 .btn:active { transform: scale(.98); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { background: var(--accent-2); }
 .btn.ghost { background: transparent; }
 .btn.danger { background: #3a1518; border-color: #6b2228; color: #ffb3b5; }
@@ -162,7 +179,7 @@ input, select, textarea { font: inherit; color: inherit; }
   display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px;
   font-size: 11px; font-weight: 700; letter-spacing: .3px; background: rgba(255, 255, 255, .1); color: var(--text);
 }
-.badge.onair { background: var(--accent); color: #fff; }
+.badge.onair { background: var(--accent); color: var(--on-accent); }
 .badge.gold { background: rgba(255, 201, 74, .15); color: #ffc94a; }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
@@ -241,10 +258,10 @@ input, select, textarea { font: inherit; color: inherit; }
 .welcome { position: relative; overflow: hidden; }
 .welcome::before {
   content: ""; position: absolute; top: -40%; left: -20%; right: -20%; height: 120%;
-  background: radial-gradient(closest-side, rgba(255, 42, 42, .25), transparent 70%);
+  background: radial-gradient(closest-side, rgba(var(--accent-rgb), .25), transparent 70%);
   pointer-events: none;
 }
-.welcome .logo-big { width: 84px; height: 84px; border-radius: 22px; box-shadow: 0 20px 60px rgba(255, 42, 42, .35); }
+.welcome .logo-big { width: 84px; height: 84px; border-radius: 22px; box-shadow: 0 20px 60px rgba(var(--accent-rgb), .35); }
 
 /* ---------- miniaturas ---------- */
 .thumb { position: relative; overflow: hidden; background: #20202c; display: flex; align-items: center; justify-content: center; flex: none; }
@@ -533,7 +550,7 @@ input, select, textarea { font: inherit; color: inherit; }
   transition: background-color .15s, border-color .15s, opacity .15s;
 }
 .pager-btn .i { width: 18px; height: 18px; }
-.pager-btn:hover, .tv .pager-btn.tv-focus, .tv .pager-btn:focus { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pager-btn:hover, .tv .pager-btn.tv-focus, .tv .pager-btn:focus { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .pager-btn.off { opacity: .35; cursor: default; }
 .pager-btn.off:hover { background: var(--card); border-color: var(--line-2); }
 .no-flexgap .shelf-pager > * + * { margin-left: 8px; }
@@ -622,7 +639,7 @@ input, select, textarea { font: inherit; color: inherit; }
   cursor: pointer; border: 1px solid transparent; min-width: 0;
 }
 .g-prog:hover { background: var(--card-2); border-color: var(--line-2); z-index: 1; }
-.g-prog.now { background: #2a1a20; border-color: rgba(255, 42, 42, .35); }
+.g-prog.now { background: #2a1a20; border-color: rgba(var(--accent-rgb), .35); }
 .g-prog .t { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .g-prog .h { font-size: 11px; color: var(--faint); white-space: nowrap; }
 .g-empty { position: absolute; top: 5px; bottom: 5px; left: 6px; display: flex; align-items: center; color: var(--faint); font-size: 12px; }
@@ -680,7 +697,7 @@ input, select, textarea { font: inherit; color: inherit; }
   height: 22px; padding: 0 7px; border-radius: 6px; border: 1px solid var(--line-2); background: none; cursor: pointer;
   font-size: 10px; font-weight: 800; letter-spacing: .3px; color: var(--faint);
 }
-.adult-tag.on { background: rgba(255, 42, 42, .18); border-color: var(--accent); color: #ff8a8a; }
+.adult-tag.on { background: rgba(var(--accent-rgb), .18); border-color: var(--accent); color: #ff8a8a; }
 .tv .adult-tag:focus { box-shadow: 0 0 0 2px var(--accent); }
 .pin-input {
   width: 200px; height: 56px; text-align: center; font: 700 28px var(--font-display); letter-spacing: 14px;
@@ -754,9 +771,9 @@ input, select, textarea { font: inherit; color: inherit; }
 .tv .poster:focus .pt { color: var(--accent); }
 .tv .ep:focus { border-color: var(--accent); background: var(--card-2); }
 .tv .g-prog:focus { border-color: var(--accent); background: #3a1d25; z-index: 1; }
-.tv .player .pbtn:focus { background: var(--accent); color: #fff; }
+.tv .player .pbtn:focus { background: var(--accent); color: var(--on-accent); }
 .tv .link-btn:focus { color: var(--text); box-shadow: 0 0 0 2px var(--accent); }
-.tv .pmenu .opt:focus { background: rgba(255, 42, 42, .25); box-shadow: none; }
+.tv .pmenu .opt:focus { background: rgba(var(--accent-rgb), .25); box-shadow: none; }
 .tv .search { width: 320px; }.tv .shelf-row { scroll-padding: 0 40px; }
 
 /* TV ao Vivo em tela cheia, com banner de informações e gaveta de canais */
@@ -791,13 +808,13 @@ input, select, textarea { font: inherit; color: inherit; }
 .status-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; background: var(--faint); }
 .status-dot.ok { background: var(--good); }
 .status-dot.warn { background: var(--warn); }
-.status-dot.bad { background: var(--accent); box-shadow: 0 0 8px rgba(255, 42, 42, .7); }
+.status-dot.bad { background: var(--danger); box-shadow: 0 0 8px rgba(var(--danger-rgb), .7); }
 .status-pill { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; min-width: 40px; padding: 0 12px; border-radius: 999px; border: 1px solid transparent; background: none; color: var(--text); cursor: pointer; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .status-pill:hover { background: rgba(255, 255, 255, .06); }
 .status-pill.ok { background: rgba(61, 220, 151, .1); border-color: rgba(61, 220, 151, .3); color: #9ff0c9; }
 .status-pill.ok:hover { background: rgba(61, 220, 151, .16); }
 .status-pill.idle { border-color: var(--line-2); color: var(--muted); }
-.status-pill.loud.bad { background: rgba(255, 42, 42, .14); border-color: rgba(255, 42, 42, .45); }
+.status-pill.loud.bad { background: rgba(var(--danger-rgb), .14); border-color: rgba(var(--danger-rgb), .45); }
 .status-pill.loud.warn { background: rgba(255, 181, 71, .12); border-color: rgba(255, 181, 71, .4); }
 .status-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: 320px; padding: 14px; background: var(--card-2); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: var(--shadow); }
 .status-line { display: flex; gap: 10px; padding-bottom: 12px; }
@@ -812,7 +829,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .status-refresh.spin .i { animation: spin .8s linear infinite; }
 #statusBanner:empty { display: none; }
 .status-banner { display: flex; align-items: center; gap: 10px; margin: 0 28px 12px; padding: 8px 8px 8px 14px; border-radius: 12px; border: 1px solid; }
-.status-banner.bad { background: rgba(255, 42, 42, .12); border-color: rgba(255, 42, 42, .4); }
+.status-banner.bad { background: rgba(var(--danger-rgb), .12); border-color: rgba(var(--danger-rgb), .4); }
 .status-banner.warn { background: rgba(255, 181, 71, .1); border-color: rgba(255, 181, 71, .35); }
 .status-banner > .ico .i { width: 18px; height: 18px; }
 .status-banner.bad > .ico { color: var(--accent-2); }
@@ -835,8 +852,8 @@ input, select, textarea { font: inherit; color: inherit; }
 .tvkb-key.w2 { grid-column: span 2; }
 .tvkb-key.w3 { grid-column: span 3; }
 .tvkb-key.on { background: var(--text); color: #111; }
-.tvkb-key.ok { background: var(--accent); border-color: var(--accent); color: #fff; }
-.tv .tvkb-key:focus { outline: none; background: var(--accent); border-color: #fff; color: #fff; box-shadow: 0 0 0 2px #fff; }
+.tvkb-key.ok { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.tv .tvkb-key:focus { outline: none; background: var(--accent); border-color: var(--on-accent); color: var(--on-accent); box-shadow: 0 0 0 2px #fff; }
 
 /* ---------- assistido / onde parei ---------- */
 .badge.seen { background: rgba(14, 90, 60, .92); color: #b9f5d8; }
@@ -866,7 +883,7 @@ input, select, textarea { font: inherit; color: inherit; }
 #splash { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; background: #060609; transition: opacity .5s ease; }
 #splash.out { opacity: 0; pointer-events: none; }
 .sp-glow { position: absolute; width: 90vw; height: 90vw; border-radius: 50%; will-change: transform; }
-.sp-glow.a { left: -30vw; top: -45vw; background: radial-gradient(closest-side, rgba(255, 42, 42, .42), rgba(255, 42, 42, 0)); animation: sp-a 9s ease-in-out infinite alternate; }
+.sp-glow.a { left: -30vw; top: -45vw; background: radial-gradient(closest-side, rgba(var(--accent-rgb), .42), rgba(var(--accent-rgb), 0)); animation: sp-a 9s ease-in-out infinite alternate; }
 .sp-glow.b { right: -35vw; bottom: -50vw; background: radial-gradient(closest-side, rgba(150, 12, 40, .55), rgba(150, 12, 40, 0)); animation: sp-b 11s ease-in-out infinite alternate; }
 .sp-glow.c { left: 15vw; top: -5vw; width: 70vw; height: 70vw; background: radial-gradient(closest-side, rgba(255, 95, 60, .16), rgba(255, 95, 60, 0)); animation: sp-c 7s ease-in-out infinite alternate; }
 @keyframes sp-a { to { transform: translate(22vw, 16vw) scale(1.15); } }
@@ -875,11 +892,11 @@ input, select, textarea { font: inherit; color: inherit; }
 .sp-logo { position: relative; width: 34vw; max-width: 560px; min-width: 260px; height: auto; animation: sp-in .8s cubic-bezier(.2, .7, .2, 1) both; }
 @keyframes sp-in { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
 .sp-bar { position: relative; width: 180px; height: 3px; margin-top: 44px; border-radius: 3px; overflow: hidden; background: rgba(255, 255, 255, .12); }
-.sp-bar i { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; border-radius: 3px; background: #ff2a2a; animation: sp-bar 1.2s ease-in-out infinite; }
+.sp-bar i { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; border-radius: 3px; background: var(--accent); animation: sp-bar 1.2s ease-in-out infinite; }
 @keyframes sp-bar { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
 @media (prefers-reduced-motion: reduce) { .sp-glow, .sp-bar i { animation: none; } }
 /* faixa de luz com o mesmo degradê da borda da TV: branco quente, vermelho, vinho */
-.sp-sweep { position: absolute; top: -40%; bottom: -40%; left: -60%; width: 60%; transform: skewX(-20deg); will-change: transform; background: linear-gradient(90deg, rgba(90, 6, 24, 0) 0%, rgba(120, 8, 30, .35) 25%, rgba(255, 42, 42, .42) 55%, rgba(255, 190, 170, .26) 72%, rgba(255, 42, 42, .14) 85%, rgba(255, 42, 42, 0) 100%); animation: sp-sweep 4.2s ease-in-out infinite; }
+.sp-sweep { position: absolute; top: -40%; bottom: -40%; left: -60%; width: 60%; transform: skewX(-20deg); will-change: transform; background: linear-gradient(90deg, rgba(90, 6, 24, 0) 0%, rgba(120, 8, 30, .35) 25%, rgba(var(--accent-rgb), .42) 55%, rgba(255, 190, 170, .26) 72%, rgba(var(--accent-rgb), .14) 85%, rgba(var(--accent-rgb), 0) 100%); animation: sp-sweep 4.2s ease-in-out infinite; }
 @keyframes sp-sweep { from { transform: translateX(0) skewX(-20deg); } to { transform: translateX(290%) skewX(-20deg); } }
 @media (prefers-reduced-motion: reduce) { .sp-sweep { animation: none; } }
 
@@ -962,7 +979,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* splash na TV: fundo fixo (camadas grandes em movimento travam), só a barra e o fade animam */
 .tv .sp-glow { animation: none; will-change: auto; }
 .tv .sp-sweep { display: none; }
-.tv #splash { background: radial-gradient(ellipse at 20% 0%, #4d0d12 0%, rgba(77, 13, 18, 0) 60%), radial-gradient(ellipse at 90% 100%, #3a0716 0%, rgba(58, 7, 22, 0) 55%), #060609; }
+.tv #splash { background: radial-gradient(ellipse at 20% 0%, rgb(var(--splash-1)) 0%, rgba(var(--splash-1), 0) 60%), radial-gradient(ellipse at 90% 100%, rgb(var(--splash-2)) 0%, rgba(var(--splash-2), 0) 55%), #060609; }
 .tv #splash { transition: opacity .7s ease; will-change: opacity; }
 .tv .sp-glow { display: none; }
 .tv .sp-bar i { will-change: transform; }
@@ -988,17 +1005,17 @@ input, select, textarea { font: inherit; color: inherit; }
 .tv .poster.tv-focus .pt { color: var(--accent); }
 .tv .ep.tv-focus { border-color: var(--accent); background: var(--card-2); box-shadow: none; }
 .tv .g-prog.tv-focus { border-color: var(--accent); background: #3a1d25; z-index: 1; }
-.tv .player .pbtn.tv-focus { background: var(--accent); color: #fff; box-shadow: none; }
+.tv .player .pbtn.tv-focus { background: var(--accent); color: var(--on-accent); box-shadow: none; }
 .tv .player .seek.tv-focus { box-shadow: none; }
 .tv .player .seek.tv-focus .track { height: 8px; box-shadow: 0 0 0 2px rgba(255, 255, 255, .55); }
 .tv .player .seek.tv-focus .knob { transform: translateX(-50%) scale(1.25); }
-.tv .pmenu .opt.tv-focus { background: rgba(255, 42, 42, .25); box-shadow: none; }
-.tv .tvkb-key.tv-focus { background: var(--accent); border-color: #fff; color: #fff; box-shadow: 0 0 0 2px #fff; }
+.tv .pmenu .opt.tv-focus { background: rgba(var(--accent-rgb), .25); box-shadow: none; }
+.tv .tvkb-key.tv-focus { background: var(--accent); border-color: var(--on-accent); color: var(--on-accent); box-shadow: 0 0 0 2px #fff; }
 /* Foco em quem já é vermelho: contorno vermelho sobre fundo vermelho some. Anel branco por dentro e brilho
    vermelho por fora. No PC, o mesmo vale para o foco do teclado (:focus-visible). */
 .tv .btn.primary:focus, .tv .btn.primary.tv-focus, .tv .pager-btn:focus, .tv .pager-btn.tv-focus,
 .btn.primary:focus-visible, .pager-btn:focus-visible {
-  outline: none; box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(255, 42, 42, .5);
+  outline: none; box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(var(--accent-rgb), .5);
 }
 /* Campo dentro de uma caixa (busca, filtros): acende a caixa inteira, com o mesmo arredondado, e não o campo. */
 .tv .search:focus-within, .tv .filter:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent); }
@@ -1014,8 +1031,8 @@ input, select, textarea { font: inherit; color: inherit; }
 .kb-nav .poster.tv-focus .pt { color: var(--accent); }
 .kb-nav .ep.tv-focus { border-color: var(--accent); background: var(--card-2); box-shadow: none; }
 .kb-nav .g-prog.tv-focus { border-color: var(--accent); background: #3a1d25; z-index: 1; }
-.kb-nav .pmenu .opt.tv-focus { background: rgba(255, 42, 42, .25); box-shadow: none; }
-.kb-nav .btn.primary.tv-focus, .kb-nav .pager-btn.tv-focus { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(255, 42, 42, .5); }
+.kb-nav .pmenu .opt.tv-focus { background: rgba(var(--accent-rgb), .25); box-shadow: none; }
+.kb-nav .btn.primary.tv-focus, .kb-nav .pager-btn.tv-focus { background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(var(--accent-rgb), .5); }
 .kb-nav .search:focus-within, .kb-nav .filter:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent); }
 .kb-nav .search input.tv-focus, .kb-nav .filter input.tv-focus { box-shadow: none; }
 
@@ -1058,7 +1075,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* Moldura de foco que desliza entre cartões (tv/focusring.js). Com ela ativa, o cartão não desenha a própria borda. */
 .tv-ring {
   position: fixed; left: 0; top: 0; z-index: 6; pointer-events: none; box-sizing: border-box;
-  border: 3px solid var(--accent); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 0 14px rgba(255, 42, 42, .35);
+  border: 3px solid var(--accent); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 0 14px rgba(var(--accent-rgb), .35);
   opacity: 0; will-change: transform;
   /* o deslize da moldura é uma transição de transform (placa de vídeo); o tamanho só muda entre tipos de cartão */
   transition: opacity .15s, transform .2s cubic-bezier(.2, .7, .3, 1), width .2s, height .2s;

@@ -80,6 +80,14 @@ if (!STORE && require('./build-info').buildInfo().channel !== 'producao') {
   appinfo.title = 'IPTVKZ Beta';
   // ícones âmbar com o selo BETA (scripts/make-beta-icons.py)
   for (const f of ['icon.png', 'largeIcon.png']) fs.copyFileSync(path.join(webos, 'beta', f), path.join(appDir, f));
+  // abertura em âmbar, como o tema do app Beta
+  fs.copyFileSync(path.join(root, 'src', 'web', 'img', 'logo-horizontal-beta.webp'), path.join(appDir, 'logo-horizontal.webp'));
+  const launcher = path.join(appDir, 'index.html');
+  let html = fs.readFileSync(launcher, 'utf8');
+  for (const [from, to] of [['#4d0d12', '#4d3208'], ['rgba(77, 13, 18', 'rgba(77, 50, 8'], ['#3a0716', '#3a2406'], ['rgba(58, 7, 22', 'rgba(58, 36, 6'], ['#ff2a2a', '#ffb547']]) {
+    html = html.split(from).join(to);
+  }
+  fs.writeFileSync(launcher, html);
 }
 writeJson(info, appinfo);
 // a abertura chama o serviço pelo nome: troca o do Developer pelo do canal

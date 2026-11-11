@@ -404,10 +404,16 @@ async function handleApi(req, res, url) {
 
 const staticGz = new Map();
 
+// App Beta (qualquer build fora da versão publicada, e rodando pelo código): a página nasce com a classe "beta"
+// (tema âmbar, ver app.css) e os logos saem na versão âmbar (img/*-beta.*, de scripts/make-beta-icons.py).
+const isBeta = () => buildInfo().channel !== 'producao';
+const BETA_IMG = /^\/img\/(logo-horizontal|logo-sidebar|icon|icon-192|icon-small)\.(png|webp)$/;
+
 function serveStatic(req, res, pathname) {
   let rel;
   try { rel = decodeURIComponent(pathname); } catch { rel = null; }
   if (rel === '/') rel = '/index.html';
+  if (rel && isBeta() && BETA_IMG.test(rel)) rel = rel.replace(/\.(png|webp)$/, '-beta.$1');
   const file = rel && !rel.includes('\0') ? path.normalize(path.join(PUBLIC, rel)) : '';
   // com o separador no fim, "src/web-outra" não passa por "src/web"
   if (!file.startsWith(path.join(PUBLIC, path.sep))) {
@@ -429,6 +435,7 @@ function serveStatic(req, res, pathname) {
     }
     fs.readFile(file, (err, data) => {
       if (err) return missing();
+      if (rel === '/index.html' && isBeta()) data = Buffer.from(data.toString('utf8').replace('<html lang="pt-BR">', '<html lang="pt-BR" class="beta">'));
       if (/^(text|application\/json)|javascript|svg/.test(headers['Content-Type'])) {
         let memo = staticGz.get(file);
         if (!memo || memo.etag !== etag) staticGz.set(file, (memo = { etag }));

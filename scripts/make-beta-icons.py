@@ -92,3 +92,13 @@ for dens, (bw, bh) in (("xhdpi", (320, 180)), ("xxxhdpi", (640, 360))):
 # LG: 80x80 e 130x130
 save(square(master, 130), "platforms", "webos", "beta", "largeIcon.png")
 save(square(master, 80), "platforms", "webos", "beta", "icon.png")
+
+# Logos da interface (abertura, barra lateral, carregamento do player): só a cor. O servidor entrega estes
+# no lugar dos originais quando o app é Beta (src/server/index.js).
+for name in ("logo-horizontal.webp", "logo-horizontal.png", "logo-sidebar.png", "icon.png", "icon-192.png", "icon-small.png"):
+    src = P("src", "web", "img", name)
+    base, ext = os.path.splitext(name)
+    im = amber(Image.open(src))
+    dst = P("src", "web", "img", f"{base}-beta{ext}")
+    im.save(dst, quality=92) if ext == ".webp" else im.save(dst, optimize=True)
+    print("ok", f"src/web/img/{base}-beta{ext}", im.size)

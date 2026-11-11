@@ -99,12 +99,15 @@ public class MainActivity extends Activity {
     private Drawable splashBackground(int width) {
         GradientDrawable top = new GradientDrawable();
         top.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        top.setColors(new int[] {Color.rgb(77, 13, 18), Color.argb(0, 77, 13, 18)});
+        // Beta: âmbar no lugar do vermelho, igual ao tema do app (html.beta em app.css)
+        int[] c1 = BuildConfig.IS_BETA ? new int[] {77, 50, 8} : new int[] {77, 13, 18};
+        int[] c2 = BuildConfig.IS_BETA ? new int[] {58, 36, 6} : new int[] {58, 7, 22};
+        top.setColors(new int[] {Color.rgb(c1[0], c1[1], c1[2]), Color.argb(0, c1[0], c1[1], c1[2])});
         top.setGradientCenter(0.2f, 0f);
         top.setGradientRadius(width * 0.55f);
         GradientDrawable bottom = new GradientDrawable();
         bottom.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        bottom.setColors(new int[] {Color.rgb(58, 7, 22), Color.argb(0, 58, 7, 22)});
+        bottom.setColors(new int[] {Color.rgb(c2[0], c2[1], c2[2]), Color.argb(0, c2[0], c2[1], c2[2])});
         bottom.setGradientCenter(0.9f, 1f);
         bottom.setGradientRadius(width * 0.5f);
         return new LayerDrawable(new Drawable[] {new ColorDrawable(Color.rgb(6, 6, 9)), top, bottom});
@@ -136,7 +139,7 @@ public class MainActivity extends Activity {
             Log.w(TAG, "Logo da abertura indisponível", e);
         }
         box.addView(logo, new LinearLayout.LayoutParams(logoWidth, logoHeight));
-        ColorStateList red = ColorStateList.valueOf(Color.rgb(255, 42, 42));
+        ColorStateList red = ColorStateList.valueOf(BuildConfig.IS_BETA ? Color.rgb(255, 181, 71) : Color.rgb(255, 42, 42));
         bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         bar.setMax(100);
         bar.setIndeterminate(true);
