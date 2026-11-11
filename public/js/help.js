@@ -87,6 +87,7 @@
     lista.forEach(function (i) {
       chips.appendChild(el('button', { type: 'button', class: 'help__chip', text: FAQ[i].t, on: { click: function () { perguntar(FAQ[i].t, i); } } }));
     });
+    log.scrollTop = log.scrollHeight;
   }
   function responder(i) {
     var f = FAQ[i];
