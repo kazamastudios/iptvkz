@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://iptvkz.kazamastudios.com.br/sitemap.xml
