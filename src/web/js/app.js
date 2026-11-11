@@ -195,6 +195,8 @@ function isPlaying() {
   return isOverlayOpen() || (current && current.name === 'live' && !!parseHash().params.get('ch'));
 }
 
+const SLOW_NET_MS = 600;
+
 function statusModel() {
   const n = {
     checking: { tone: 'idle', label: 'Verificando...', detail: '' },
@@ -202,6 +204,11 @@ function statusModel() {
     offline: { tone: 'bad', label: 'Sem internet', detail: 'Confira o Wi-Fi ou o cabo do computador.' },
     noserver: { tone: 'bad', label: 'Sem conexão', detail: 'Este aparelho não está falando com o computador do IPTVKZ.' },
   }[net.state];
+  // Conectado, mas demorando a responder (o teste é um pedido pequeno: normal fica bem abaixo de 300 ms).
+  // Aí os vídeos demoram e travam por causa da internet, não do app: a bolinha avisa em amarelo.
+  if (net.state === 'online' && net.ms > SLOW_NET_MS) {
+    Object.assign(n, { tone: 'warn', label: 'Internet lenta', detail: `${net.ms} ms para responder. Vídeos podem demorar a abrir ou travar.` });
+  }
   let list = null;
   const al = activeList();
   if (al) {
@@ -218,7 +225,7 @@ function statusModel() {
       cons: d && d.maxCons ? `${d.activeCons || 0} de ${d.maxCons} conexões em uso` : '',
     };
   }
-  const netBad = n.tone === 'bad';
+  const netBad = n.tone === 'bad' || n.tone === 'warn';
   const listLoud = list && (list.tone === 'bad' || list.tone === 'warn');
   const pill = netBad ? n : listLoud ? list : null;
   const allGood = n.tone === 'ok' && (!list || list.tone === 'ok' || list.state === 'local');
@@ -793,6 +800,49 @@ function hideSplash() {
   }, settle);
 }
 
+// Abertura sem internet: tela no estilo da de boas-vindas, que tenta de novo sozinha (a cada 5 s e quando o
+// sistema avisa que a rede voltou). Servidor sem resposta não conta como sem internet: esse erro tem tela própria.
+async function hasInternet() {
+  try {
+    return (await api('/api/net')).online !== false;
+  } catch {
+    return true;
+  }
+}
+
+async function waitForInternet() {
+  if (await hasInternet()) return;
+  await new Promise((resolve) => {
+    let timer = null;
+    let busy = false;
+    const note = h('p.faint', 'Tentando de novo a cada 5 segundos.');
+    const btn = h('button.btn.primary.big', { style: { marginTop: '10px' }, onclick: () => tryAgain() }, ico('refresh'), 'Tentar de novo');
+    const done = () => {
+      clearInterval(timer);
+      window.removeEventListener('online', tryAgain);
+      resolve();
+    };
+    async function tryAgain() {
+      if (busy) return;
+      busy = true;
+      note.textContent = 'Verificando a conexão...';
+      const ok = await hasInternet();
+      busy = false;
+      if (ok) return done();
+      note.textContent = 'Ainda sem internet. Tentando de novo a cada 5 segundos.';
+    }
+    showState(h('div.center-state.welcome.offline',
+      h('img.logo-big', { src: '/img/icon.png', alt: '' }),
+      h('h2', 'Sem internet'),
+      h('p', 'O IPTVKZ precisa de internet para carregar a lista e os vídeos. Confira o Wi-Fi ou o cabo do aparelho; o app continua assim que a conexão voltar.'),
+      btn, note), 'IPTVKZ');
+    hideSplash();
+    if (TV.on || KB.on) setTimeout(() => focusEl(btn), 30);
+    timer = setInterval(tryAgain, 5000);
+    window.addEventListener('online', tryAgain);
+  });
+}
+
 (async function boot() {
   setTimeout(hideSplash, 15000);
   detectTv();
@@ -813,6 +863,7 @@ function hideSplash() {
   }
   if (!termsAccepted()) hideSplash(); // os termos precisam aparecer
   await ensureTerms();
+  await waitForInternet(); // sem internet nada carrega: avisa na tela e segue sozinho quando ela voltar
   checkNet();
   renderListSwitch();
   if (!S.lists.length) {

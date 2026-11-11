@@ -179,8 +179,10 @@ export class Player {
 
     this.flashEl = h('div.seek-flash');
     this.ppEl = h('div.pp-flash'); // ícone de play/pause no centro, só ao apertar
+    // Internet lenta: aviso discreto no canto, para não parecer defeito do player. Some quando o vídeo volta a fluir.
+    this.netTag = h('div.net-tag.hidden', h('i'), h('span', 'Internet lenta'));
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
-    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
+    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
     this.host.append(this.root);
   }
 
@@ -227,9 +229,10 @@ export class Player {
     const on = (ev, fn) => v.addEventListener(ev, fn);
     on('play', () => this._setIcon(this.btnPlay, 'pause'));
     on('pause', () => { this._setIcon(this.btnPlay, 'play'); this._showCtrl(); this._report(); });
-    on('waiting', () => this._spin(true));
+    on('waiting', () => { this._spin(true); this._netStall(true); });
     on('playing', () => {
       this._spin(false);
+      this._netStall(false);
       this.root.classList.remove('awaiting');
       this._clearStartTimer();
       if (this.playFrom == null) this.playFrom = v.currentTime;
@@ -401,6 +404,8 @@ export class Player {
     const token = (this._loadToken = (this._loadToken || 0) + 1);
     this.root.classList.add('awaiting'); // a logo só aparece até o primeiro quadro, não nas travadinhas
     this._spin(true);
+    this.netTag.classList.add('hidden');
+    this._netStall(true); // demorando muito para abrir também mostra o aviso
     const ok = await claimScreen();
     if (this.destroyed || token !== this._loadToken) return;
     if (!ok) {
@@ -723,6 +728,8 @@ export class Player {
         h('button.btn', { onclick: () => this.retry() }, ico('refresh'), 'Tentar de novo')),
     );
     this.errorEl.classList.remove('hidden');
+    clearTimeout(this._netT);
+    this.netTag.classList.add('hidden');
     if (TV.on) focusEl(this.errorEl.querySelector('.btn')); // senão o controle fica preso atrás do player
   }
 
@@ -741,6 +748,24 @@ export class Player {
 
   _spin(on) {
     this.center.classList.toggle('hidden', !on);
+  }
+
+  // O vídeo parou esperando dados (ou demora a abrir): depois de um tempo, mostra "Internet lenta" no canto.
+  // Sem internet nenhuma, o texto diz isso. Ao voltar a tocar, o aviso fica mais uns segundos e some.
+  _netStall(waiting) {
+    clearTimeout(this._netT);
+    if (waiting) {
+      this._netT = setTimeout(async () => {
+        if (this.destroyed || !this.errorEl.classList.contains('hidden')) return;
+        let offline = navigator.onLine === false;
+        try { offline = offline || (await api('/api/net')).online === false; } catch {}
+        if (this.destroyed) return;
+        this.netTag.lastChild.textContent = offline ? 'Sem internet' : 'Internet lenta';
+        this.netTag.classList.remove('hidden');
+      }, this.hadFrame ? 1500 : 6000);
+    } else if (!this.netTag.classList.contains('hidden')) {
+      this._netT = setTimeout(() => this.netTag.classList.add('hidden'), 6000);
+    }
   }
 
   // ---------- controles ----------
@@ -1371,6 +1396,7 @@ export class Player {
     this.destroyed = true;
     clearInterval(this._subTimer);
     clearInterval(this._perfTimer);
+    clearTimeout(this._netT);
     clearInterval(this._watchdog);
     clearTimeout(this._retryT);
     this._clearStartTimer();
