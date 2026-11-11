@@ -16,6 +16,7 @@ const sessions = require('./sessions');
 const { sendText } = require('./compress');
 const pairing = require('./pairing');
 const backup = require('./backup');
+const ffmpeg = require('./ffmpeg');
 
 let PORT = Number(process.env.PORT) || 8787; // porta real (pode mudar no app de computador)
 const HOST = process.env.HOST || '0.0.0.0';
@@ -189,6 +190,9 @@ async function handleProxy(req, res, query) {
 
 // ---------- API ----------
 
+// O FFmpeg lê o vídeo pelo proxy do próprio servidor (User-Agent da lista, redirecionamentos, HTTPS).
+const localProxy = (u) => `http://127.0.0.1:${PORT}/proxy?url=${encodeURIComponent(u)}`;
+
 const catalogText = new Map(); // listId -> { updatedAt, text }
 
 function serializeCatalog(catalog) {
@@ -218,6 +222,14 @@ async function handleApi(req, res, url) {
   const m = req.method;
 
   if (p === '/api/ping') return sendJson(res, 200, { ok: true });
+
+  // Componente opcional de vídeo do PC (FFmpeg reduzido): estado, download e leitura das faixas de um vídeo.
+  if (p === '/api/ffmpeg' && m === 'GET') return sendJson(res, 200, ffmpeg.status());
+  if (p === '/api/ffmpeg/install' && m === 'POST') return sendJson(res, 200, ffmpeg.install());
+  if (p === '/api/ffmpeg/probe' && m === 'GET') {
+    if (!ffmpeg.installed()) return sendJson(res, 409, { error: 'Componente não instalado' });
+    return sendJson(res, 200, await ffmpeg.probe(localProxy(q.get('url'))));
+  }
 
   // Baixar lista / Carregar lista direto no navegador (computador), sem celular.
   if (p === '/api/list-export' && m === 'GET') {
@@ -462,6 +474,15 @@ const server = http.createServer((req, res) => {
       if (!res.headersSent) res.writeHead(500);
       res.end(String(err.message || err));
     });
+    return;
+  }
+  // vídeo com o áudio convertido pelo componente do PC (só para quem usa este servidor)
+  if (url.pathname === '/remux') {
+    if (!ffmpeg.installed() || !/^https?:\/\//i.test(url.searchParams.get('url') || '')) { res.writeHead(404); return res.end(); }
+    openStreams++;
+    res.on('close', () => { openStreams--; });
+    const n = (k) => Math.max(0, Number(url.searchParams.get(k)) || 0);
+    ffmpeg.stream(req, res, localProxy(url.searchParams.get('url')), { start: n('start'), audio: n('audio'), hevc: url.searchParams.get('hevc') === '1' });
     return;
   }
   if (url.pathname.startsWith('/api/')) {

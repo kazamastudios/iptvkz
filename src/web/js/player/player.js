@@ -8,6 +8,7 @@ import { claimScreen, heartbeat, endScreen } from './sessions.js';
 import { readSubFile, cuesAt, subHtml } from './subs.js';
 import { TV, focusEl, syncFocus } from '../tv/tv.js';
 import { NativeVideo, nativeVideoAvailable } from './nativevideo.js';
+import { remuxStatus, remuxReady, remuxOffered, remuxSize, installRemux, probeMedia, browserAudio, RemuxVideo } from './remux.js';
 
 const LANGS = {
   pt: 'Português', por: 'Português', pob: 'Português (BR)', 'pt-br': 'Português (BR)', en: 'Inglês', eng: 'Inglês',
@@ -92,6 +93,7 @@ export class Player {
     this.subDelay = 0;
     this.lastSubText = '';
     this.destroyed = false;
+    if (!nativeVideoAvailable()) remuxStatus(); // PC: o componente de vídeo já está instalado? (pergunta uma vez)
     this._build();
     this._bind();
   }
@@ -250,6 +252,7 @@ export class Player {
     });
     on('ended', () => this._onEnded());
     on('error', () => {
+      if (this.engine === 'remux' && this.remux) return this._fail('network', this.gen);
       if (this.engine !== 'native') return;
       const code = v.error && v.error.code;
       const gen = this.gen;
@@ -305,6 +308,9 @@ export class Player {
     this.subDelay = 0;
     this.autoPicked = false;
     this.useNative = false;
+    this.useRemux = false;
+    this.remuxChecked = false;
+    this.remuxDeclined = false;
     this.titleEl.textContent = src.title || this.opts.title || '';
     if (this.preview) this.preview.reset();
     this._hideError();
@@ -344,12 +350,14 @@ export class Player {
   // passa para o player nativo, que tem o decodificador.
   _checkSound() {
     const v = this.video;
-    if (this.engine === 'exo' || this.destroyed || v.paused || !nativeVideoAvailable() || typeof v.webkitAudioDecodedByteCount !== 'number') return;
+    const fix = nativeVideoAvailable() ? 'native' : remuxOffered() && !this.remuxDeclined ? 'remux' : null;
+    if (!fix || this.engine === 'exo' || this.engine === 'remux' || this.destroyed || v.paused || typeof v.webkitAudioDecodedByteCount !== 'number') return;
     const silent = v.currentTime > 2 && v.webkitAudioDecodedByteCount === 0 && v.webkitVideoDecodedByteCount > 0;
     this.silentTicks = silent ? (this.silentTicks || 0) + 1 : 0;
     if (this.silentTicks >= 2) {
       this.silentTicks = 0;
-      this._toNative();
+      if (fix === 'native') this._toNative();
+      else this._toRemux();
     }
   }
 
@@ -433,6 +441,7 @@ export class Player {
 
   _teardown() {
     if (this.exo) { this.exo.close(); this.exo = null; }
+    if (this.remux) { this.remux.close(); this.remux = null; }
     if (this.hls) { try { this.hls.destroy(); } catch {} this.hls = null; }
     if (this.mts) {
       try { this.mts.pause(); this.mts.unload(); this.mts.detachMediaElement(); this.mts.destroy(); } catch {}
@@ -461,6 +470,10 @@ export class Player {
     // No Android, filme e série vão sempre ao player nativo: ele desenha o vídeo direto na camada de vídeo do aparelho.
     // Pelo WebView, cada quadro (4K principalmente) é reduzido pela GPU para caber na página, e a imagem trava.
     if (nativeVideoAvailable() && (this.useNative || !live || NATIVE_FIRST.test(String(url).split(/[?#]/)[0].toLowerCase()))) engine = 'exo';
+    // PC com o componente de vídeo: MKV/AVI etc. passam por ele (o navegador abre o MKV, mas sem som se o áudio
+    // for AC3/DTS); antes, lê as faixas, e se o navegador tocar tudo, segue pelo caminho normal.
+    const ext = NATIVE_FIRST.test(String(url).split(/[?#]/)[0].toLowerCase());
+    if (engine !== 'exo' && remuxReady() && (this.useRemux || (ext && !this.remuxChecked))) engine = 'remux';
     this.engine = engine;
     const purl = proxyUrl(url);
     const v = this.video;
@@ -522,6 +535,8 @@ export class Player {
       p.load();
       const pr = p.play();
       if (pr && pr.catch) pr.catch(() => {});
+    } else if (engine === 'remux') {
+      this._startRemux(url, gen);
     } else if (engine === 'exo') {
       // a "tela cheia" do navegador cobriria o vídeo nativo: o player só passa a ocupar a tela toda
       if (document.fullscreenElement) {
@@ -539,6 +554,75 @@ export class Player {
       v.src = purl;
       v.play().catch(() => {});
     }
+  }
+
+  async _startRemux(url, gen) {
+    let info;
+    try {
+      info = await probeMedia(url);
+    } catch {
+      return this._fail('network', gen);
+    }
+    if (this.destroyed || gen !== this.gen) return;
+    if (!this.useRemux && info.audio.every((a) => browserAudio(a.codec))) {
+      this.remuxChecked = true; // o navegador toca este arquivo sozinho
+      return this._start(url);
+    }
+    this.useRemux = true;
+    this.remux = new RemuxVideo(this.video, info);
+    this.remux.open(url, this.resumeAt > 1 ? this.resumeAt : 0);
+  }
+
+  // PC: o navegador não toca o áudio (ou o arquivo). Com o componente de vídeo, continua do mesmo ponto;
+  // sem ele, oferece baixar (uma vez só, alguns MB).
+  _toRemux() {
+    const t = this.video.currentTime;
+    if (!this.opts.live && t > 1) this.resumeAt = t;
+    if (remuxReady()) {
+      this.useRemux = true;
+      this.attempts = 0;
+      return this._start(this.currentUrl());
+    }
+    this._offerRemux();
+  }
+
+  _offerRemux() {
+    this._teardown();
+    this._clearStartTimer();
+    this._spin(false);
+    const mb = Math.round(remuxSize() / 1048576);
+    const bar = h('div.dl-bar', h('i'));
+    const msg = h('p', `O áudio deste vídeo (AC3, DTS ou parecido) não toca no navegador. O IPTVKZ pode baixar um componente de vídeo${mb > 1 ? ` de ${mb} MB` : ''}, uma vez só, e vídeos assim passam a tocar aqui mesmo.`);
+    const go = h('button.btn.primary', {
+      onclick: async () => {
+        go.disabled = true;
+        later.disabled = true;
+        msg.textContent = 'Baixando o componente de vídeo...';
+        bar.classList.add('on');
+        try {
+          await installRemux((st) => { bar.firstChild.style.transform = `scaleX(${st.progress || 0})`; });
+          if (this.destroyed) return;
+          this._hideError();
+          this.useRemux = true;
+          this.attempts = 0;
+          this._start(this.currentUrl());
+        } catch (err) {
+          msg.textContent = `Não deu para baixar o componente: ${err.message}`;
+          go.disabled = false;
+          later.disabled = false;
+        }
+      },
+    }, ico('download'), 'Baixar e tocar');
+    const later = h('button.btn', {
+      onclick: () => {
+        this.remuxDeclined = true;
+        this._hideError();
+        this._start(this.currentUrl()); // segue sem som / mostra o erro de formato
+      },
+    }, 'Agora não');
+    this.errorEl.replaceChildren(ico('download'), h('h3', 'Falta um componente para este vídeo'), msg, bar, h('div.acts', later, go));
+    this.errorEl.classList.remove('hidden');
+    if (TV.on) focusEl(go);
   }
 
   // O WebView recusou o formato (ou toca sem som): continua do mesmo ponto no player nativo do Android.
@@ -576,6 +660,7 @@ export class Player {
     this._clearStartTimer();
     if (this.imgTrying) return this._nextImageRoute(); // a tentativa de recuperar a imagem falhou: próxima
     if (kind === 'format' && this.engine !== 'exo' && nativeVideoAvailable()) return this._toNative();
+    if (kind === 'format' && this.engine !== 'remux' && !this.remuxDeclined && remuxOffered()) return this._toRemux();
     const t = this.video.currentTime;
     if (!this.opts.live && t > 1) this.resumeAt = t;
 
@@ -1145,6 +1230,7 @@ export class Player {
       const audio = [name(p.audio), channels(p.ch)].filter(Boolean).join(' ');
       return ['player do Android', name(p.video), p.height > 0 ? `${p.height}p` : '', audio].filter(Boolean).join(' · ');
     }
+    if (this.remux) return [this.remux.describe(), v.videoHeight > 0 ? `${v.videoHeight}p` : ''].filter(Boolean).join(' · ');
     const how = { hls: 'navegador (HLS)', mpegts: 'navegador (MPEG-TS)', native: TV.on ? 'player da TV' : 'navegador' }[this.engine] || 'navegador';
     return [how, v.videoHeight > 0 ? `${v.videoHeight}p` : ''].filter(Boolean).join(' · ');
   }

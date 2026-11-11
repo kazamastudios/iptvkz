@@ -400,6 +400,10 @@ input, select, textarea { font: inherit; color: inherit; }
 .exo-under { visibility: hidden !important; }
 .player.native-video video { visibility: hidden; }
 .player.pseudo-fs { position: fixed; z-index: 9000; }
+/* PC: barra do download do componente de vídeo */
+.perror .dl-bar { display: none; width: 260px; height: 4px; margin: 4px auto 14px; border-radius: 4px; background: rgba(255,255,255,.12); overflow: hidden; }
+.perror .dl-bar.on { display: block; }
+.perror .dl-bar i { display: block; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform .4s; }
 .player.hide-cursor { cursor: none; }
 .player .subs {
   position: absolute; left: 6%; right: 6%; bottom: 9%; text-align: center; pointer-events: none;
