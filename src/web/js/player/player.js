@@ -116,7 +116,7 @@ export class Player {
       this.video.muted = this.video.volume === 0;
     });
     this.btnFs = this._btn('fullscreen', 'Tela cheia (F)', () => this.toggleFullscreen());
-    this.btnGear = this._btn('settings', 'Versão, áudio e qualidade', (e) => {
+    this.btnGear = this._btn('audioMix', 'Versão, áudio e qualidade', (e) => {
       e.stopPropagation();
       this.toggleMenu('settings');
     });
@@ -1079,9 +1079,13 @@ export class Player {
       const step = (d) => { this.subDelay = Math.round((this.subDelay + d) * 10) / 10; this.lastSubText = null; this._renderMenu(); };
       m.append(h('div.delay', h('button', { onclick: () => step(-0.5), title: 'Legenda mais cedo' }, '−'), val, h('button', { onclick: () => step(0.5), title: 'Legenda mais tarde' }, '+')));
     }
+    m.append(h('div.sep'), h('h4', 'Tamanho'));
+    m.append(seg([['P', 'P'], ['M', 'M'], ['G', 'G'], ['GG', 'GG']], S.settings.subSize, (v) => { setSetting('subSize', v); this._applySubStyle(); }));
+    m.append(h('h4', 'Fundo'));
+    m.append(seg([['none', 'Nenhum'], ['shadow', 'Sombra'], ['box', 'Caixa']], S.settings.subBg, (v) => { setSetting('subBg', v); this._applySubStyle(); }));
   }
 
-  // Engrenagem: versão e áudio; depois aparência da legenda, qualidade e o que está tocando.
+  // Botão de áudio (mixer): versão, faixa de áudio, qualidade e o que está tocando.
   _renderSettings(m, seg, opt) {
     // Versão (Dublado/Legendado): nomes com o idioma que o app já viu tocando
     const vs = this.opts.versions;
@@ -1110,10 +1114,6 @@ export class Player {
     }
 
 
-    m.append(h('div.sep'), h('h4', 'Legenda: tamanho'));
-    m.append(seg([['P', 'P'], ['M', 'M'], ['G', 'G'], ['GG', 'GG']], S.settings.subSize, (v) => { setSetting('subSize', v); this._applySubStyle(); }));
-    m.append(h('h4', 'Legenda: fundo'));
-    m.append(seg([['none', 'Nenhum'], ['shadow', 'Sombra'], ['box', 'Caixa']], S.settings.subBg, (v) => { setSetting('subBg', v); this._applySubStyle(); }));
 
     // Qualidade
     if (this.hls && this.hls.levels.length > 1) {
