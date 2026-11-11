@@ -393,6 +393,11 @@ input, select, textarea { font: inherit; color: inherit; }
 /* ---------- player ---------- */
 .player { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: #000; overflow: hidden; user-select: none; }
 .player video { width: 100%; height: 100%; display: block; background: #000; }
+/* Android, player nativo: o vídeo é desenhado atrás da página; ela fica transparente na área do player. */
+.exo-hole { background: transparent !important; background-image: none !important; }
+.exo-under { visibility: hidden !important; }
+.player.native-video video { visibility: hidden; }
+.player.pseudo-fs { position: fixed; z-index: 9000; }
 .player.hide-cursor { cursor: none; }
 .player .subs {
   position: absolute; left: 6%; right: 6%; bottom: 9%; text-align: center; pointer-events: none;

@@ -65,6 +65,7 @@ public class MainActivity extends Activity {
     private FrameLayout root;
     private WebView web;
     private View fullscreen;
+    private NativeVideo video;
     private Updater updater;
     private boolean ready;
     private View splash;
@@ -261,6 +262,8 @@ public class MainActivity extends Activity {
             @JavascriptInterface
             public boolean isKeyboardVisible() { return keyboardVisible; }
         }, "IPTVKZAndroid");
+        video = new NativeVideo(this, root, web);
+        web.addJavascriptInterface(video, "IPTVKZVideo");
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return false; }
@@ -378,6 +381,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        video.release();
         root.removeView(web);
         web.destroy();
         super.onDestroy();

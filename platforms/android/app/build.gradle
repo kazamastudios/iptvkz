@@ -6,7 +6,7 @@ def bundleVersion = (System.getenv('BUNDLE_VERSION') ?: v.bundleVersion).toInteg
 
 android {
     namespace 'com.lucasyemz.iptvkz'
-    compileSdk 34
+    compileSdk 35
     ndkVersion '26.3.11579264'
 
     defaultConfig {
@@ -52,4 +52,12 @@ android {
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 
-dependencies { implementation 'androidx.core:core:1.13.1' }
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+    // player nativo para o que o WebView não toca (MKV, H.265, áudio AC3/E-AC3/DTS)
+    def media3 = '1.6.1'
+    implementation "androidx.media3:media3-exoplayer:$media3"
+    implementation "androidx.media3:media3-exoplayer-hls:$media3"
+    // decodificador de áudio FFmpeg reduzido (AC3, E-AC3, DTS, TrueHD), só quando o aparelho não abre o áudio
+    implementation "org.jellyfin.media3:media3-ffmpeg-decoder:$media3+2"
+}

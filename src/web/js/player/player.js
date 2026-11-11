@@ -7,6 +7,7 @@ import { SeekPreview } from './seekpreview.js';
 import { claimScreen, heartbeat, endScreen } from './sessions.js';
 import { readSubFile, cuesAt, subHtml } from './subs.js';
 import { TV, focusEl, syncFocus } from '../tv/tv.js';
+import { NativeVideo, nativeVideoAvailable } from './nativevideo.js';
 
 const LANGS = {
   pt: 'Português', por: 'Português', pob: 'Português (BR)', 'pt-br': 'Português (BR)', en: 'Inglês', eng: 'Inglês',
@@ -51,6 +52,9 @@ const START_TIMEOUT_TV = 25000;
 export function proxyUrl(url) {
   return '/proxy?url=' + encodeURIComponent(url);
 }
+
+// No Android, estes vão direto ao player nativo: o WebView não abre o contêiner ou costuma tocar sem som.
+const NATIVE_FIRST = /\.(mkv|avi|wmv|flv)$/;
 
 function detectEngine(url, live) {
   const path = String(url).split(/[?#]/)[0].toLowerCase();
@@ -269,7 +273,7 @@ export class Player {
     document.addEventListener('visibilitychange', this._onHide);
 
     this._subTimer = setInterval(() => this._renderSubs(), 100);
-    this._watchdog = setInterval(() => { this._checkStall(); this._checkImage(); }, 5000);
+    this._watchdog = setInterval(() => { this._checkStall(); this._checkImage(); this._checkSound(); }, 5000);
     this._showCtrl();
   }
 
@@ -283,6 +287,7 @@ export class Player {
     this.subSource = null;
     this.subDelay = 0;
     this.autoPicked = false;
+    this.useNative = false;
     this.titleEl.textContent = src.title || this.opts.title || '';
     if (this.preview) this.preview.reset();
     this._hideError();
@@ -318,6 +323,19 @@ export class Player {
     if (this.noImgTicks >= 2) this._nextImageRoute();
   }
 
+  // No Android, vídeo andando sem nenhum áudio decodificado é áudio que o WebView não abre (AC3, DTS):
+  // passa para o player nativo, que tem o decodificador.
+  _checkSound() {
+    const v = this.video;
+    if (this.engine === 'exo' || this.destroyed || v.paused || !nativeVideoAvailable() || typeof v.webkitAudioDecodedByteCount !== 'number') return;
+    const silent = v.currentTime > 2 && v.webkitAudioDecodedByteCount === 0 && v.webkitVideoDecodedByteCount > 0;
+    this.silentTicks = silent ? (this.silentTicks || 0) + 1 : 0;
+    if (this.silentTicks >= 2) {
+      this.silentTicks = 0;
+      this._toNative();
+    }
+  }
+
   // Link alternativo, depois o decodificador da TV; sem imagem em nenhum, volta ao áudio com aviso.
   _nextImageRoute() {
     if (this.imgFromAlt === null) this.imgFromAlt = this.usingAlt;
@@ -327,8 +345,12 @@ export class Player {
       this.usingAlt = true;
       return this._start(this.src.alt);
     }
-    if (TV.on && !this.imgNativeTried) {
+    if ((TV.on || nativeVideoAvailable()) && !this.imgNativeTried) {
       this.imgNativeTried = true;
+      if (nativeVideoAvailable()) {
+        this.useNative = true;
+        return this._start(this.currentUrl());
+      }
       this.forceNative = true;
       // o player da TV lida melhor com HLS do que com .ts puro
       const hlsUrl = [this.src.url, this.src.alt].find((u) => u && /\.m3u8(\?|$)/i.test(u));
@@ -338,6 +360,7 @@ export class Player {
     this.imgTrying = false;
     this.imgDone = true;
     this.forceNative = false;
+    this.useNative = false;
     this.usingAlt = this.imgFromAlt;
     this._start(this.currentUrl());
     this.noImageEl.classList.remove('hidden');
@@ -392,6 +415,7 @@ export class Player {
   }
 
   _teardown() {
+    if (this.exo) { this.exo.close(); this.exo = null; }
     if (this.hls) { try { this.hls.destroy(); } catch {} this.hls = null; }
     if (this.mts) {
       try { this.mts.pause(); this.mts.unload(); this.mts.detachMediaElement(); this.mts.destroy(); } catch {}
@@ -416,6 +440,8 @@ export class Player {
     if (engine === 'hls' && !(window.Hls && Hls.isSupported())) engine = 'native';
     if (engine === 'mpegts' && !(window.mpegts && mpegts.getFeatureList().mseLivePlayback)) engine = 'native';
     if (this.forceNative) engine = 'native';
+    const kind = engine;
+    if (nativeVideoAvailable() && (this.useNative || NATIVE_FIRST.test(String(url).split(/[?#]/)[0].toLowerCase()))) engine = 'exo';
     this.engine = engine;
     const purl = proxyUrl(url);
     const v = this.video;
@@ -476,10 +502,32 @@ export class Player {
       p.load();
       const pr = p.play();
       if (pr && pr.catch) pr.catch(() => {});
+    } else if (engine === 'exo') {
+      // a "tela cheia" do navegador cobriria o vídeo nativo: o player só passa a ocupar a tela toda
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+        this.root.classList.add('pseudo-fs');
+      }
+      const exo = new NativeVideo(v, this.root, {
+        onError: (k) => this._fail(k, gen),
+        onTracks: () => this._syncNativeTracks(),
+        onCue: () => { this.lastSubText = null; this._renderSubs(); },
+      });
+      this.exo = exo;
+      exo.open(purl, kind === 'hls' ? 'hls' : 'auto', this.resumeAt > 1 ? this.resumeAt : 0, S.settings.audioLang);
     } else {
       v.src = purl;
       v.play().catch(() => {});
     }
+  }
+
+  // O WebView recusou o formato (ou toca sem som): continua do mesmo ponto no player nativo do Android.
+  _toNative() {
+    const t = this.video.currentTime;
+    if (!this.opts.live && t > 1) this.resumeAt = t;
+    this.useNative = true;
+    this.attempts = 0;
+    this._start(this.currentUrl());
   }
 
   // O servidor da lista pode aceitar a conexão e nunca mandar o vídeo (sobrecarga, link travado).
@@ -507,6 +555,7 @@ export class Player {
     this.failedGen = gen;
     this._clearStartTimer();
     if (this.imgTrying) return this._nextImageRoute(); // a tentativa de recuperar a imagem falhou: próxima
+    if (kind === 'format' && this.engine !== 'exo' && nativeVideoAvailable()) return this._toNative();
     const t = this.video.currentTime;
     if (!this.opts.live && t > 1) this.resumeAt = t;
 
@@ -643,6 +692,10 @@ export class Player {
   }
 
   toggleFullscreen() {
+    if (this.exo) {
+      this.root.classList.toggle('pseudo-fs');
+      return this._setIcon(this.btnFs, this.root.classList.contains('pseudo-fs') ? 'exitFs' : 'fullscreen');
+    }
     if (document.fullscreenElement) return document.exitFullscreen().catch(() => {});
     // iPhone: só o próprio vídeo entra em tela cheia
     if (!this.root.requestFullscreen) return this.video.webkitEnterFullscreen && this.video.webkitEnterFullscreen();
@@ -830,6 +883,7 @@ export class Player {
   }
 
   subTracks() {
+    if (this.exo) return this.exo.text.map((t, i) => ({ i, label: trackLabel(t, i), raw: t }));
     if (!this.hls) return [];
     return this.hls.subtitleTracks.map((t, i) => ({ i, label: trackLabel(t, i), raw: t }));
   }
@@ -837,6 +891,10 @@ export class Player {
   setSub(src) {
     this.subSource = src;
     if (this.hls) this.hls.subtitleTrack = src && src.type === 'hls' ? src.index : -1;
+    if (this.exo) {
+      const t = src && src.type === 'hls' ? this.exo.text[src.index] : null;
+      this.exo.setText(t ? t.id : null);
+    }
     this.lastSubText = null;
     this._renderSubs();
   }
@@ -861,6 +919,26 @@ export class Player {
     this.setSub(pick >= 0 ? { type: 'hls', index: pick } : null);
   }
 
+  // Faixas do player nativo: na primeira vez segue a preferência de legenda; numa nova tentativa, repete a escolha.
+  _syncNativeTracks() {
+    const exo = this.exo;
+    if (!exo || exo.synced || (!exo.audio.length && !exo.text.length)) return;
+    exo.synced = true;
+    if (this.autoPicked) {
+      if (this.subSource && this.subSource.type === 'hls') this.setSub(this.subSource);
+      return;
+    }
+    this.autoPicked = true;
+    const cur = exo.audio.find((a) => a.on);
+    const audioIsPt = cur && (cur.lang || cur.name) ? isPt(cur) : null;
+    const ptSub = exo.text.findIndex(isPt);
+    const mode = S.settings.subMode;
+    let pick = -1;
+    if (mode === 'always' && ptSub >= 0) pick = ptSub;
+    if (mode === 'auto' && audioIsPt === false && ptSub >= 0) pick = ptSub;
+    if (pick >= 0) this.setSub({ type: 'hls', index: pick });
+  }
+
   _activeTextTrack() {
     const tt = this.video.textTracks;
     for (let i = 0; i < tt.length; i++) {
@@ -880,6 +958,8 @@ export class Player {
       const t = this.video.currentTime - this.subDelay;
       if (src.type === 'ext') {
         text = cuesAt(src.cues, t).map((c) => c.text).join('\n');
+      } else if (this.exo) {
+        text = this.exo.cue;
       } else {
         const track = this._activeTextTrack();
         if (track && track.cues) text = cuesAt(track.cues, t, (c) => c.startTime, (c) => c.endTime).map((c) => c.text).join('\n');
@@ -978,7 +1058,7 @@ export class Player {
     }
     if (cur && cur.type === 'ext') m.append(opt(cur.name, true, () => {}));
     m.append(h('button.opt', { onclick: () => this._pickSubFile() }, h('span.ck', ico('upload')), h('span', 'Carregar arquivo .srt / .vtt...')));
-    if (!this.hls && this.engine !== 'mpegts') {
+    if (!this.hls && !this.exo && this.engine !== 'mpegts') {
       m.append(h('div.note', 'Legendas embutidas em MP4/MKV não aparecem aqui; use um arquivo .srt ou .vtt.'));
     }
 
