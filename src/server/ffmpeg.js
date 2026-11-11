@@ -11,8 +11,11 @@ const { DATA } = require('./store');
 const MANIFEST = require('./ffmpeg.json');
 
 const DIR = path.join(DATA, 'componentes');
-const KEY = { win32: 'win', darwin: 'mac', linux: 'linux' }[process.platform] + '-' + (process.arch === 'arm64' ? 'arm64' : 'x64');
-const ENTRY = (MANIFEST.files || {})[KEY];
+// Só Windows, Mac e Linux de PC (x64 ou arm64). A TV LG (Linux em ARM de 32 bits) e o Android não têm o
+// componente: lá o vídeo vai ao player do próprio aparelho.
+const OS = { win32: 'win', darwin: 'mac', linux: 'linux' }[process.platform];
+const KEY = OS && (process.arch === 'x64' || process.arch === 'arm64') ? `${OS}-${process.arch}` : null;
+const ENTRY = KEY ? (MANIFEST.files || {})[KEY] : null;
 const BIN = path.join(DIR, `ffmpeg-${MANIFEST.version}${process.platform === 'win32' ? '.exe' : ''}`);
 
 let job = null; // download em andamento: { got, total, error, done }
