@@ -41,7 +41,7 @@ const VENDOR = STORE ? process.env.WEBOS_STORE_VENDOR || 'Kazama Studios' : null
 
 function publicKey() {
   if (process.env.UPDATE_PUBLIC_PEM) return fs.readFileSync(process.env.UPDATE_PUBLIC_PEM, 'utf8');
-  const xml = fs.readFileSync(path.join(root, 'platforms', 'android', 'app', 'src', 'main', 'res', 'values', 'update_key.xml'), 'utf8');
+  const xml = fs.readFileSync(path.join(root, 'platforms', 'android', 'app', 'src', 'developer', 'res', 'values', 'update_key.xml'), 'utf8');
   const b64 = />([A-Za-z0-9+/=\s]{100,})</.exec(xml)[1].replace(/\s+/g, '');
   return `-----BEGIN PUBLIC KEY-----\n${b64.match(/.{1,64}/g).join('\n')}\n-----END PUBLIC KEY-----\n`;
 }
