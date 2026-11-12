@@ -14,8 +14,8 @@ import { cleanEpisodeTitle } from '../core/titles.js';
 const SHORT = { Dublado: 'DUB', Legendado: 'LEG', Nacional: 'NAC', 'Dual áudio': 'DUAL' };
 
 const cfg = {
-  movies: { title: 'Filmes', one: 'filme', many: 'filmes', detail: 'movie' },
-  series: { title: 'Séries', one: 'série', many: 'séries', detail: 'serie' },
+  movies: { title: 'Filmes', one: 'filme', many: 'filmes', all: 'Todos os filmes', detail: 'movie' },
+  series: { title: 'Séries', one: 'série', many: 'séries', all: 'Todas as séries', detail: 'serie' },
 };
 
 function versionTags(item) {
@@ -221,7 +221,7 @@ export function vodHome(section) {
       if (!filter.value) {
         rows.push(
           btn('home', 'Início', null, section === 'movies' ? 'film' : 'series'),
-          btn('all', `Todos os ${cfg[section].many}`, visibleItems(section).length, 'tv'),
+          btn('all', cfg[section].all, visibleItems(section).length, 'tv'),
           btn('fav', 'Favoritos', favItems(section).length, 'star'),
           h('div.cat-sep'),
         );
@@ -607,7 +607,7 @@ function homeContent(section, ctx, scroller, { card = posterCard } = {}) {
 
 function gridContent(section, cat, ctx, scroller, { card = posterCard } = {}) {
   const sec = C()[section];
-  const name = cat === 'all' ? `Todos os ${cfg[section].many}` : cat === 'fav' ? 'Favoritos' : sec.catName.get(cat) || cfg[section].title;
+  const name = cat === 'all' ? cfg[section].all : cat === 'fav' ? 'Favoritos' : sec.catName.get(cat) || cfg[section].title;
   let sort = new URLSearchParams(location.hash.split('?')[1] || '').get('sort') || 'orig';
   let query = '';
   let inc = null;

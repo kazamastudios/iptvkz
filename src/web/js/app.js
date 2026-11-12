@@ -98,18 +98,25 @@ function renderNav() {
   // recriar os links não pode tirar o foco do controle remoto
   const focused = document.activeElement;
   const refocus = focused && (focused.closest('#nav, #sideFoot')) ? focused.getAttribute('href') : null;
-  const link = (id, label, ic, n) =>
-    h('a' + (active === id ? '.active' : ''), { href: `#/${id}` }, ico(ic), h('span', label),
+  // short: nome curto da barra de baixo do celular (data-short, mostrado pelo CSS)
+  const link = (id, label, ic, n, short) =>
+    h('a' + (active === id ? '.active' : ''), { href: `#/${id}`, 'data-short': short || label }, ico(ic), h('span', label),
       n ? h('span.count', n.toLocaleString('pt-BR')) : null);
+  // Celular: Minha lista e Favoritos viram um item só, "Salvos" (as duas telas têm abas para trocar entre elas)
+  const saved = h('a.nav-phone' + (active === 'mylist' || active === 'favorites' ? '.active' : ''), { href: '#/mylist', 'data-short': 'Salvos' },
+    ico('heart'), h('span', 'Salvos'));
   $('#nav').replaceChildren(
     link('history', 'Histórico', 'history', history.inProgress.length + history.done.length),
-    link('live', 'TV ao Vivo', 'tv', count('live')),
+    link('live', 'TV ao Vivo', 'tv', count('live'), 'Ao vivo'),
     link('movies', 'Filmes', 'film', count('movies')),
     link('series', 'Séries', 'series', count('series')),
     link('guide', 'Guia', 'guide'),
     link('mylist', 'Minha lista', 'mylist', lists(laterItems, ['movies', 'series'])),
     link('favorites', 'Favoritos', 'star', lists(favItems, ['live', 'movies', 'series'])),
+    saved,
   );
+  const gear = $('#topSettings');
+  if (gear) gear.classList.toggle('active', active === 'settings');
   const status = h('div.status');
   if (appState === 'loading') status.append(h('div.spinner.small'), h('span', 'Carregando lista...'));
   else if (pollTimer) status.append(h('div.spinner.small'), h('span', 'Atualizando lista...'));
@@ -675,6 +682,7 @@ async function deleteList(id) {
 
 const search = $('#globalSearch');
 $('.search .ico').innerHTML = icon('search');
+$('#topSettings .ico').innerHTML = icon('settings');
 
 // Seletor de visualização ao lado da busca (Clássica / Streaming). Botões comuns: clique, toque ou OK do controle.
 function renderViewSwitch() {

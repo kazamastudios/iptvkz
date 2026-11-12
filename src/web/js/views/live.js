@@ -41,7 +41,7 @@ export function liveView(params, ctx) {
   const root = h('div.live');
   const catFilter = h('input', { placeholder: 'Filtrar categorias' });
   const catList = h('div.cat-list');
-  const cats = h('div.cats', h('label.filter', ico('search'), catFilter), catList);
+  const cats = h('div.cats', h('a.btn.small.guide-link', { href: '#/guide' }, ico('guide'), 'Guia de programação'), h('label.filter', ico('search'), catFilter), catList);
   const channels = h('div.channels');
   root.append(cats, channels);
 
