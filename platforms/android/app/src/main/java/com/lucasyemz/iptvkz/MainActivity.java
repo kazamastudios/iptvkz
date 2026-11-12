@@ -233,6 +233,7 @@ public class MainActivity extends Activity {
     private void watchKeyboard() {
         View decor = getWindow().getDecorView();
         decor.setOnApplyWindowInsetsListener((v, insets) -> {
+            fitSystemBars(insets);
             boolean visible;
             if (Build.VERSION.SDK_INT >= 30) {
                 visible = insets.isVisible(WindowInsets.Type.ime());
@@ -286,6 +287,20 @@ public class MainActivity extends Activity {
                     ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN
                     : View.SYSTEM_UI_FLAG_VISIBLE);
         }
+    }
+
+    /**
+     * Android 15+ (targetSdk 35 ou mais): o app desenha por baixo das barras do sistema e o teclado não encolhe
+     * mais a janela sozinho. O app reserva esse espaço: as barras e o recorte da câmera nas bordas, e embaixo
+     * o maior entre a barra de navegação e o teclado (no celular; na TV o teclado fica por cima, como antes).
+     * No vídeo em tela cheia as barras somem e o espaço volta para o vídeo.
+     */
+    private void fitSystemBars(WindowInsets insets) {
+        if (Build.VERSION.SDK_INT < 35 || root == null) return;
+        android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+        int bottom = bars.bottom;
+        if (!isTv) bottom = Math.max(bottom, insets.getInsets(WindowInsets.Type.ime()).bottom);
+        root.setPadding(bars.left, bars.top, bars.right, bottom);
     }
 
     private int baseOrientation() {

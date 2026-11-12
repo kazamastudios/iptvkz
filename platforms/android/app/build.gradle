@@ -8,13 +8,13 @@ def isBeta = !(System.getenv('GITHUB_REF') ?: '').startsWith('refs/tags/v')
 
 android {
     namespace 'com.lucasyemz.iptvkz'
-    compileSdk 35
+    compileSdk 36
     ndkVersion '26.3.11579264'
 
     defaultConfig {
         applicationId 'com.lucasyemz.iptvkz'
         minSdk 24
-        targetSdk 34
+        targetSdk 36 // Play: celular exige o Android 16 (API 36) desde 31/08/2026
         versionCode v.nativeVersion.toInteger()
         versionName v.nativeName
         buildConfigField 'int', 'BUNDLE_VERSION', "${bundleVersion}"
