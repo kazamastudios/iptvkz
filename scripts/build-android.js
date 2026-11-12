@@ -19,7 +19,7 @@ const NODE_VERSION = 'v18.20.4';
 // Node do app compilado com páginas de 16 KB (exigência da Google Play): release deste repositório, gerada pelo
 // .github/workflows/libnode.yml a partir do nodejs-mobile (a versão pronta dele vem em 4 KB).
 const LIBNODE_TAG = 'libnode-v18.20.4-16k';
-const LIBNODE_REPO = process.env.LIBNODE_REPO || 'lucasyemz/iptvkz';
+const LIBNODE_REPO = process.env.LIBNODE_REPO || 'kazamastudios/iptvkz';
 const NDK_VERSION = '27.2.12479018';
 const PLAY = process.argv.includes('--play');
 const WIN = process.platform === 'win32';
