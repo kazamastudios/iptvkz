@@ -621,7 +621,14 @@ function gridContent(section, cat, ctx, scroller, { card = posterCard } = {}) {
   if (section === 'movies') sorts.splice(1, 0, ['new', 'Recentes']);
   const renderChips = () => chips.replaceChildren(...sorts.map(([v, l]) =>
     h('button.chip' + (v === sort ? '.on' : ''), { onclick: () => { sort = v; renderChips(); fill(); } }, l)));
-  renderChips();
+  // celular: a ordem num seletor nativo, como as categorias (os botões não cabiam e a tela rolava para o lado)
+  if (isPhone()) {
+    const sel = h('select.input.sort-select', { 'aria-label': 'Ordenar' },
+      ...sorts.map(([v, l]) => h('option', { value: v, selected: v === sort }, `Ordenar: ${l}`)));
+    sel.addEventListener('change', () => { sort = sel.value; fill(); });
+    chips.style.width = '100%';
+    chips.replaceChildren(sel);
+  } else renderChips();
 
   const page = h('div.page',
     h('div.grid-head',

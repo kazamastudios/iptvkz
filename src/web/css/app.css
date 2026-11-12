@@ -1207,6 +1207,8 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
   html:not(.tv-wide) .ch-head { padding: 0 14px 10px; }
   html:not(.tv-wide) .ch-head .filter, html:not(.tv-wide) .grid-head .filter { width: 100% !important; order: 3; }
   html:not(.tv-wide) .grid-head { flex-wrap: wrap; }
+  html:not(.tv-wide) .sort-select { width: 100%; }
+  html:not(.tv-wide) .grid-head { max-width: 100%; }
   html:not(.tv-wide) .ch-scroll { padding: 0 14px 20px; }
   html:not(.tv-wide) .ch-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   html:not(.tv-wide) .poster-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 8px; }
