@@ -102,17 +102,16 @@ function renderNav() {
   const link = (id, label, ic, n, short) =>
     h('a' + (active === id ? '.active' : ''), { href: `#/${id}`, 'data-short': short || label }, ico(ic), h('span', label),
       n ? h('span.count', n.toLocaleString('pt-BR')) : null);
-  // Celular: Minha lista e Favoritos viram um item só, "Salvos" (as duas telas têm abas para trocar entre elas)
-  const saved = h('a.nav-phone' + (active === 'mylist' || active === 'favorites' ? '.active' : ''), { href: '#/mylist', 'data-short': 'Salvos' },
-    ico('heart'), h('span', 'Salvos'));
+  // Salvos: Minha lista e Favoritos num item só, em todo aparelho (as duas telas têm abas para trocar entre elas)
+  const savedN = lists(laterItems, ['movies', 'series']) + lists(favItems, ['live', 'movies', 'series']);
+  const saved = h('a' + (active === 'mylist' || active === 'favorites' ? '.active' : ''), { href: '#/mylist', 'data-short': 'Salvos' },
+    ico('heart'), h('span', 'Salvos'), savedN ? h('span.count', savedN.toLocaleString('pt-BR')) : null);
   $('#nav').replaceChildren(
     link('history', 'Histórico', 'history', history.inProgress.length + history.done.length),
     link('live', 'TV ao Vivo', 'tv', count('live'), 'Ao vivo'),
     link('movies', 'Filmes', 'film', count('movies')),
     link('series', 'Séries', 'series', count('series')),
     link('guide', 'Guia', 'guide'),
-    link('mylist', 'Minha lista', 'mylist', lists(laterItems, ['movies', 'series'])),
-    link('favorites', 'Favoritos', 'star', lists(favItems, ['live', 'movies', 'series'])),
     saved,
   );
   const gear = $('#topSettings');

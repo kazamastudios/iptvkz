@@ -1,5 +1,6 @@
 // Filmes e Séries: prateleiras, grade por categoria e páginas de detalhe.
 import { h, ico, img, windowed, matcher, debounce, fmtDur, fmtTime, toast, modal, skPosters, skEpisodes, skLines, isBack } from '../core/util.js';
+import { isPhone, catSelect } from '../core/catselect.js';
 import { starIcon } from '../core/icons.js';
 import {
   C, S, visibleCats, visibleItems, favItems, isFav, toggleFav, getProgress, setProgress, clearProgress, isWatched, isStarted,
@@ -209,7 +210,7 @@ export function vodHome(section) {
     const filter = h('input', { placeholder: 'Filtrar categorias' });
     const list = h('div.cat-list');
     const content = h('div.vod-content');
-    const root = h('div.live.vod-browse', h('div.cats', h('label.filter', ico('search'), filter), list), content);
+    const root = h('div.live.vod-browse', h('div.cats' + (isPhone() ? '.has-select' : ''), isPhone() ? h('div.cat-bar', catSelect(list)) : null, h('label.filter', ico('search'), filter), list), content);
     filter.addEventListener('input', debounce(renderCats, 120));
 
     function renderCats() {

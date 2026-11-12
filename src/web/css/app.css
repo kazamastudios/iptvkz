@@ -1145,8 +1145,7 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
      (Minha lista + Favoritos) e a Lista (com o nome dela). Guia fica dentro do Ao vivo; Configurações, no topo. */
   html:not(.tv-wide) .sidebar { justify-content: space-around; padding: 4px 2px; }
   html:not(.tv-wide) .nav { display: contents; }
-  html:not(.tv-wide) .nav a[href="#/guide"], html:not(.tv-wide) .nav a[href="#/mylist"]:not(.nav-phone),
-  html:not(.tv-wide) .nav a[href="#/favorites"], html:not(.tv-wide) .sidebar-foot { display: none; }
+  html:not(.tv-wide) .nav a[href="#/guide"], html:not(.tv-wide) .sidebar-foot { display: none; }
   html:not(.tv-wide) .nav a { order: 1; flex: 1 1 0; min-width: 0; width: auto; height: 50px; flex-direction: column; gap: 2px; padding: 4px 0 2px; border-radius: 12px; }
   html:not(.tv-wide) .nav a::after { content: attr(data-short); font-size: 10px; line-height: 1.2; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   html:not(.tv-wide) .list-switch { order: 2; flex: 1 1 0; min-width: 0; margin: 0; }
@@ -1156,10 +1155,8 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
   html:not(.tv-wide) .list-btn .name { font-size: 10px; line-height: 1.2; font-weight: 600; }
   html:not(.tv-wide) .list-btn .sub { display: none; }
   /* topo: logo do app à esquerda do título e Configurações no canto */
-  html:not(.tv-wide) .nav a.nav-phone { display: flex; }
   html:not(.tv-wide) .top-logo { display: flex; }
   html:not(.tv-wide) .top-settings { display: inline-flex; }
-  html:not(.tv-wide) .saved-tabs { display: flex; }
   html:not(.tv-wide) .guide-link { display: inline-flex; flex: none; }
   html:not(.tv-wide) .list-menu { position: fixed; top: auto; left: 8px; right: 8px; bottom: 64px; width: auto; max-height: 60vh; overflow: auto; }
 
@@ -1196,6 +1193,11 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
   html:not(.tv-wide) .cats { flex: none; border-right: 0; padding: 0 0 8px; }
   html:not(.tv-wide) .cats .filter { display: none; }
   html:not(.tv-wide) .cat-list { display: flex; flex: none; overflow-x: auto; gap: 6px; padding: 0 14px; scrollbar-width: none; }
+  /* celular: no lugar da faixa, o seletor nativo (core/catselect.js) e o botão do Guia ao lado */
+  html:not(.tv-wide) .cats.has-select .cat-list { display: none; }
+  html:not(.tv-wide) .cat-bar { display: flex; gap: 8px; align-items: center; padding: 0 14px; }
+  html:not(.tv-wide) .cat-bar .cat-select { flex: 1 1 auto; min-width: 0; height: 44px; }
+  html:not(.tv-wide) .cat-bar .guide-link { flex: none; height: 44px; padding: 0 14px; border-radius: 12px; }
   html:not(.tv-wide) .cat-list::-webkit-scrollbar { display: none; }
   html:not(.tv-wide) .cat-item { flex: none; width: auto; max-width: 62vw; min-height: 36px; padding: 6px 12px; border-radius: 999px; background: var(--card); }
   html:not(.tv-wide) .cat-item .n, html:not(.tv-wide) .cat-sep { display: none; }
@@ -1275,8 +1277,10 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
 .tabs { max-width: 100%; flex-wrap: wrap; }
 @media (max-width: 520px) { .tabs { border-radius: 16px; } .tabs button { padding: 8px 12px; } }
 
+/* Salvos: abas Minha lista | Favoritos no topo das duas telas, em todo aparelho */
+.saved-tabs { display: flex; }
 /* Itens só do celular (a barra de baixo os mostra no @media do celular): fora dele ficam escondidos */
-.nav a.nav-phone, .top-logo, .top-settings, .saved-tabs, .guide-link { display: none; }
+.top-logo, .top-settings, .guide-link { display: none; }
 .top-logo img { width: 30px; height: 30px; border-radius: 8px; }
 .saved-tabs a { padding: 8px 16px; border-radius: 999px; color: var(--muted); font-weight: 500; text-decoration: none; }
 .saved-tabs a.on { background: var(--card-2); color: var(--text); }

@@ -1,5 +1,6 @@
 // TV ao Vivo: categorias + grade de canais; ao assistir, vídeo grande + lista lateral.
 import { h, ico, img, windowed, matcher, debounce, fmtClock, toast } from '../core/util.js';
+import { isPhone, catSelect } from '../core/catselect.js';
 import { starIcon } from '../core/icons.js';
 import {
   C, S, visibleCats, visibleItems, favItems, recentItems, clearRecents, catItems, adultLocked, isAdultItem, isFav, toggleFav, addRecent,
@@ -41,7 +42,9 @@ export function liveView(params, ctx) {
   const root = h('div.live');
   const catFilter = h('input', { placeholder: 'Filtrar categorias' });
   const catList = h('div.cat-list');
-  const cats = h('div.cats', h('a.btn.small.guide-link', { href: '#/guide' }, ico('guide'), 'Guia de programação'), h('label.filter', ico('search'), catFilter), catList);
+  // celular: seletor nativo de categoria e, ao lado, o Guia (a barra de baixo não tem o Guia)
+  const phoneBar = isPhone() ? h('div.cat-bar', catSelect(catList), h('a.btn.guide-link', { href: '#/guide', title: 'Guia de programação' }, ico('guide'), 'Guia')) : null;
+  const cats = h('div.cats' + (phoneBar ? '.has-select' : ''), phoneBar, h('label.filter', ico('search'), catFilter), catList);
   const channels = h('div.channels');
   root.append(cats, channels);
 
