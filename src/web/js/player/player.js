@@ -3,7 +3,6 @@
 import { h, ico, fmtTime, toast } from '../core/util.js';
 import { icon } from '../core/icons.js';
 import { flushSaves, S, C, setSetting, api, learnAudio, versionNames } from '../core/store.js';
-import { SeekPreview } from './seekpreview.js';
 import { claimScreen, heartbeat, endScreen } from './sessions.js';
 import { readSubFile, cuesAt, subHtml } from './subs.js';
 import { TV, focusEl, syncFocus } from '../tv/tv.js';
@@ -176,12 +175,9 @@ export class Player {
       this.seekKnob = h('div.knob');
       this.seekTip = h('div.tip');
       seek = h('div.seek', { 'data-focus': '' }, h('div.track', this.seekBuf, this.seekFill), this.seekKnob, this.seekTip);
-      this.preview = new SeekPreview({
-        video: this.video,
-        getUrl: () => (this.src ? proxyUrl(this.currentUrl()) : null),
-        canLoad: () => this._previewAllowed(),
-        onVisible: (on) => this.root && this.root.classList.toggle('has-strip', on),
-      });
+      // Sem miniaturas na barra de tempo (pedido do Lucas, 12/11/2026): ao passar ou arrastar aparece só o tempo do
+      // ponto. A barra de miniaturas fica guardada em seekpreview.js; este objeto vazio ocupa o lugar dela.
+      this.preview = { el: h('div.seek-preview-off'), show() {}, hide() {}, capture() {}, reset() {}, destroy() {} };
       seek.append(this.preview.el);
       this._seekEl = seek;
       this._bindSeek(seek);
