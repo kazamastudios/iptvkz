@@ -72,19 +72,26 @@ export function posterCard(section, item, ctx, { where = false, onOpen = null, w
   if (tags) th.append(tags);
   if (item.rating) th.append(h('span.badge.gold.rating', '★ ' + Number(item.rating).toFixed(1)));
   const r = progressRatio(section, item);
-  if (r > 0.02 && r < 0.95) th.append(h('div.pbar', h('i', { style: { width: r * 100 + '%' } })));
-  if (section === 'movies' && isWatched(item.id) && !(r > 0.02 && r < 0.95)) th.append(h('span.badge.seen.seen-mark', '✓ Assistido'));
+  // Canto de baixo à esquerda da capa: o ano e, quando há, "Assistido" / "Concluída" / T1:E2, numa fileira só
+  // (o ano saiu da legenda: embaixo da capa fica só o nome). Com barra de progresso, ficam logo acima dela.
+  const bottom = [];
+  let bar = null;
+  if (r > 0.02 && r < 0.95) bar = h('div.pbar', h('i', { style: { width: r * 100 + '%' } }));
+  if (item.year) bottom.push(h('span.badge.year', String(item.year)));
+  if (section === 'movies' && isWatched(item.id) && !bar) bottom.push(h('span.badge.seen', '✓ Assistido'));
   if (section === 'series') {
     const last = getProgress('s:' + item.id);
-    if (last && last.done) th.append(h('span.badge.seen.seen-mark', '✓ Concluída'));
+    if (last && last.done) bottom.push(h('span.badge.seen', '✓ Concluída'));
     else if (last) {
-      th.append(h('div.tags', { style: { top: 'auto', bottom: '16px' } }, h('span.badge', `T${last.season}:E${last.num}`)));
+      bottom.push(h('span.badge', `T${last.season}:E${last.num}`));
       const ep = getProgress(last.ep);
-      if (ep && ep.d) th.append(h('div.pbar', h('i', { style: { width: Math.min(100, (ep.t / ep.d) * 100) + '%' } })));
+      if (ep && ep.d) bar = h('div.pbar', h('i', { style: { width: Math.min(100, (ep.t / ep.d) * 100) + '%' } }));
     }
   }
+  if (bottom.length) th.append(h('div.btags' + (bar ? '.over-bar' : ''), ...bottom));
+  if (bar) th.append(bar);
   return h('div.poster', { onclick: (e) => (onOpen ? onOpen(e) : ctx.navigate(`#/${cfg[section].detail}?id=${encodeURIComponent(item.id)}`)), title: item.name },
-    th, h('div.pt', cardName(item)), h('div.pm', (where && whereStopped(section, item)) || (item.year ? String(item.year) : ' ')));
+    th, h('div.pt', cardName(item)), where ? h('div.pm', whereStopped(section, item) || ' ') : null);
 }
 
 // Controles de uma fileira, iguais em todas as plataformas, cada uma com o seu jeito de usar:
