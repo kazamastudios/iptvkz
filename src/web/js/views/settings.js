@@ -1,5 +1,6 @@
 // Configurações: listas, categorias (ocultar/ordenar), reprodução e sobre.
 import { h, ico, fmtAgo, confirmDialog, toast } from '../core/util.js';
+import { installTvButton } from './installtv.js';
 import {
   S, C, activeList, orderedCats, setCatHidden, setCatOrder, resetCats, setSetting, saveNow, api,
   parentalEnabled, adultLocked, pinHash, checkPin, unlockAdult, lockAdult, setCatAdult, adultCatCount, buildLabel,
@@ -186,6 +187,13 @@ export function settingsView(params, ctx) {
     } else {
       tvBody.append(h('div.pref', h('div.lbl', 'Você está acessando pela rede'),
         h('div.sub', 'As opções de rede e inicialização ficam no computador que roda o IPTVKZ.')));
+    }
+    // do PC ou do celular: como levar o app para a TV (na própria TV não faz sentido)
+    if (!TV.on) {
+      tvBody.append(h('div.pref',
+        h('div.lbl', 'Instalar o IPTVKZ na TV'),
+        h('div.sub', 'Android TV, Fire TV e TV Box instalam sem cabo e sem loja; a LG, pela loja da LG.'),
+        installTvButton()));
     }
     tvBody.append(h('div.pref',
       h('div.lbl', 'Modo TV neste aparelho'),

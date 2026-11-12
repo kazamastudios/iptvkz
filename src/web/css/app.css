@@ -1188,3 +1188,10 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
 .pair-box { display: flex; align-items: center; margin-bottom: 16px; padding: 12px; border-radius: 12px; background: var(--card); }
 .pair-qr { flex: none; width: 150px; height: 150px; margin-right: 16px; border-radius: 8px; background: #fff; image-rendering: pixelated; }
 .pair-box p { margin: 4px 0 0; font-size: 13px; }
+/* Instalar na TV */
+.install-tabs { flex-wrap: wrap; padding: 4px 0 12px; }
+.install-tabs button { flex: 1 1 auto; height: auto; min-height: 34px; padding: 6px 10px; }
+.install-tabs button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.install-steps { margin: 0 0 10px; padding-left: 22px; line-height: 1.55; }
+.install-steps li { margin-bottom: 10px; }
+.install-url { margin: 8px 0 2px; padding: 10px 14px; border-radius: 10px; background: var(--card); font: 700 24px var(--font-display); letter-spacing: .3px; color: var(--accent); user-select: all; word-break: break-all; }
