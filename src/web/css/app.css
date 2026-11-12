@@ -1230,3 +1230,5 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
 .speed-row.best { outline: 1px solid var(--accent); }
 .speed-host { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .speed-row .good { color: var(--ok, #3ecf8e); } .speed-row .warn { color: var(--warn, #f5b642); } .speed-row .bad, .speed-box .bad { color: var(--bad, #ff6b6b); }
+/* "Adicionar lista" é um .list-card (sem sombra na TV): o foco vira borda e fundo, como o hover do PC */
+.tv .add-card.tv-focus, .kb-nav .add-card.tv-focus { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--text); }
