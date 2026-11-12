@@ -56,6 +56,15 @@ function smallPoster(src) {
   return String(src || '').replace(/(image\.tmdb\.org\/t\/p\/)(?:w\d+_and_h\d+_[a-z0-9]+|w(?:500|600|780)|original)\//, '$1w342/');
 }
 
+// Nome no card: o ano já aparece na linha de baixo, então "Outra Mamãe (2026)" vira "Outra Mamãe".
+// Só tira o ano do fim do nome, e só quando é o mesmo ano do item (a página do filme mantém o nome completo).
+function cardName(item) {
+  const name = String(item.name || '');
+  if (!item.year) return name;
+  const short = name.replace(new RegExp(String.raw`\s*[([]?\s*${Number(item.year)}\s*[)\]]?\s*$`), '').trim();
+  return short || name;
+}
+
 export function posterCard(section, item, ctx, { where = false, onOpen = null, wide = false } = {}) {
   const th = img(wide ? item.poster : smallPoster(item.poster), item.name, 'cover');
   const tags = versionTags(item);
@@ -74,7 +83,7 @@ export function posterCard(section, item, ctx, { where = false, onOpen = null, w
     }
   }
   return h('div.poster', { onclick: (e) => (onOpen ? onOpen(e) : ctx.navigate(`#/${cfg[section].detail}?id=${encodeURIComponent(item.id)}`)), title: item.name },
-    th, h('div.pt', item.name), h('div.pm', (where && whereStopped(section, item)) || (item.year ? String(item.year) : ' ')));
+    th, h('div.pt', cardName(item)), h('div.pm', (where && whereStopped(section, item)) || (item.year ? String(item.year) : ' ')));
 }
 
 // Controles de uma fileira, iguais em todas as plataformas, cada uma com o seu jeito de usar:
