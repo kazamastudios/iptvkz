@@ -27,6 +27,8 @@ const P = {
   pip: '<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor"/>',
   // onda sonora (barras simétricas, mais altas no meio): idioma do áudio, como nos streamings. Desenho próprio.
   audioLang: '<path d="M3 11v2M6 9v6M9 6v12M12 3v18M15 6v12M18 9v6M21 11v2"/>',
+  // Assistir na TV: tela com as ondas no canto (o símbolo de transmitir dos apps de vídeo)
+  cast: '<path d="M3 8V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><path d="M3 12a8 8 0 0 1 8 8M3 16a4 4 0 0 1 4 4"/><path d="M3.5 20h.01"/>',
   cc: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10.5 10.2a2.2 2.2 0 1 0 0 3.6M17 10.2a2.2 2.2 0 1 0 0 3.6"/>',
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',

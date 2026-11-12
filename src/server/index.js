@@ -17,6 +17,7 @@ const { sendText } = require('./compress');
 const pairing = require('./pairing');
 const backup = require('./backup');
 const ffmpeg = require('./ffmpeg');
+const cast = require('./cast');
 
 let PORT = Number(process.env.PORT) || 8787; // porta real (pode mudar no app de computador)
 const HOST = process.env.HOST || '0.0.0.0';
@@ -202,6 +203,14 @@ async function handleProxy(req, res, query) {
 
 // ---------- API ----------
 
+// Endereço deste aparelho que a TV alcança: o da mesma rede que ela (primeiros 3 números do IP), senão o primeiro.
+function addressFacing(tvIp) {
+  const addrs = net.lanAddresses().filter((a) => !a.virtual);
+  const prefix = String(tvIp).split('.').slice(0, 3).join('.') + '.';
+  const same = addrs.find((a) => a.address.startsWith(prefix));
+  return (same || addrs[0] || { address: '127.0.0.1' }).address;
+}
+
 // O FFmpeg lê o vídeo pelo proxy do próprio servidor (User-Agent da lista, redirecionamentos, HTTPS).
 const localProxy = (u) => `http://127.0.0.1:${PORT}/proxy?url=${encodeURIComponent(u)}`;
 
@@ -234,6 +243,22 @@ async function handleApi(req, res, url) {
   const m = req.method;
 
   if (p === '/api/ping') return sendJson(res, 200, { ok: true });
+
+  // Assistir na TV (Cast e DLNA): procurar TVs, tocar, controlar. O vídeo sai pelo proxy deste servidor.
+  if (p === '/api/cast/devices' && m === 'GET') return sendJson(res, 200, await cast.devices(q.get('fresh') === '1'));
+  if (p === '/api/cast/status' && m === 'GET') return sendJson(res, 200, await cast.status());
+  if (p === '/api/cast/play' && m === 'POST') {
+    const b = JSON.parse((await readBody(req)).toString() || '{}');
+    if (!/^https?:\/\//i.test(b.url || '')) return sendJson(res, 400, { error: 'Vídeo inválido' });
+    return sendJson(res, 200, await cast.play({
+      id: b.id, url: b.url, title: String(b.title || '').slice(0, 200), live: !!b.live, startAt: Number(b.startAt) || 0,
+      mediaUrl: (tvIp) => `http://${addressFacing(tvIp)}:${PORT}/proxy?url=${encodeURIComponent(b.url)}`,
+    }));
+  }
+  if (p === '/api/cast/control' && m === 'POST') {
+    const b = JSON.parse((await readBody(req)).toString() || '{}');
+    return sendJson(res, 200, await cast.control(String(b.action), Number(b.t) || 0));
+  }
 
   // Componente opcional de vídeo do PC (FFmpeg reduzido): estado, download e leitura das faixas de um vídeo.
   if (p === '/api/ffmpeg' && m === 'GET') return sendJson(res, 200, ffmpeg.status());
@@ -487,7 +512,9 @@ const server = http.createServer((req, res) => {
   if (pairing.enabled() && net.isPrivate(ip) && req.url.startsWith('/pair/')) {
     return pairing.handle(req, res, new URL(req.url, 'http://localhost'));
   }
-  if (!req.isLocal && !(net.isPrivate(ip) && net.lanEnabled())) {
+  // a TV que está recebendo uma transmissão (Assistir na TV) busca o vídeo, mesmo sem o acesso pela rede ligado
+  const castMedia = cast.allowed(ip) && req.url.startsWith('/proxy?');
+  if (!req.isLocal && !castMedia && !(net.isPrivate(ip) && net.lanEnabled())) {
     res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(BLOCKED_PAGE);
   }

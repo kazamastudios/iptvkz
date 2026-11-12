@@ -48,6 +48,9 @@ export function playerLibs() {
   return libsPromise;
 }
 
+// É a própria TV (sem tela de toque)? O app no celular também liga o modo TV, mas lá mandar para a TV faz sentido.
+const onRealTv = () => TV.on && !(navigator.maxTouchPoints > 0);
+
 // Celular/tablet: sem mouse; o toque mostra ou esconde os controles.
 const isTouch = () => !TV.on && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 
@@ -150,6 +153,11 @@ export class Player {
       this.toggleMenu('av');
     });
     this.btnPip = this._btn('pip', 'Picture-in-picture', () => this.togglePip());
+    // PC e celular: mandar o vídeo para uma TV da rede (Chromecast/Android TV pelo Cast, LG e outras pelo DLNA)
+    this.btnCast = this._btn('cast', 'Assistir na TV', (e) => {
+      e.stopPropagation();
+      this.toggleMenu('cast');
+    });
     this.timeEl = h('span.ptime');
     this.btnNext = o.next ? h('button.btn.small', { onclick: () => this._goNext(), title: 'Próximo episódio' }, ico('next'), 'Próximo') : null;
 
@@ -183,7 +191,7 @@ export class Player {
     left.push(o.live ? h('span.badge.onair.live-badge', 'AO VIVO') : this.timeEl);
 
     // filmes e séries já abrem ocupando a tela: tela cheia só no ao vivo, que no PC toca numa janela ao lado da lista
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
@@ -304,7 +312,7 @@ export class Player {
     this._onFs = () => this._setIcon(this.btnFs, document.fullscreenElement ? 'exitFs' : 'fullscreen');
     document.addEventListener('fullscreenchange', this._onFs);
     this._onDocClick = (e) => {
-      if (!this.menu.contains(e.target) && !this.btnGear.contains(e.target) && !this.btnAV.contains(e.target)) this.closeMenu();
+      if (!this.menu.contains(e.target) && !this.btnGear.contains(e.target) && !this.btnAV.contains(e.target) && !this.btnCast.contains(e.target)) this.closeMenu();
     };
     document.addEventListener('mousedown', this._onDocClick);
     this._onKeyUp = (e) => {
@@ -1172,7 +1180,7 @@ export class Player {
     const open = !this.menu.classList.contains('hidden');
     if (!open || this.menuMode !== mode) {
       this.menuMode = mode;
-      this.menu.classList.add('left'); // os dois botões ficam perto do volume
+      this.menu.classList.toggle('left', mode !== 'cast'); // legenda e áudio ficam perto do volume; a TV, à direita
       this._renderMenu();
       this.menu.classList.remove('hidden');
       this._showCtrl();
@@ -1202,6 +1210,7 @@ export class Player {
       h('div.seg', values.map(([v, l]) => h('button' + (v === cur ? '.on' : ''), { onclick: () => { fn(v); this._renderMenu(); } }, l)));
 
     if (this.menuMode === 'settings') return this._renderSettings(m, seg, opt);
+    if (this.menuMode === 'cast') return this._renderCast(m, opt);
 
     // Botão de legenda: só a legenda
     m.append(h('h4', 'Legenda'));
@@ -1226,6 +1235,95 @@ export class Player {
     m.append(seg([['P', 'P'], ['M', 'M'], ['G', 'G'], ['GG', 'GG']], S.settings.subSize, (v) => { setSetting('subSize', v); this._applySubStyle(); }));
     m.append(h('h4', 'Fundo'));
     m.append(seg([['none', 'Nenhum'], ['shadow', 'Sombra'], ['box', 'Caixa']], S.settings.subBg, (v) => { setSetting('subBg', v); this._applySubStyle(); }));
+  }
+
+  // ---------- Assistir na TV ----------
+  async _renderCast(m, opt) {
+    m.append(h('h4', 'Assistir na TV'));
+    const box = h('div', h('div.note', 'Procurando TVs na rede...'));
+    m.append(box);
+    const fresh = this._castFresh;
+    this._castFresh = false;
+    let list = [];
+    try { list = await api(`/api/cast/devices${fresh ? '?fresh=1' : ''}`); } catch {}
+    if (this.menuMode !== 'cast' || !m.contains(box)) return;
+    const again = h('button.opt', { onclick: () => { this._castFresh = true; this._renderMenu(); } }, h('span.ck', ico('refresh')), h('span', 'Procurar de novo'));
+    if (!list.length) {
+      box.replaceChildren(h('div.note', 'Nenhuma TV encontrada. Ela precisa estar ligada e no mesmo Wi-Fi. Funciona com Android TV, Google TV, Chromecast e TVs com DLNA (LG, Samsung e outras).'), again);
+      return;
+    }
+    box.replaceChildren(...list.map((d) => opt(d.name + (d.model && d.model !== d.name ? ` (${d.model})` : ''), false, () => this._castTo(d))), again);
+  }
+
+  async _castTo(dev) {
+    this.closeMenu();
+    const v = this.video;
+    const at = this.opts.live ? 0 : v.currentTime;
+    this._showCasting(dev, 'Abrindo na TV...');
+    try {
+      await api('/api/cast/play', { method: 'POST', body: JSON.stringify({ id: dev.id, url: this.currentUrl(), title: this.titleEl.textContent, live: !!this.opts.live, startAt: at }) });
+    } catch (err) {
+      this._hideCasting();
+      toast(`Não deu para tocar na TV: ${err.message}`, 'error');
+      return;
+    }
+    v.pause();
+    this._castState = { dev, at };
+    this._showCasting(dev, null);
+    clearInterval(this._castT);
+    this._castT = setInterval(() => this._pollCast(), 2000);
+  }
+
+  async _pollCast() {
+    let st;
+    try { st = await api('/api/cast/status'); } catch { return; }
+    if (this.destroyed || !this._castState) return;
+    if (!st.casting) return this._castEnded(st.ended ? 'A TV encerrou a transmissão.' : null);
+    if (st.time != null) this._castState.at = st.time;
+    const playing = /PLAYING|BUFFERING/i.test(st.state || '');
+    this._castPause.replaceChildren(ico(playing ? 'pause' : 'play'), playing ? 'Pausar' : 'Continuar');
+    this._castPause.dataset.playing = playing ? '1' : '';
+    this._castTime.textContent = !this.opts.live && st.time != null ? `${fmtTime(st.time)}${st.duration ? ' / ' + fmtTime(st.duration) : ''}` : '';
+  }
+
+  _showCasting(dev, msg) {
+    if (!this.castEl) {
+      this._castPause = h('button.btn', {
+        onclick: () => api('/api/cast/control', { method: 'POST', body: JSON.stringify({ action: this._castPause.dataset.playing ? 'pause' : 'play' }) })
+          .then(() => this._pollCast()).catch(() => {}),
+      }, ico('pause'), 'Pausar');
+      this._castPause.dataset.playing = '1';
+      this._castTime = h('div.cast-time');
+      this._castMsg = h('p');
+      this.castEl = h('div.cast-overlay', ico('cast'), this._castMsg, this._castTime,
+        h('div.acts', this._castPause,
+          h('button.btn.primary', { onclick: () => this._stopCast() }, ico('back'), 'Parar e assistir aqui')));
+      this.root.append(this.castEl);
+    }
+    if (msg) this._castMsg.replaceChildren(msg);
+    else this._castMsg.replaceChildren('Tocando na TV ', h('b', dev.name));
+    this.castEl.classList.remove('hidden');
+  }
+
+  _hideCasting() {
+    clearInterval(this._castT);
+    if (this.castEl) this.castEl.classList.add('hidden');
+  }
+
+  async _stopCast() {
+    const at = this._castState && this._castState.at;
+    await api('/api/cast/control', { method: 'POST', body: JSON.stringify({ action: 'stop' }) }).catch(() => {});
+    this._castEnded(null, at);
+  }
+
+  // Voltou para este aparelho: continua do ponto em que a TV estava (no ao vivo, do agora).
+  _castEnded(msg, at) {
+    const t = at != null ? at : this._castState && this._castState.at;
+    this._castState = null;
+    this._hideCasting();
+    if (msg) toast(msg, 'info');
+    if (!this.opts.live && t > 1) this.video.currentTime = t;
+    this.video.play().catch(() => {});
   }
 
   // Botão de áudio (onda sonora): versão, faixa de áudio, qualidade e o que está tocando.
@@ -1419,6 +1517,7 @@ export class Player {
     this.destroyed = true;
     clearInterval(this._subTimer);
     clearInterval(this._perfTimer);
+    clearInterval(this._castT); // a TV continua tocando se o player fechar; dá para parar pela TV
     clearTimeout(this._netT);
     clearInterval(this._watchdog);
     clearTimeout(this._retryT);

@@ -421,6 +421,13 @@ input, select, textarea { font: inherit; color: inherit; }
 .player .net-tag { position: absolute; top: 18px; right: 18px; z-index: 6; display: flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px; background: rgba(0, 0, 0, .66); border: 1px solid rgba(255, 181, 71, .45); color: #ffd38a; font-size: 13px; font-weight: 600; pointer-events: none; transition: opacity .3s; }
 .player .net-tag i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
 .player .net-tag.hidden { opacity: 0; }
+/* Assistir na TV: o player vira controle remoto enquanto o vídeo toca na TV */
+.player .cast-overlay { position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(6, 6, 9, .92); text-align: center; padding: 20px; }
+.player .cast-overlay.hidden { display: none; }
+.player .cast-overlay > .i { width: 54px; height: 54px; color: var(--accent); }
+.player .cast-overlay p { margin: 0; font-size: 18px; }
+.player .cast-overlay .cast-time { color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1.2em; }
+.player .cast-overlay .acts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
 /* PC: barra do download do componente de vídeo */
 .perror .dl-bar { display: none; width: 260px; height: 4px; margin: 4px auto 14px; border-radius: 4px; background: rgba(255,255,255,.12); overflow: hidden; }
 .perror .dl-bar.on { display: block; }

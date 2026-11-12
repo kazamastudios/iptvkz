@@ -189,7 +189,7 @@ export function settingsView(params, ctx) {
         h('div.sub', 'As opções de rede e inicialização ficam no computador que roda o IPTVKZ.')));
     }
     // do PC ou do celular: como levar o app para a TV (na própria TV não faz sentido)
-    if (!TV.on) {
+    if (!TV.on || navigator.maxTouchPoints > 0) {
       tvBody.append(h('div.pref',
         h('div.lbl', 'Instalar o IPTVKZ na TV'),
         h('div.sub', 'Android TV, Fire TV e TV Box instalam sem cabo e sem loja; a LG, pela loja da LG.'),
