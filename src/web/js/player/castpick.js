@@ -5,9 +5,13 @@ import { h, ico, modal, toast } from '../core/util.js';
 import { api } from '../core/store.js';
 import { TV } from '../tv/tv.js';
 
+// Desligado (12/11/2026): pelo Cast e pelo DLNA a TV abre o player padrão dela, não o IPTVKZ. Volta quando o
+// celular puder mandar o vídeo para o próprio IPTVKZ da TV. Com false, nenhum botão "Assistir na TV" aparece.
+export const CAST_ENABLED = false;
+
 // media: () => { url, title, live, startAt } (calculado na hora do clique: progresso e versão podem ter mudado)
 export function castButton(media) {
-  if (TV.on) return null;
+  if (!CAST_ENABLED || TV.on) return null;
   return h('button.btn', { title: 'Mandar para uma TV da rede', onclick: () => openCastPicker(media()) }, ico('cast'), 'Assistir na TV');
 }
 

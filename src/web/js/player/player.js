@@ -8,6 +8,7 @@ import { claimScreen, heartbeat, endScreen } from './sessions.js';
 import { readSubFile, cuesAt, subHtml } from './subs.js';
 import { TV, focusEl, syncFocus } from '../tv/tv.js';
 import { NativeVideo, nativeVideoAvailable } from './nativevideo.js';
+import { CAST_ENABLED } from './castpick.js';
 import { debugSection, tone } from '../core/debug.js';
 import { remuxStatus, remuxReady, remuxOffered, remuxSize, installRemux, probeMedia, browserAudio, RemuxVideo } from './remux.js';
 
@@ -198,7 +199,7 @@ export class Player {
     left.push(o.live ? h('span.badge.onair.live-badge', 'AO VIVO') : this.timeEl);
 
     // filmes e séries já abrem ocupando a tela: tela cheia só no ao vivo, que no PC toca numa janela ao lado da lista
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, !CAST_ENABLED || onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
