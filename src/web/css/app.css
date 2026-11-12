@@ -1211,3 +1211,10 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
 .install-steps { margin: 0 0 10px; padding-left: 22px; line-height: 1.55; }
 .install-steps li { margin-bottom: 10px; }
 .install-url { margin: 8px 0 2px; padding: 10px 14px; border-radius: 10px; background: var(--card); font: 700 24px var(--font-display); letter-spacing: .3px; color: var(--accent); user-select: all; word-break: break-all; }
+
+/* ---------- TV: tela leve (regra do projeto: ver docs e memória "TV leve") ----------
+   Sombras grandes custam caro para desenhar no processador da TV e pesavam nas trocas de tela. Na TV ficam
+   desligadas; o foco continua marcado pelo anel e pelas cores. (O desfoque já é desligado na regra geral da TV.)
+   Evite regras com "*": o estilo de cada elemento da tela passa a ser recalculado com elas. */
+.tv .card, .tv .list-card, .tv .set-section, .tv .modal, .tv .pmenu, .tv .hero, .tv .detail .hero, .tv .shelf-row,
+.tv .player-box, .tv .status-pop, .tv .toast, .tv .poster .thumb, .tv .ch-card { box-shadow: none !important; }

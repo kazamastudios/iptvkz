@@ -1,5 +1,5 @@
 // IPTVKZ — casca do app: barra lateral, rotas, carregamento da lista ativa e teclado.
-import { $, h, ico, debounce, toast, fmtAgo, isBack, closeTopModal, confirmDialog, skPosters, skChannels } from './core/util.js';
+import { $, h, ico, debounce, toast, fmtAgo, isBack, closeTopModal, confirmDialog, skPosters, skChannels, settleImages } from './core/util.js';
 import { applyDebug, debugSection, tone } from './core/debug.js';
 import { TV, KB, setKbNav, detectTv, applyTv, move, DIRS, focusFirst, focusEl, isNative, normKey, syncFocus, initKeyDebug, exitApp } from './tv/tv.js';
 import { icon } from './core/icons.js';
@@ -488,6 +488,7 @@ function route() {
   // volta ao topo antes de trocar o conteúdo: depois, ler/mudar a rolagem obrigaria a TV a calcular o layout
   // da tela nova na hora (era ~80 ms na LG)
   if (view.scrollTop) view.scrollTop = 0;
+  if (TV.on) settleImages(350);
   view.replaceChildren(res.el);
   // voltando: a tela reaparece onde estava, em qualquer plataforma
   const mem = goingBack && focusMemory.get(location.hash);

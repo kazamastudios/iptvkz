@@ -135,13 +135,18 @@ export function initials(name) {
 // Enquanto isso o cartão mostra o fundo de carregamento.
 const heldBack = [];
 let tHeld = 0;
+// Na TV, logo depois de trocar de tela as imagens também esperam (settleImages): primeiro a TV desenha a tela,
+// depois decodifica as capas. Juntas, elas eram boa parte do engasgo de abrir Filmes e Séries na LG.
+let settleUntil = 0;
+export function settleImages(ms) { settleUntil = performance.now() + ms; }
+const imagesFree = () => navIdle() && performance.now() >= settleUntil;
 function releaseHeld() {
   tHeld = 0;
-  if (!navIdle()) { tHeld = setTimeout(releaseHeld, 120); return; }
+  if (!imagesFree()) { tHeld = setTimeout(releaseHeld, 120); return; }
   for (const go of heldBack.splice(0)) go();
 }
 function setSrcWhenIdle(im, src) {
-  if (navIdle()) { im.src = src; return; } // mouse e toque não mexem em navIdle: só controle e teclado esperam
+  if (imagesFree()) { im.src = src; return; } // mouse e toque não mexem em navIdle: só controle e teclado esperam
   heldBack.push(() => { if (im.isConnected) im.src = src; });
   if (!tHeld) tHeld = setTimeout(releaseHeld, 120);
 }

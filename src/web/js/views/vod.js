@@ -365,7 +365,7 @@ export function streamHero(ctx) {
     clearTimeout(tArt);
     el.classList.toggle('wide-art', wide);
     if (!src) return;
-    if (arts[front].getAttribute('src') === src) { arts[front].classList.add('on'); return; }
+    if (arts[front].getAttribute('src') === heroSrc(src)) { arts[front].classList.add('on'); return; }
     const next = arts[1 - front];
     next.onload = () => {
       if (cur !== item) return;
@@ -374,7 +374,7 @@ export function streamHero(ctx) {
       front = 1 - front;
     };
     next.onerror = null;
-    next.src = src;
+    next.src = heroSrc(src);
   };
 
   // Botões: filme com todos os da página do filme (que o destaque substitui); série com os episódios na página dela.
@@ -695,6 +695,10 @@ function movieActions(movie, version, trailer, refresh, box) {
   ];
 }
 
+// Imagem larga do destaque: na TV, 780 px de largura bastam (a tela tem zoom e o fundo fica escurecido);
+// a original chega a 3840 px e custava decodificar e desenhar na LG.
+const heroSrc = (src) => (TV.on ? String(src || '').replace(/(image\.tmdb\.org\/t\/p\/)(?:w1280|original)\//, '$1w780/') : src);
+
 function heroBase(item, section, ctx) {
   // Fundo: uma imagem só. Espera o detalhe (que pode trazer a imagem larga) e só então põe a larga ou a capa;
   // antes ia a capa e depois a larga por cima, duas imagens carregando.
@@ -703,7 +707,7 @@ function heroBase(item, section, ctx) {
   const setArt = (src, sharp) => {
     if (artSet || !src) return;
     artSet = true;
-    backdrop.replaceChildren(h('img', { src, alt: '', referrerpolicy: 'no-referrer' }));
+    backdrop.replaceChildren(h('img', { src: heroSrc(src), alt: '', referrerpolicy: 'no-referrer', decoding: 'async' }));
     backdrop.classList.toggle('sharp', sharp);
   };
   const settleArt = () => setArt(item.poster, false); // detalhe sem imagem larga (ou falhou): fica a capa
