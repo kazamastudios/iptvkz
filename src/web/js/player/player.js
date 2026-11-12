@@ -48,6 +48,10 @@ export function playerLibs() {
   return libsPromise;
 }
 
+// App Beta (build de teste): o servidor marca a página com html.beta
+const isBeta = () => document.documentElement.classList.contains('beta');
+const STATS_KEY = 'iptvkz.statsHud';
+
 // É a própria TV (sem tela de toque)? O app no celular também liga o modo TV, mas lá mandar para a TV faz sentido.
 const onRealTv = () => TV.on && !(navigator.maxTouchPoints > 0);
 
@@ -153,6 +157,9 @@ export class Player {
       this.toggleMenu('av');
     });
     this.btnPip = this._btn('pip', 'Picture-in-picture', () => this.togglePip());
+    // Beta: liga e desliga o painel de informações (quem toca, formato, FPS, quadros perdidos) no canto do vídeo
+    this.btnStats = this._btn('stats', 'Informações de reprodução (Beta)', () => this.toggleStats());
+    this.hud = h('div.stats-hud.hidden', h('div'), h('div'));
     // PC e celular: mandar o vídeo para uma TV da rede (Chromecast/Android TV pelo Cast, LG e outras pelo DLNA)
     this.btnCast = this._btn('cast', 'Assistir na TV', (e) => {
       e.stopPropagation();
@@ -191,7 +198,7 @@ export class Player {
     left.push(o.live ? h('span.badge.onair.live-badge', 'AO VIVO') : this.timeEl);
 
     // filmes e séries já abrem ocupando a tela: tela cheia só no ao vivo, que no PC toca numa janela ao lado da lista
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, isBeta() ? this.btnStats : null, onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
@@ -212,7 +219,7 @@ export class Player {
     // Internet lenta: aviso discreto no canto, para não parecer defeito do player. Some quando o vídeo volta a fluir.
     this.netTag = h('div.net-tag.hidden', h('i'), h('span', 'Internet lenta'));
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
-    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
+    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.hud, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
     this.host.append(this.root);
   }
 
@@ -330,6 +337,9 @@ export class Player {
     this._perfTimer = setInterval(() => this._samplePerf(), 1000);
     this._watchdog = setInterval(() => { this._checkStall(); this._checkImage(); this._checkSound(); }, 5000);
     this._showCtrl();
+    let keep = false;
+    try { keep = localStorage.getItem(STATS_KEY) === '1'; } catch {}
+    if (isBeta() && keep) this._applyStats(true);
   }
 
   // ---------- carregamento ----------
@@ -1371,7 +1381,6 @@ export class Player {
       }
     }
 
-    m.append(h('div.sep'), h('div.note.playing-info', `Reprodução: ${this._playingInfo()}`), h('div.note.playing-perf', this._perfInfo()));
   }
 
   // FPS real e quadros perdidos, medidos a cada segundo enquanto o vídeo anda. Funciona igual no navegador e no
@@ -1389,8 +1398,25 @@ export class Player {
     const fps = dt > 0 ? shown / dt : 0;
     // média curta: um segundo isolado oscila
     this.perf = { fps: this.perf ? this.perf.fps * 0.6 + fps * 0.4 : fps, total: q.totalVideoFrames, dropped: q.droppedVideoFrames };
-    const line = this.menu.querySelector('.playing-perf');
-    if (line) line.textContent = this._perfInfo();
+    this._renderHud();
+  }
+
+  toggleStats() {
+    const on = this.hud.classList.contains('hidden');
+    try { localStorage.setItem(STATS_KEY, on ? '1' : ''); } catch {}
+    this._applyStats(on);
+  }
+
+  _applyStats(on) {
+    this.hud.classList.toggle('hidden', !on);
+    this.btnStats.classList.toggle('on', on);
+    if (on) this._renderHud();
+  }
+
+  _renderHud() {
+    if (!this.hud || this.hud.classList.contains('hidden')) return;
+    this.hud.firstChild.textContent = `Reprodução: ${this._playingInfo()}`;
+    this.hud.lastChild.textContent = this._perfInfo();
   }
 
   _perfInfo() {
