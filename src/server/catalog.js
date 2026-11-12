@@ -376,11 +376,16 @@ async function buildFromXtream(list) {
       return [];
     }
   };
-  // Os 6 pedidos são independentes: em paralelo, a lista carrega no tempo do mais lento, não na soma de todos.
-  const [liveCats, liveStreams, vodCats, vodStreams, serCats, serList] = await Promise.all([
-    get('get_live_categories'), get('get_live_streams'), get('get_vod_categories'),
-    get('get_vod_streams'), get('get_series_categories'), get('get_series'),
-  ]);
+  // Os 6 pedidos são independentes. No PC saem em paralelo (a lista carrega no tempo do mais lento). Em aparelho
+  // com pouca memória (TV LG, TV Box) saem um de cada vez: as respostas grandes chegando juntas travavam a TV.
+  const actions = ['get_live_categories', 'get_live_streams', 'get_vod_categories', 'get_vod_streams', 'get_series_categories', 'get_series'];
+  let results;
+  if (require('os').totalmem() > 3 * 1024 ** 3) results = await Promise.all(actions.map(get));
+  else {
+    results = [];
+    for (const a of actions) results.push(await get(a));
+  }
+  const [liveCats, liveStreams, vodCats, vodStreams, serCats, serList] = results;
 
   const live = (Array.isArray(liveStreams) ? liveStreams : []).map((s) => ({
     id: 'l' + s.stream_id,
