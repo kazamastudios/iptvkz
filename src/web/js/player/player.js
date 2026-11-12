@@ -796,9 +796,9 @@ export class Player {
         if (this.destroyed) return;
         this.netTag.lastChild.textContent = offline ? 'Sem internet' : 'Internet lenta';
         this.netTag.classList.remove('hidden');
-      }, this.hadFrame ? 1500 : 6000);
+      }, this.hadFrame ? 4000 : 12000); // folga: travadinhas curtas e servidores lentos para abrir não são internet ruim
     } else if (!this.netTag.classList.contains('hidden')) {
-      this._netT = setTimeout(() => this.netTag.classList.add('hidden'), 6000);
+      this._netT = setTimeout(() => this.netTag.classList.add('hidden'), 3000);
     }
   }
 
@@ -1416,7 +1416,8 @@ export class Player {
         `reserva ${nf(ahead, 1)} s`, tone(ahead, 10, 3, true)],
     ];
     const lvl = this.hls && this.hls.levels && this.hls.levels[this.hls.currentLevel];
-    rows.push(['Rede', lvl ? `${lvl.height || '?'}p ${nf(lvl.bitrate / 1e6, 1)} Mbps${this.hls.autoLevelEnabled ? ' auto' : ''} · banda ${nf(this.hls.bandwidthEstimate / 1e6, 1)} Mbps` : `tentativas ${this.attempts || 0}${this.usingAlt ? ' · link alternativo' : ''}`, '',
+    const lvlTxt = lvl && (lvl.height || lvl.bitrate) ? `${lvl.height ? lvl.height + 'p ' : ''}${lvl.bitrate ? nf(lvl.bitrate / 1e6, 1) + ' Mbps' : ''}${this.hls.autoLevelEnabled ? ' auto' : ''} · ` : '';
+    rows.push(['Rede', this.hls ? `${lvlTxt}banda ${nf(this.hls.bandwidthEstimate / 1e6, 1)} Mbps` : `tentativas ${this.attempts || 0}${this.usingAlt ? ' · link alternativo' : ''}`, '',
       `travadas ${this.stalls || 0}`, tone(this.stalls || 0, 0, 2)]);
     // só o servidor e o tipo do arquivo: o endereço das listas leva usuário e senha
     try {

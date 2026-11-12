@@ -196,7 +196,7 @@ function isPlaying() {
   return isOverlayOpen() || (current && current.name === 'live' && !!parseHash().params.get('ch'));
 }
 
-const SLOW_NET_MS = 600;
+const SLOW_NET_MS = 1500; // a TV mede mais devagar que o PC; abaixo disso os vídeos rodam normal
 
 function statusModel() {
   const n = {
