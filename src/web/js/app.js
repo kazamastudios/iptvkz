@@ -735,6 +735,13 @@ function handleBack(e) {
     return true;
   }
   if (closeTopModal()) return true;
+  // canal ao vivo em tela cheia (app Android): Voltar só sai da tela cheia, e o celular volta a ficar em pé
+  // com a lista de canais embaixo
+  const fs = document.querySelector('.player.pseudo-fs');
+  if (fs && fs._player && fs._player.opts.live) {
+    fs._player.toggleFullscreen();
+    return true;
+  }
   if (overlayKey({ key: 'Escape', type: 'back' })) return true;
   if (current && current.key && current.key({ key: 'Escape', type: 'back', keyCode: e.keyCode })) return true;
   if (TV.on && e.key !== 'Escape') {

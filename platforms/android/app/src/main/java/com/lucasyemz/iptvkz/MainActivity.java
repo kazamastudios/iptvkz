@@ -28,7 +28,9 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
@@ -258,6 +260,34 @@ public class MainActivity extends Activity {
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    /**
+     * Vídeo deitado no celular: usa a tela inteira, sem a barra de navegação e também na área do recorte da câmera,
+     * para o vídeo ficar o maior possível sem cortar nada (ele continua inteiro, só ganha o espaço das barras).
+     * As barras voltam deslizando da borda. Ao sair, a barra de navegação volta.
+     */
+    @SuppressWarnings("deprecation")
+    private void immersive(boolean on) {
+        Window w = getWindow();
+        if (Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams lp = w.getAttributes();
+            lp.layoutInDisplayCutoutMode = on ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+            w.setAttributes(lp);
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController c = w.getInsetsController();
+            if (c == null) return;
+            if (on) {
+                c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                c.hide(WindowInsets.Type.navigationBars() | WindowInsets.Type.statusBars());
+            } else c.show(WindowInsets.Type.navigationBars());
+        } else {
+            w.getDecorView().setSystemUiVisibility(on
+                    ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    : View.SYSTEM_UI_FLAG_VISIBLE);
+        }
+    }
+
     private int baseOrientation() {
         if (isTv) return ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
         return getResources().getConfiguration().smallestScreenWidthDp >= 600
@@ -294,7 +324,11 @@ public class MainActivity extends Activity {
             // vídeo em tela cheia (filme, série, canal ampliado): deita a tela; ao sair, volta ao normal do aparelho
             @JavascriptInterface
             public void setVideoLandscape(boolean on) {
-                main.post(() -> setRequestedOrientation(on && !isTv ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : baseOrientation()));
+                main.post(() -> {
+                    if (isTv) return;
+                    setRequestedOrientation(on ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : baseOrientation());
+                    immersive(on);
+                });
             }
         }, "IPTVKZAndroid");
         video = new NativeVideo(this, root, web);

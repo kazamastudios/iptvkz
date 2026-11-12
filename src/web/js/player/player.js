@@ -220,6 +220,7 @@ export class Player {
     this.netTag = h('div.net-tag.hidden', h('i'), h('span', 'Internet lenta'));
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
     this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
+    this.root._player = this; // o Voltar do app acha o player em tela cheia por aqui
     if (!this.opts.live) videoLandscape(true); // filme e série: o player já abre deitado no celular
     this.host.append(this.root);
   }
