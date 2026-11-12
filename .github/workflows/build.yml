@@ -14,9 +14,43 @@ permissions:
   contents: write
 
 jobs:
+  # O que este PR mudou: cada job roda só quando os arquivos dele mudam (um PR só da landing page, em public/,
+  # não roda nada). Tag v* e o botão "Run workflow" rodam tudo. src/ é o app de todas as plataformas.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      test: ${{ steps.o.outputs.test }}
+      desktop: ${{ steps.o.outputs.desktop }}
+      webos: ${{ steps.o.outputs.webos }}
+      android: ${{ steps.o.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+      - uses: dorny/paths-filter@v3
+        id: f
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            app: ['src/**', 'package.json', 'package-lock.json', 'scripts/build-legacy.js', 'scripts/make-*', 'scripts/build-info.js', 'scripts/vendor.js', '.github/workflows/build.yml']
+            server: ['src/server/**', 'scripts/test-server.js', 'package.json', 'package-lock.json']
+            desktop: ['platforms/desktop/**', 'scripts/build-desktop.js', 'scripts/build-ffmpeg.sh', 'assets/brand/**']
+            webos: ['platforms/webos/**', 'scripts/build-ipk.js', 'scripts/check-webos.js', 'assets/brand/**', 'platforms/android/app/src/developer/res/values/update_key.xml']
+            android: ['platforms/android/**', 'scripts/build-android.js', 'assets/brand/**']
+      - id: o
+        run: |
+          all=${{ github.event_name != 'pull_request' }}
+          on() { if [ "$all" = true ] || [ "$1" = true ] || [ "$2" = true ]; then echo true; else echo false; fi; }
+          echo "test=$(on '${{ steps.f.outputs.server }}')" >> "$GITHUB_OUTPUT"
+          echo "desktop=$(on '${{ steps.f.outputs.app }}' '${{ steps.f.outputs.desktop }}')" >> "$GITHUB_OUTPUT"
+          echo "webos=$(on '${{ steps.f.outputs.app }}' '${{ steps.f.outputs.webos }}')" >> "$GITHUB_OUTPUT"
+          echo "android=$(on '${{ steps.f.outputs.app }}' '${{ steps.f.outputs.android }}')" >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
   # FFmpeg reduzido que vai dentro do app de PC (scripts/build-ffmpeg.sh): lê MKV/TS/AVI, copia o vídeo e converte
   # só o áudio (AC3, DTS...) para AAC. Licença LGPL, sem partes GPL. O Windows é compilado no Linux.
   ffmpeg:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -48,6 +82,8 @@ jobs:
 
   # Testes do servidor. Nenhum job depende deste: se falhar, avisa sem travar os instaladores.
   test:
+    needs: changes
+    if: needs.changes.outputs.test == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +98,8 @@ jobs:
       - run: npm test
 
   build:
-    needs: ffmpeg
+    needs: [changes, ffmpeg]
+    if: needs.changes.outputs.desktop == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -120,7 +157,9 @@ jobs:
     # - Developer (dist/webos): BUNDLE_VERSION cresce a cada build, como no Android; vai para a Release.
     # - Store (dist/webos/store): IPK da LG Content Store, sem atualização automática. Só artefato:
     #   o envio ao LG Seller Lounge é manual, e nada aqui publica na loja.
-    needs: build
+    # Espera os instaladores do PC (mesmo rascunho de Release), mas roda também quando eles não rodaram.
+    needs: [changes, build]
+    if: ${{ !cancelled() && needs.changes.outputs.webos == 'true' && needs.build.result != 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -179,8 +218,9 @@ jobs:
           retention-days: 30
 
   android:
-    # Depois dos instaladores, para anexar ao mesmo rascunho de Release.
-    needs: build
+    # Depois dos instaladores, para anexar ao mesmo rascunho de Release (roda também quando eles não rodaram).
+    needs: [changes, build]
+    if: ${{ !cancelled() && needs.changes.outputs.android == 'true' && needs.build.result != 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
