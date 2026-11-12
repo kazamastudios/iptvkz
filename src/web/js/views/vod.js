@@ -233,14 +233,16 @@ export function vodHome(section) {
     function renderContent() {
       if (cleanup) cleanup();
       content.scrollTop = 0;
-      // Streaming: o Início vira destaque + fileiras, sem a coluna de categorias (cada categoria já é uma fileira)
-      const stream = cat === 'home' && viewMode() === 'stream';
+      // Streaming: sem a coluna de categorias. O Início vira destaque + fileiras; o "Ver tudo" de uma fileira vira
+      // destaque (da própria categoria) + a grade só dela
+      const stream = viewMode() === 'stream';
       root.classList.toggle('stream', stream);
-      // a fileira em foco sobe até logo abaixo do destaque (folga do scroll-padding em .stream-scroll)
+      // na fileira em foco, ela sobe até logo abaixo do destaque (folga do scroll-padding em .stream-scroll)
       content.classList.toggle('stream-scroll', stream);
-      if (stream) content.dataset.reveal = 'start';
+      if (stream && cat === 'home') content.dataset.reveal = 'start';
       else delete content.dataset.reveal;
-      const view = stream ? streamHome(section, ctx, content) : cat === 'home' ? homeContent(section, ctx, content) : gridContent(section, cat, ctx, content);
+      const view = stream ? (cat === 'home' ? streamHome(section, ctx, content) : streamCategory(section, cat, ctx, content))
+        : cat === 'home' ? homeContent(section, ctx, content) : gridContent(section, cat, ctx, content);
       content.replaceChildren(view.el);
       cleanup = view.destroy;
     }
@@ -506,6 +508,18 @@ function streamHome(section, ctx, scroller) {
   return { el, destroy: () => { hero.destroy(); rows.destroy(); } };
 }
 
+// Streaming, "Ver tudo" de uma categoria: o destaque mostra o mais recente dela, e embaixo só a grade da categoria.
+function streamCategory(section, cat, ctx, scroller) {
+  const hero = streamHero(ctx);
+  const grid = gridContent(section, cat, ctx, scroller, { card: wideCardFor(hero) });
+  const items = cat === 'all' ? visibleItems(section) : cat === 'fav' ? favItems(section) : catItems(section, cat);
+  const first = [...items].sort((a, b) => (b.added || 0) - (a.added || 0))[0];
+  if (first) hero.show(first, section, true);
+  const el = h('div.stream-home.stream-cat', hero.el, grid.el);
+  wireStream(el, hero);
+  return { el, destroy: () => { hero.destroy(); if (grid.destroy) grid.destroy(); } };
+}
+
 function homeContent(section, ctx, scroller, { card = posterCard } = {}) {
   const sec = C()[section];
   const page = h('div.page');
@@ -591,7 +605,7 @@ function homeContent(section, ctx, scroller, { card = posterCard } = {}) {
   return { el: page, destroy: () => { io.disconnect(); moreIo.disconnect(); } };
 }
 
-function gridContent(section, cat, ctx, scroller) {
+function gridContent(section, cat, ctx, scroller, { card = posterCard } = {}) {
   const sec = C()[section];
   const name = cat === 'all' ? `Todos os ${cfg[section].many}` : cat === 'fav' ? 'Favoritos' : sec.catName.get(cat) || cfg[section].title;
   let sort = new URLSearchParams(location.hash.split('?')[1] || '').get('sort') || 'orig';
@@ -636,7 +650,7 @@ function gridContent(section, cat, ctx, scroller) {
     const arr = items();
     count.textContent = arr.length.toLocaleString('pt-BR');
     if (!arr.length) grid.append(h('div.empty', { style: { gridColumn: '1/-1' } }, cat === 'fav' ? 'Nenhum favorito ainda.' : 'Nada encontrado.'));
-    inc = windowed(grid, arr, (it) => posterCard(section, it, ctx), { root: scroller, batch: 60 });
+    inc = windowed(grid, arr, (it) => card(section, it, ctx), { root: scroller, batch: TV.on ? 30 : 60 });
   }
   fill();
   return { el: page, destroy: () => inc && inc.destroy() };
