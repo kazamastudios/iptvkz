@@ -892,6 +892,14 @@ debugSection('app', () => {
     const n = (x) => x.toLocaleString('pt-BR');
     rows.push(['Lista', `${(activeList() || {}).name || '—'} · ${n(c.live.items.length)} canais · ${n(c.movies.items.length)} filmes · ${n(c.series.items.length)} séries`, '',
       lastLoad ? `carregou em ${n(lastLoad.ms)} ms` : '', tone(lastLoad && lastLoad.ms, 3000, 10000)]);
+    // última vez que a lista veio do provedor: quanto levou o download e qual pedido foi o mais lento
+    const t = c.timing;
+    if (t && t.download != null) {
+      const sec = (ms) => `${(ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`;
+      const slow = Object.entries(t).filter(([k, v]) => typeof v === 'number' && !['total', 'download', 'login'].includes(k)).sort((a, b) => b[1] - a[1])[0];
+      rows.push(['Baixar lista', `${sec(t.download)} do provedor${t.parallel ? '' : ' (pouca memória: em partes)'}`, tone(t.download, 8000, 25000),
+        slow ? `mais lento: ${slow[0].replace(/_/g, ' ')} ${sec(slow[1])}` : '', tone(slow && slow[1], 5000, 15000)]);
+    }
   } else rows.push(['Lista', appState === 'loading' ? 'carregando...' : appState === 'error' ? 'erro ao carregar' : 'nenhuma', appState === 'error' ? 'bad' : '']);
   const nodes = document.getElementsByTagName('*').length;
   const imgs = [...document.images];

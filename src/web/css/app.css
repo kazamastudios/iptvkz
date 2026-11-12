@@ -1233,3 +1233,9 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
 .speed-row .good { color: var(--ok, #3ecf8e); } .speed-row .warn { color: var(--warn, #f5b642); } .speed-row .bad, .speed-box .bad { color: var(--bad, #ff6b6b); }
 /* "Adicionar lista" é um .list-card (sem sombra na TV): o foco vira borda e fundo, como o hover do PC */
 .tv .add-card.tv-focus, .kb-nav .add-card.tv-focus { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--text); }
+/* Textos longos sem espaço (caminho da pasta de dados, endereços): quebram em vez de alargar a tela do celular */
+.page code, .modal code, .speed-host, .list-card .ty { overflow-wrap: anywhere; }
+/* Celular: as abas do "Adicionar lista" quebram em duas linhas em vez de alargar a janela
+   (com a janela mais larga que a tela, ela deslizava para o lado quando o teclado abria) */
+.tabs { max-width: 100%; flex-wrap: wrap; }
+@media (max-width: 520px) { .tabs { border-radius: 16px; } .tabs button { padding: 8px 12px; } }

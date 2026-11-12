@@ -398,18 +398,24 @@ function num(v) {
 
 async function buildFromXtream(list) {
   const x = xtream(list);
+  const t0 = Date.now();
+  const timing = {}; // quanto levou cada pedido (aparece no modo de depuração)
   const auth = await x.api('');
+  timing.login = Date.now() - t0;
   if (!auth || !auth.user_info || Number(auth.user_info.auth) === 0) {
     throw new Error('Usuário ou senha inválidos (o servidor recusou o login).');
   }
   // Uma de cada vez: alivia aparelhos fracos e provedores que limitam conexões.
   // Seção indisponível fica vazia, mas prazo esgotado interrompe e mostra o erro.
   const get = async (action) => {
+    const t = Date.now();
     try {
       return await x.api(action);
     } catch (err) {
       if (err.timeout) throw err;
       return [];
+    } finally {
+      timing[action.replace(/^get_/, '')] = Date.now() - t;
     }
   };
   // Os 6 pedidos são independentes. No PC saem em paralelo (a lista carrega no tempo do mais lento). Em aparelho
@@ -418,9 +424,15 @@ async function buildFromXtream(list) {
   let results;
   if (require('os').totalmem() > 3 * 1024 ** 3) results = await Promise.all(actions.map(get));
   else {
-    results = [];
-    for (const a of actions) results.push(await get(a));
+    // pouca memória: as 3 listas de categorias (pequenas) juntas, e as 3 grandes uma de cada vez
+    const small = actions.filter((a) => a.endsWith('categories'));
+    const smallRes = await Promise.all(small.map(get));
+    const got = new Map(small.map((a, i) => [a, smallRes[i]]));
+    for (const a of actions) if (!got.has(a)) got.set(a, await get(a));
+    results = actions.map((a) => got.get(a));
   }
+  timing.download = Date.now() - t0;
+  timing.parallel = require('os').totalmem() > 3 * 1024 ** 3;
   const [liveCats, liveStreams, vodCats, vodStreams, serCats, serList] = results;
 
   const live = (Array.isArray(liveStreams) ? liveStreams : []).map((s) => ({
@@ -478,7 +490,9 @@ async function buildFromXtream(list) {
   const series = [...seriesMap.values()];
   for (const s of series) sortVersions(s.versions);
 
+  timing.total = Date.now() - t0;
   return {
+    timing,
     epgUrl: x.epg,
     live: { cats: cats(liveCats), items: live },
     movies: { cats: cats(vodCats), items: mergeMovies(movieRaw) },
