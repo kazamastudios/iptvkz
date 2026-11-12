@@ -144,9 +144,15 @@ async function relato(request, env) {
   return ok ? resposta(201, { ok: true }) : resposta(502, { erro: 'github' });
 }
 
+// Endereço curto para instalar na TV pelo app Downloader (Android TV, Fire TV, TV Box): quem digita
+// iptvkz.kazamastudios.com.br/apk baixa o APK da última versão publicada.
+const APK_URL = `https://github.com/${REPO}/releases/latest/download/IPTVKZ-android.apk`;
+
 export default {
   fetch(request, env) {
-    if (new URL(request.url).pathname === '/api/relato') return relato(request, env);
+    const path = new URL(request.url).pathname.replace(/\/+$/, '').toLowerCase();
+    if (path === '/api/relato') return relato(request, env);
+    if (path === '/apk') return Response.redirect(APK_URL, 302);
     return env.ASSETS.fetch(request);
   },
 };
