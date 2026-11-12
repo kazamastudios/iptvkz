@@ -7,7 +7,11 @@ export const VIEW_MODES = [
   { id: 'stream', label: 'Streaming', icon: 'viewStream' },
 ];
 
+// Celular (tela estreita, fora da TV): só a Clássica. A Streaming não funcionava bem em tela pequena.
+const phone = () => !document.documentElement.classList.contains('tv-wide') && window.matchMedia('(max-width: 760px)').matches;
+
 export function viewMode() {
+  if (phone()) return 'classic';
   try {
     const v = localStorage.getItem(KEY);
     return VIEW_MODES.some((m) => m.id === v) ? v : 'classic';

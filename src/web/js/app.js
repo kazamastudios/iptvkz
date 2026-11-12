@@ -61,6 +61,7 @@ const ctx = {
   back(fallback) {
     if (history.length > 1) {
       restoreNext = true;
+      backing = true; // conta como volta, não como tela nova (Voltar do celular)
       history.back();
     } else location.hash = fallback;
   },
@@ -746,8 +747,38 @@ function handleBack(e) {
     confirmDialog('Sair do IPTVKZ?', 'O aplicativo será fechado nesta TV.', 'Sair').then((yes) => { if (yes) { flushSaves(); exitApp(); } });
     return true;
   }
+  // App Android no celular: Voltar refaz o caminho de telas; sem nada para voltar, um segundo Voltar fecha o app
+  // (como nos apps Android)
+  if (window.IPTVKZAndroid && e.key !== 'Escape') {
+    if (navDepth > 0) {
+      backing = true;
+      restoreNext = true;
+      history.back();
+      return true;
+    }
+    if (!TOP_LEVEL.has(parseHash().name)) {
+      location.hash = '#/';
+      return true;
+    }
+    if (Date.now() - exitArmed < 2500) {
+      flushSaves();
+      exitApp();
+      return true;
+    }
+    exitArmed = Date.now();
+    toast('Toque em Voltar de novo para sair', 'info', 2500);
+    return true;
+  }
   return false;
 }
+
+// Quantas telas dá para voltar (para o Voltar do celular saber quando não há mais para onde ir)
+let navDepth = 0;
+let backing = false;
+let exitArmed = 0;
+window.addEventListener('hashchange', () => {
+  if (backing) { backing = false; navDepth = Math.max(0, navDepth - 1); } else navDepth++;
+});
 
 document.addEventListener('keydown', (e) => {
   const ev = { key: normKey(e), keyCode: e.keyCode, type: e.type };

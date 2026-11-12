@@ -18,6 +18,8 @@
         var q = /[?&]tv=([^&]*)/.exec(location.search);
         var s = q ? (q[1] === '0' ? '0' : '1') : localStorage.getItem('iptvkz.tv') || localStorage.getItem('minhatv.tv');
         var tv = s != null ? s === '1' : /web0s|webos|smart-?tv|netcast|tizen|hbbtv|appletv|crkey|aft[a-z]/i.test(navigator.userAgent);
+        // app Android no celular: a abertura usa as mesmas medidas da abertura nativa (como na TV)
+        if (/IPTVKZ-Android/.test(navigator.userAgent)) document.documentElement.className += ' app-android';
         if (tv) {
           document.documentElement.className += ' tv';
           // mesmo zoom de js/tv.js (applyTv): sem isso a abertura mudava de tamanho quando o app carregava

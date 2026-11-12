@@ -415,7 +415,8 @@ input, select, textarea { font: inherit; color: inherit; }
 /* Android, player nativo: o vídeo é desenhado atrás da página; ela fica transparente na área do player. */
 .exo-hole { background: transparent !important; background-image: none !important; }
 .exo-under { visibility: hidden !important; }
-.player.native-video video { visibility: hidden; }
+/* invisível mas tocável: o toque no vídeo mostra e esconde os controles (com visibility: hidden ele não recebia toques) */
+.player.native-video video { opacity: 0; }
 .player.pseudo-fs { position: fixed; z-index: 9000; }
 /* "Internet lenta" no canto de cima à direita: aparece mesmo com os controles escondidos */
 .player .net-tag { position: absolute; top: 18px; right: 18px; z-index: 6; display: flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px; background: rgba(0, 0, 0, .66); border: 1px solid rgba(255, 181, 71, .45); color: #ffd38a; font-size: 13px; font-weight: 600; pointer-events: none; transition: opacity .3s; }
@@ -1004,20 +1005,20 @@ input, select, textarea { font: inherit; color: inherit; }
 /* splash na TV: fundo fixo (camadas grandes em movimento travam), só a barra e o fade animam */
 .tv .sp-glow { animation: none; will-change: auto; }
 .tv .sp-sweep { display: none; }
-.tv #splash { background: radial-gradient(ellipse at 20% 0%, rgb(var(--splash-1)) 0%, rgba(var(--splash-1), 0) 60%), radial-gradient(ellipse at 90% 100%, rgb(var(--splash-2)) 0%, rgba(var(--splash-2), 0) 55%), #060609; }
+.tv #splash, .app-android #splash { background: radial-gradient(ellipse at 20% 0%, rgb(var(--splash-1)) 0%, rgba(var(--splash-1), 0) 60%), radial-gradient(ellipse at 90% 100%, rgb(var(--splash-2)) 0%, rgba(var(--splash-2), 0) 55%), #060609; }
 .tv #splash { transition: opacity .7s ease; will-change: opacity; }
-.tv .sp-glow { display: none; }
+.tv .sp-glow, .app-android .sp-glow { display: none; }
 .tv .sp-bar i { will-change: transform; }
 /* Abertura igual em toda TV (LG, Android TV) e igual às aberturas nativas (platforms/webos/index.html e
    MainActivity.createSplash): medidas em fração da largura da tela, a referência é 1920px. O zoom do app
    multiplica até o vw, por isso a divisão por --tvz. */
-.tv .sp-logo { width: calc(39.375vw / var(--tvz, 1)); max-width: none; min-width: 0; }
-.tv .sp-bar { width: calc(25vw / var(--tvz, 1)); height: calc(.3125vw / var(--tvz, 1)); margin-top: calc(2.5vw / var(--tvz, 1)); border-radius: calc(.3125vw / var(--tvz, 1)); background: rgba(255, 255, 255, .14); }
+.tv .sp-logo, .app-android .sp-logo { width: calc(39.375vw / var(--tvz, 1)); max-width: none; min-width: 0; }
+.tv .sp-bar, .app-android .sp-bar { width: calc(25vw / var(--tvz, 1)); height: calc(.3125vw / var(--tvz, 1)); margin-top: calc(2.5vw / var(--tvz, 1)); border-radius: calc(.3125vw / var(--tvz, 1)); background: rgba(255, 255, 255, .14); }
 /* as aberturas nativas da LG e do Android terminam com a barra cheia e "Abrindo": esta começa igual, parada */
-.tv .sp-bar i { width: 100%; border-radius: inherit; animation: none; transform: none; }
+.tv .sp-bar i, .app-android .sp-bar i { width: 100%; border-radius: inherit; animation: none; transform: none; }
 .sp-msg { display: none; }
-.tv .sp-msg { display: block; height: calc(2.083vw / var(--tvz, 1)); margin-top: calc(1.146vw / var(--tvz, 1)); font-size: calc(1.458vw / var(--tvz, 1)); line-height: 1.4; color: #c9c9d8; }
-.tv #splash::before { content: ""; height: calc(3.229vw / var(--tvz, 1)); } /* equilibra o texto: logo e barra no centro */
+.tv .sp-msg, .app-android .sp-msg { display: block; height: calc(2.083vw / var(--tvz, 1)); margin-top: calc(1.146vw / var(--tvz, 1)); font-size: calc(1.458vw / var(--tvz, 1)); line-height: 1.4; color: #c9c9d8; }
+.tv #splash::before, .app-android #splash::before { content: ""; height: calc(3.229vw / var(--tvz, 1)); } /* equilibra o texto: logo e barra no centro */
 
 /* ---------- destaque do controle remoto (não depende do :focus) ---------- */
 .tv .tv-focus { outline: none; box-shadow: 0 0 0 3px var(--accent); }
@@ -1119,7 +1120,7 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
 .tv .poster .thumb img:not(#splash) { transition: transform .22s ease-out !important; } /* :not(#splash) para pesar mais que a regra geral */
 .tv .poster:focus .thumb img, .tv .poster.tv-focus .thumb img { transform: scale(1.07); }
 .tv .ch-card:focus, .tv .ch-card.tv-focus { transform: none; box-shadow: none; }
-.tv .sp-logo { animation: none; }
+.tv .sp-logo, .app-android .sp-logo { animation: none; }
 .tv #splash { transition: opacity .35s linear; }
 
 /* volume fica no controle da TV; a barrinha só prenderia as setas */
@@ -1139,8 +1140,24 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
   html:not(.tv-wide) .nav a, html:not(.tv-wide) .sidebar-foot a { flex: none; width: 40px; height: 44px; padding: 0; justify-content: center; }
   html:not(.tv-wide) .sidebar-foot { flex-direction: row; margin: 0; flex: none; gap: 0; }
   html:not(.tv-wide) .sidebar-foot .status, html:not(.tv-wide) .build-tag { display: none; }
-  html:not(.tv-wide) .list-switch { order: 3; flex: none; margin: 0; }
-  html:not(.tv-wide) .list-btn { width: 40px; height: 44px; padding: 0; justify-content: center; background: none; border: 0; }
+  html:not(.tv-wide) .view-switch { display: none; } /* celular: só a visualização Clássica */
+  /* botão da lista no centro da barra, em destaque e com o nome da lista em uso (4 ícones de cada lado) */
+  html:not(.tv-wide) .sidebar { justify-content: space-around; }
+  html:not(.tv-wide) .nav { display: contents; }
+  html:not(.tv-wide) .nav a:nth-child(-n+4) { order: 1; }
+  html:not(.tv-wide) .list-switch { order: 2; flex: none; margin: 0 2px; }
+  html:not(.tv-wide) .nav a:nth-child(n+5) { order: 3; }
+  html:not(.tv-wide) .sidebar-foot { order: 4; }
+  html:not(.tv-wide) .list-btn { width: 64px; height: 50px; padding: 4px 4px 3px; flex-direction: column; justify-content: center; gap: 1px; background: var(--accent); color: var(--on-accent); border: 0; border-radius: 16px; }
+  html:not(.tv-wide) .list-btn > .ico:first-child { width: 20px; height: 20px; color: var(--on-accent); background: none; }
+  html:not(.tv-wide) .list-btn .meta { display: block; flex: none; width: 100%; text-align: center; }
+  html:not(.tv-wide) .list-btn .name { font-size: 10px; line-height: 1.2; font-weight: 700; }
+  html:not(.tv-wide) .list-btn .sub { display: none; }
+  @media (max-width: 400px) {
+    /* celular estreito: os 9 ícones e o botão da lista cabem sem rolar a barra */
+    html:not(.tv-wide) .nav a, html:not(.tv-wide) .sidebar-foot a { width: 32px; }
+    html:not(.tv-wide) .list-btn { width: 58px; }
+  }
   html:not(.tv-wide) .list-menu { position: fixed; top: auto; left: 8px; right: 8px; bottom: 64px; width: auto; max-height: 60vh; overflow: auto; }
 
   html:not(.tv-wide) .topbar { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
@@ -1155,6 +1172,21 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
   html:not(.tv-wide) .guide-bar { padding: 0 14px 10px; }
   html:not(.tv-wide) .guide-bar select { width: 100%; }
   html:not(.tv-wide) .guide-scroll { margin-left: 0; }
+  @media (max-width: 520px) {
+  /* guia no celular em pé: coluna de canais estreita (logo e nome pequeno embaixo), linhas mais baixas;
+     a largura (76px) e a escala de tempo batem com compactGuide() em views/guide.js */
+  html:not(.tv-wide) .g-corner, html:not(.tv-wide) .g-ch { width: 76px; }
+  html:not(.tv-wide) .g-ch { flex-direction: column; justify-content: center; gap: 3px; padding: 4px; }
+  html:not(.tv-wide) .g-ch .thumb { width: 44px; height: 26px; }
+  html:not(.tv-wide) .g-ch .name { font-size: 10px; max-width: 100%; text-align: center; }
+  html:not(.tv-wide) .g-row { height: 54px; }
+  html:not(.tv-wide) .g-prog { top: 4px; bottom: 4px; padding: 5px 7px; border-radius: 6px; }
+  html:not(.tv-wide) .g-prog .t { font-size: 12px; }
+  html:not(.tv-wide) .g-prog .h { font-size: 10px; }
+  html:not(.tv-wide) .g-times, html:not(.tv-wide) .g-time { height: 30px; }
+  html:not(.tv-wide) .g-time { font-size: 11px; padding-left: 5px; }
+  html:not(.tv-wide) .guide-bar { gap: 8px; padding: 0 10px 8px; }
+  }
 
   /* categorias viram uma faixa rolável acima do conteúdo */
   html:not(.tv-wide) .live, html:not(.tv-wide) .live.vod-browse { display: flex; flex-direction: column; }
