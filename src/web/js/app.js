@@ -485,8 +485,10 @@ function route() {
   }
   current = { name, ...res };
   view.classList.toggle('no-scroll', !!res.noScroll);
+  // volta ao topo antes de trocar o conteúdo: depois, ler/mudar a rolagem obrigaria a TV a calcular o layout
+  // da tela nova na hora (era ~80 ms na LG)
+  if (view.scrollTop) view.scrollTop = 0;
   view.replaceChildren(res.el);
-  view.scrollTop = 0;
   // voltando: a tela reaparece onde estava, em qualquer plataforma
   const mem = goingBack && focusMemory.get(location.hash);
   if (mem) setTimeout(() => restoreFocus(mem), 30);

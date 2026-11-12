@@ -81,6 +81,20 @@ export function posterCard(section, item, ctx, { where = false, onOpen = null, w
 //   celular, OK no controle da TV (são botões comuns, alcançáveis pelo foco);
 // - no PC, também as setas redondas que aparecem nas laterais ao passar o mouse e o arrastar com o mouse.
 // Tudo desliza pelo mesmo motor (glideTo), com a mesma curva do foco da TV.
+// Medidas das setas das fileiras em lote: primeiro todas leem, depois todas mudam (um layout só por quadro).
+const syncQueue = [];
+let syncRaf = 0;
+function queueSync(measure, apply) {
+  syncQueue.push([measure, apply]);
+  if (syncRaf) return;
+  syncRaf = requestAnimationFrame(() => {
+    syncRaf = 0;
+    const jobs = syncQueue.splice(0);
+    const ms = jobs.map(([m]) => m());
+    jobs.forEach(([, a], i) => a(ms[i]));
+  });
+}
+
 export function rowControls(row) {
   let anim = 0; // embalo do arraste
   const maxLeft = () => row.scrollWidth - row.clientWidth;
@@ -98,20 +112,20 @@ export function rowControls(row) {
     return b;
   };
   // na ponta, a seta apaga (sem "disabled": na TV o foco não pode sumir debaixo do controle)
-  const sync = () => {
-    if (!row.clientWidth) return; // fileira ainda não montada (fora da tela): sem medidas confiáveis
-    const x = glideTarget(row).x;
-    for (const [b, dir] of btns) b.classList.toggle('off', dir < 0 ? x <= 4 : x >= maxLeft() - 4);
-  };
+  // medir e depois mudar, nunca intercalado: ler a largura logo após mexer na página obriga a TV a refazer
+  // o layout inteiro (era um refazer por fileira ao abrir Filmes e Séries)
+  const measure = () => (row.clientWidth ? { x: glideTarget(row).x, max: maxLeft() } : null); // fora da tela: sem medidas
+  const apply = (m) => { if (m) for (const [b, dir] of btns) b.classList.toggle('off', dir < 0 ? m.x <= 4 : m.x >= m.max - 4); };
+  const sync = () => apply(measure());
   row.addEventListener('scroll', debounce(sync, 60), { passive: true });
   const pager = h('div.shelf-pager', btn('pager-btn', -1), btn('pager-btn', 1));
   // controle: com o gesto ↑ ↓ ↑ numa capa, o foco vai ao título desta fileira ("Ver tudo" e setas)
   row.dataset.up = '.shelf-head a[href], .shelf-pager .pager-btn';
+  queueSync(measure, apply); // todas as fileiras da tela medem juntas, no próximo quadro
   setTimeout(() => {
-    sync();
     // fileiras fora da tela só são montadas quando chegam perto: aí as setas recalculam
     const shelf = row.closest('.shelf');
-    if (shelf) shelf.addEventListener('contentvisibilityautostatechange', (e) => { if (!e.skipped) sync(); });
+    if (shelf) shelf.addEventListener('contentvisibilityautostatechange', (e) => { if (!e.skipped) queueSync(measure, apply); });
   }, 0);
 
   if (TV.on) return { body: row, pager, sync };
@@ -567,11 +581,12 @@ function homeContent(section, ctx, scroller, { card = posterCard } = {}) {
     if (!entries.some((e) => e.isIntersecting)) return;
     // observa de novo: se o marcador continuar perto da tela, o aviso volta e entram mais fileiras
     moreIo.unobserve(sentinel);
-    addShelves(6);
+    addShelves(TV.on ? 3 : 6);
     if (next < cats.length) moreIo.observe(sentinel);
   }, { root: scroller, rootMargin: '1200px' });
   page.append(sentinel);
-  addShelves(8);
+  // na TV, menos de cada vez: montar e desenhar 8 fileiras de capas juntas travava a troca de tela por ~0,8 s
+  addShelves(TV.on ? 3 : 8);
   if (next < cats.length) moreIo.observe(sentinel);
   return { el: page, destroy: () => { io.disconnect(); moreIo.disconnect(); } };
 }
