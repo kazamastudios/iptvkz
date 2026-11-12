@@ -1207,6 +1207,13 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
   html:not(.tv-wide) .ch-head { padding: 0 14px 10px; }
   html:not(.tv-wide) .ch-head .filter, html:not(.tv-wide) .grid-head .filter { width: 100% !important; order: 3; }
   html:not(.tv-wide) .grid-head { flex-wrap: wrap; }
+  /* Fileiras (Filmes e Séries): o título fica sozinho em cima, inteiro (até 2 linhas), e o número, o "Ver tudo"
+     e as setas vão para baixo da fileira. Na linha de cima com tudo junto, "LANÇAMENTOS 2026" virava "LANÇ…" */
+  html:not(.tv-wide) .shelf { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; }
+  html:not(.tv-wide) .shelf-head { display: contents; }
+  html:not(.tv-wide) .shelf-head h3 { order: 0; flex: 1 0 100%; margin-bottom: 8px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  html:not(.tv-wide) .shelf > .shelf-body, html:not(.tv-wide) .shelf > .shelf-row { order: 1; flex: 1 0 100%; min-width: 0; }
+  html:not(.tv-wide) .shelf-head > :not(h3) { order: 2; margin-top: 6px; }
   /* ordem do Ver tudo: os botões rolam de lado dentro da fileira (a página não), como a faixa de categorias */
   html:not(.tv-wide) .sort-chips { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   html:not(.tv-wide) .sort-chips::-webkit-scrollbar { display: none; }
