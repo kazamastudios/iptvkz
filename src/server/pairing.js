@@ -4,6 +4,8 @@
 const crypto = require('crypto');
 const net = require('./network');
 const backup = require('./backup');
+const store = require('./store');
+const catalogs = require('./catalog');
 
 const TTL = 15 * 60 * 1000;
 const MAX_BODY = 60 * 1024 * 1024; // o backup pode trazer arquivos .m3u inteiros
@@ -22,12 +24,13 @@ function current(token) {
 
 // address: informado pelo app nativo onde o Node não pode listar as redes (Android 11+).
 // list: a chave aberta para "Baixar lista no celular" só entrega essa lista, e nenhuma outra.
-function begin(port, address, list) {
+// mode 'edit': o celular edita essa lista (dados, servidores, atualizar, excluir); a TV aplica cada pedido.
+function begin(port, address, list, mode) {
   if (!enabled) return { available: false };
   const given = /^\d+\.\d+\.\d+\.\d+$/.test(address || '') && net.isPrivate(address) && !net.isLoopback(address);
   const addr = given ? { address } : net.lanAddresses().find((a) => !a.virtual);
   if (!addr) return { available: false };
-  session = { token: crypto.randomBytes(16).toString('hex'), expires: Date.now() + TTL, received: null, used: false, list: typeof list === 'string' ? list : null };
+  session = { token: crypto.randomBytes(16).toString('hex'), expires: Date.now() + TTL, received: null, used: false, list: typeof list === 'string' ? list : null, mode: mode === 'edit' && typeof list === 'string' ? 'edit' : null };
   return { available: true, token: session.token, url: `http://${addr.address}:${port}/pair/${session.token}` };
 }
 
@@ -35,6 +38,13 @@ function begin(port, address, list) {
 function status(token) {
   const s = current(token);
   if (!s || !s.received) return { list: null, downloaded: !!(s && s.downloaded) };
+  if (s.received.edit) {
+    // edição: entrega o pedido e a chave continua valendo para os próximos (menos depois de excluir)
+    const e = s.received.edit;
+    s.received = null;
+    if (e.action === 'delete') session = null;
+    return { edit: e };
+  }
   if (s.received.backup) return { restore: backup.summary(s.received.backup) };
   const list = s.received;
   session = null;
@@ -51,6 +61,16 @@ function takeRestore(token) {
 
 function end(token) {
   if (current(token)) session = null;
+}
+
+function cleanEdit(f) {
+  const text = (v) => String(v == null ? '' : v).trim().slice(0, MAX_FIELD);
+  f = f && typeof f === 'object' ? f : {};
+  return {
+    name: text(f.name), server: text(f.server), username: text(f.username), url: text(f.url), epgUrl: text(f.epgUrl),
+    servers: (Array.isArray(f.servers) ? f.servers : []).slice(0, 30).map(text).filter(Boolean),
+    password: String(f.password == null ? '' : f.password).slice(0, MAX_FIELD),
+  };
 }
 
 function clean(body) {
@@ -134,6 +154,63 @@ $('berr').textContent=r.status===410?'Este código expirou. Escaneie o novo QR C
 .catch(function(){$('berr').textContent='Não foi possível falar com a TV. Confira se o celular está no mesmo Wi-Fi.';$('rb').disabled=false})});
 </script></body></html>`;
 
+const STYLE = FORM.match(/<style>[\s\S]*?<\/style>/)[0];
+
+const EDIT_FORM = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Editar lista · IPTVKZ</title>${STYLE}<style>
+.rows{display:grid;gap:8px;margin-bottom:14px}.srow{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:#14141d;border:1px solid #33334a}
+.srow.on{border-color:#ff2a2a}.srow .h{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.tag{font-size:11px;padding:2px 6px;border-radius:6px;background:#ff2a2a;color:#fff}.ms{font-size:13px}.good{color:#3ecf8e}.warn{color:#f5b642}.bad{color:#ff8a8a}
+.sm{height:34px;padding:0 10px;border-radius:8px;border:1px solid #44445e;background:#1c1c28;color:#fff;font:14px system-ui}
+.bar{position:sticky;bottom:0;background:#08080b;padding:12px 0 4px}.acts{display:flex;gap:8px;margin:6px 0 18px}.acts .sm{flex:1;height:44px}.danger{border-color:#7a2a2a;color:#ff8a8a}
+#ok{color:#3ecf8e;font-size:14px;min-height:20px;margin-bottom:8px}
+</style></head><body><main>
+<div id="done" class="hidden"><h1>Pronto!</h1><p id="donetext"></p></div>
+<div id="main">
+<h1>Editar lista</h1><p id="sub">Carregando...</p>
+<div class="tabs" id="tabs"><button type="button" id="t1" class="on">Dados</button><button type="button" id="t2">Servidores</button></div>
+<div id="p1">
+<label for="n">Nome</label><input id="n" autocomplete="off">
+<div id="xt"><label for="u">Usuário</label><input id="u" autocomplete="off" autocapitalize="none"><label for="w">Senha</label><input id="w" type="password" autocomplete="off"></div>
+<div id="mu" class="hidden"><label for="l">Link da lista</label><input id="l" autocomplete="off" autocapitalize="none" inputmode="url"></div>
+<label for="g">Guia de programação (EPG), opcional</label><input id="g" autocomplete="off" autocapitalize="none" inputmode="url" placeholder="Vazio: usa o guia da lista">
+<h2>Ações</h2><div class="acts"><button type="button" class="sm" id="ra">Atualizar lista</button><button type="button" class="sm danger" id="da">Excluir lista</button></div>
+</div>
+<div id="p2" class="hidden">
+<p>Mesmo usuário e senha. O primeiro é o que está em uso; se ele cair, o app usa o próximo.</p>
+<div class="rows" id="rows"></div>
+<label for="ns">Adicionar servidor</label><textarea id="ns" rows="2" autocapitalize="none" placeholder="Pode colar vários de uma vez"></textarea>
+<div class="acts"><button type="button" class="sm" id="ad">Adicionar</button><button type="button" class="sm" id="te">Testar servidores</button></div>
+</div>
+<div class="bar"><div id="err"></div><div id="ok"></div><button class="send" id="sv" type="button">Salvar na TV</button></div>
+</div></main>
+<script>
+var $=function(i){return document.getElementById(i)},base=location.pathname.replace(/\\/$/,''),L=null,srv=[],res={};
+function tab(n){$('t1').className=n===1?'on':'';$('t2').className=n===2?'on':'';$('p1').className=n===1?'':'hidden';$('p2').className=n===2?'':'hidden'}
+$('t1').onclick=function(){tab(1)};$('t2').onclick=function(){tab(2)};
+function short(s){return String(s).replace(/^https?:\\/\\//,'')}
+function rows(){var b=$('rows');b.innerHTML='';srv.forEach(function(s,i){var r=res[s],d=document.createElement('div');d.className='srow'+(i===0?' on':'');
+var h=document.createElement('span');h.className='h';h.textContent=short(s);d.appendChild(h);
+if(i===0){var t=document.createElement('span');t.className='tag';t.textContent='EM USO';d.appendChild(t)}
+if(r){var m=document.createElement('span');m.className='ms '+(r.ms==null?'bad':r.ms<800?'good':r.ms<2000?'warn':'bad');m.textContent=r.ms==null?(r.state==='offline'?'fora do ar':'recusou'):r.ms+' ms';d.appendChild(m)}
+if(i>0){var u=document.createElement('button');u.type='button';u.className='sm';u.textContent='Usar';u.onclick=function(){srv.splice(i,1);srv.unshift(s);rows()};d.appendChild(u);
+var x=document.createElement('button');x.type='button';x.className='sm danger';x.textContent='Tirar';x.onclick=function(){srv.splice(i,1);rows()};d.appendChild(x)}
+b.appendChild(d)})}
+function post(sub,obj){return fetch(base+(sub?'/'+sub:''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)}).then(function(r){if(r.status===410)throw new Error('Este código expirou. Abra o QR Code de novo na TV.');if(!r.ok)throw new Error('Não deu certo. Tente de novo.');return r.json().catch(function(){return {}})})}
+function msg(e,o){$('err').textContent=e||'';$('ok').textContent=o||''}
+function fail(e){msg(e&&e.message&&e.message.indexOf('fetch')<0?e.message:'Não foi possível falar com a TV. Confira se o celular está no mesmo Wi-Fi.')}
+fetch(base+'/dados').then(function(r){if(!r.ok)throw new Error('Este código expirou. Abra o QR Code de novo na TV.');return r.json()}).then(function(d){L=d;
+$('sub').textContent='As mudanças vão direto para a TV, pela rede de casa.';$('n').value=d.name||'';$('g').value=d.epgUrl||'';
+if(d.type==='xtream'){$('u').value=d.username||'';$('w').value=d.password||'';srv=[d.server].concat(d.servers||[]);rows()}
+else{$('xt').className='hidden';$('tabs').className='hidden';if(d.source!=='file'){$('mu').className='';$('l').value=d.url||''}}
+}).catch(fail);
+$('ad').onclick=function(){$('ns').value.split(/[\\s,;|]+/).filter(Boolean).forEach(function(s){if(srv.indexOf(s)<0)srv.push(s)});$('ns').value='';rows()};
+$('te').onclick=function(){if(!srv.length)return;msg('','Testando um servidor de cada vez...');$('te').disabled=true;post('teste',{servers:srv}).then(function(r){res={};srv=r.results.map(function(x){res[x.server]=x;return x.server});rows();msg('','Teste pronto.')}).catch(fail).then(function(){$('te').disabled=false})};
+$('sv').onclick=function(){if(!L)return;$('sv').disabled=true;msg();
+post('',{edit:{action:'save',fields:{name:$('n').value,server:srv[0]||'',servers:srv.slice(1),username:$('u').value,password:$('w').value,url:$('l').value,epgUrl:$('g').value}}}).then(function(){msg('','Salvo na TV.')}).catch(fail).then(function(){$('sv').disabled=false})};
+$('ra').onclick=function(){post('',{edit:{action:'refresh'}}).then(function(){msg('','A TV está atualizando a lista.')}).catch(fail)};
+$('da').onclick=function(){if(!confirm('Excluir esta lista da TV? Favoritos e progresso dela também serão apagados.'))return;post('',{edit:{action:'delete'}}).then(function(){$('main').className='hidden';$('donetext').textContent='A lista foi excluída da TV.';$('done').className=''}).catch(fail)};
+</script></body></html>`;
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const parts = [];
@@ -161,6 +238,33 @@ function sendList(res, s, listId) {
   res.end(JSON.stringify(data));
 }
 
+// Edição pelo celular: a página, os dados da lista, o teste de servidores e os pedidos (salvar, atualizar, excluir).
+function handleEdit(req, res, s, sub, json) {
+  const list = store.getList(s.list);
+  if (!list) { res.writeHead(410, HEADERS); return res.end(EXPIRED); }
+  if (req.method === 'GET') {
+    if (sub === 'dados') {
+      const { name, type, source, server, servers, username, password, url, epgUrl } = list;
+      return json(200, { name, type, source, server, servers: servers || [], username, password, url, epgUrl });
+    }
+    res.writeHead(200, HEADERS);
+    return res.end(EDIT_FORM);
+  }
+  if (req.method !== 'POST') { res.writeHead(405, HEADERS); return res.end(); }
+  return readBody(req).then(async (text) => {
+    const body = JSON.parse(text || '{}');
+    if (sub === 'teste') {
+      const all = (Array.isArray(body.servers) ? body.servers : []).slice(0, 30).map((x) => String(x || '').trim()).filter(Boolean);
+      if (!all.length || list.type !== 'xtream') return json(400, { error: 'Sem servidores para testar.' });
+      return json(200, await catalogs.speedTest({ server: all[0], servers: all.slice(1), username: list.username, password: list.password }));
+    }
+    const e = body && body.edit;
+    if (!e || !['save', 'refresh', 'delete'].includes(e.action)) return json(400, { error: 'Pedido inválido.' });
+    s.received = { edit: { id: s.list, action: e.action, fields: e.action === 'save' ? cleanEdit(e.fields) : null } };
+    return json(200, { ok: true });
+  }).catch(() => json(400, { error: 'Pedido inválido.' }));
+}
+
 // Só vale com o pareamento ligado e de endereços da rede de casa (conferido por quem chama).
 function handle(req, res, url) {
   const [token, sub = ''] = url.pathname.slice('/pair/'.length).split('/');
@@ -169,6 +273,8 @@ function handle(req, res, url) {
     res.writeHead(410, HEADERS);
     return res.end(EXPIRED);
   }
+  const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
+  if (s.mode === 'edit') return handleEdit(req, res, s, sub, json);
   if (req.method === 'GET') {
     if (sub === 'arquivo') return sendList(res, s, url.searchParams.get('lista'));
     res.writeHead(200, HEADERS);
@@ -178,7 +284,6 @@ function handle(req, res, url) {
     res.writeHead(405, HEADERS);
     return res.end();
   }
-  const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
   return readBody(req).then((text) => {
     const body = JSON.parse(text);
     if (body && body.app === 'iptvkz') {

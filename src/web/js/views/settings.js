@@ -9,7 +9,7 @@ import {
 import { pinDialog } from './pin.js';
 import { TV, setTvMode, exitApp, focusEl } from '../tv/tv.js';
 import { showTermsDialog } from './terms.js';
-import { openListSave, downloadList, openServers } from './lists.js';
+import { openListSave, downloadList, openServers, canPhoneEdit } from './lists.js';
 
 const TYPE = { xtream: 'Xtream Codes', url: 'Link M3U', file: 'Arquivo M3U' };
 
@@ -53,6 +53,7 @@ export function settingsView(params, ctx) {
         h('button.btn.small', { onclick: () => ctx.refreshList(l.id) }, ico('refresh'), 'Atualizar'),
         h('button.btn.small', { onclick: () => ctx.editList(l) }, ico('edit'), 'Editar'),
         t === 'xtream' ? h('button.btn.small', { onclick: () => openServers(l, (nl) => ctx.refreshList(nl.id)) }, ico('server'), 'Servidores') : null,
+        canPhoneEdit() ? h('button.btn.small', { onclick: () => ctx.phoneEdit(l) }, ico('qr'), 'Editar pelo celular') : null,
         h('button.btn.small', {
           title: TV.on ? 'Baixar esta lista no celular, para usar em outro aparelho' : 'Baixar esta lista num arquivo, para usar em outro aparelho',
           onclick: () => (TV.on ? openListSave(l) : downloadList(l)),

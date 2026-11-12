@@ -146,6 +146,91 @@ export function openListSave(list) {
   })().catch(() => { status.textContent = 'Não foi possível preparar o QR Code. Tente de novo.'; });
 }
 
+// Editar pelo celular: QR Code que abre no celular a lista com as abas Dados e Servidores, Atualizar, Excluir e
+// Salvar. A TV aplica cada pedido que chega; a janela fica aberta (e a chave valendo) para mais mudanças.
+export function openListPhone(list, { onSaved, onRefresh, onDelete } = {}) {
+  const status = h('p.muted', 'Preparando o QR Code...');
+  const qrBox = h('div.pair-box.hidden');
+  let token = null;
+  let timer = null;
+  let stopped = false;
+  const stop = () => {
+    stopped = true;
+    clearTimeout(timer);
+    if (token) api('/api/pair/end', { method: 'POST', body: JSON.stringify({ token }) }).catch(() => {});
+    token = null;
+  };
+  const m = modal(`Editar “${list.name}” pelo celular`, h('div', qrBox, status), { onClose: stop });
+  const hhmm = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  async function apply(e) {
+    const i = S.lists.findIndex((l) => l.id === e.id);
+    if (i < 0) return;
+    const old = S.lists[i];
+    if (e.action === 'delete') {
+      stop();
+      m.close();
+      toast(`“${old.name}” foi excluída pelo celular`, 'ok');
+      if (onDelete) onDelete(old.id);
+      return;
+    }
+    if (e.action === 'refresh') {
+      status.textContent = 'Atualizando a lista...';
+      if (onRefresh) await onRefresh(old.id);
+      status.textContent = `Lista atualizada às ${hhmm()}. Pode continuar editando pelo celular.`;
+      return;
+    }
+    const f = e.fields || {};
+    const next = { ...old, name: f.name || old.name, epgUrl: f.epgUrl || '' };
+    if (old.type === 'xtream') {
+      const all = parseServers([f.server, ...(f.servers || [])].join('\n'));
+      Object.assign(next, { server: all[0] || old.server, servers: all.slice(1), username: f.username || old.username, password: f.password || old.password });
+    } else if (old.source !== 'file' && /^https?:\/\//i.test(f.url || '')) next.url = f.url;
+    // mudou a conexão (servidor, usuário, senha, link): recarrega a lista; só nome ou guia: só redesenha
+    const conn = ['server', 'username', 'password', 'url'].some((k) => next[k] !== old[k]);
+    S.lists[i] = next;
+    await saveNow('lists');
+    toast('Lista salva pelo celular', 'ok');
+    status.textContent = `Salvo às ${hhmm()}. Pode continuar editando pelo celular.`;
+    if (conn && onSaved) onSaved(next);
+    else window.dispatchEvent(new HashChangeEvent('hashchange'));
+  }
+  const poll = async () => {
+    if (stopped) return;
+    const r = await api(`/api/pair/status?token=${token}`).catch(() => null);
+    if (stopped) return;
+    if (r && r.edit) {
+      await apply(r.edit).catch(() => toast('Não foi possível aplicar a mudança do celular', 'error'));
+      if (stopped || r.edit.action === 'delete') return;
+    }
+    timer = setTimeout(poll, 2000);
+  };
+  (async () => {
+    const native = window.IPTVKZAndroid;
+    const address = native && native.lanAddress ? native.lanAddress() : undefined;
+    const r = await api('/api/pair/start', { method: 'POST', body: JSON.stringify({ address, list: list.id, mode: 'edit' }) }).catch(() => null);
+    if (stopped) return;
+    if (!r || !r.available) {
+      status.textContent = `Não foi possível mostrar o QR Code. Confira se ${TV.on ? 'a TV' : 'este computador'} está conectado à rede de casa e tente de novo.`;
+      return;
+    }
+    token = r.token;
+    await loadQrLib();
+    if (stopped) return;
+    const qr = window.qrcode(0, 'M');
+    qr.addData(r.url);
+    qr.make();
+    qrBox.replaceChildren(
+      h('img.pair-qr', { src: qr.createDataURL(6, 3), alt: 'QR Code para editar a lista pelo celular' }),
+      h('div', h('b', 'Pelo celular'), h('p.muted', `Escaneie com a câmera, no mesmo Wi-Fi ${TV.on ? 'da TV' : 'deste computador'}. No celular dá para mudar os dados e os servidores, atualizar ou excluir a lista; cada “Salvar” chega aqui na hora.`)));
+    qrBox.classList.remove('hidden');
+    status.textContent = 'Aguardando o celular...';
+    poll();
+  })().catch(() => { status.textContent = 'Não foi possível preparar o QR Code. Tente de novo.'; });
+}
+
+// O QR só faz sentido fora do celular (no celular, edita direto pela tela)
+export const canPhoneEdit = () => TV.on || !window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
 // Links tipo http://host:porta/get.php?username=X&password=Y&type=m3u_plus viram Xtream.
 // Texto colado com um ou vários endereços (um por linha, ou separados por espaço, vírgula...). Conserta o que dá:
 // http faltando ou digitado errado (htp://, http:/, http;//), barra no fim, link get.php inteiro, maiúsculas.
@@ -175,7 +260,7 @@ export function parseServers(text) {
 // Servidores de uma lista Xtream (mesmo usuário e senha): o em uso primeiro, depois os outros, do mais rápido ao
 // mais lento depois do teste. "Usar este" troca o servidor em uso e recarrega a lista; dá para tirar e adicionar.
 // O campo de digitar só abre com "Adicionar servidor" (na TV, focar um campo abre o teclado).
-export function openServers(list, onChanged) {
+export function openServers(list, onChanged, onClose) {
   let main = parseServers(list.server)[0] || list.server;
   let others = parseServers((list.servers || []).join('\n')).filter((s) => s !== main);
   const results = new Map(); // servidor -> { ms, state }
@@ -263,7 +348,7 @@ export function openServers(list, onChanged) {
   modal(`Servidores · ${list.name}`, h('div',
     h('p.muted', { style: { margin: '0 0 12px' } }, 'Endereços da mesma conta (mesmo usuário e senha). O primeiro é o que está em uso; se ele cair, o app usa o próximo.'),
     err, rowsBox, addBox,
-    h('div.row', { style: { gap: '8px', marginTop: '4px' } }, testBtn, addBtn)), { wide: true });
+    h('div.row', { style: { gap: '8px', marginTop: '4px' } }, testBtn, addBtn)), { wide: true, onClose });
   setTimeout(() => focusEl(testBtn), 50);
 }
 
@@ -374,9 +459,40 @@ export function openListForm(existing, onSaved, onDelete) {
     if (main) server.value = main;
     for (const x of extra || []) if (x !== mainServer() && !reserves.includes(x)) reserves.push(x);
   };
+  // Editar uma lista Xtream: o servidor vira um seletor com os da conta (o em uso marcado), e a última opção,
+  // "Adicionar servidor", abre a tela de Servidores
+  const serverSel = existing && ex.type === 'xtream' ? h('select.input') : null;
+  const fillSel = () => {
+    const main = mainServer();
+    serverSel.replaceChildren(...[main, ...serverLines()].map((s) => h('option', { value: s, selected: s === main }, s.replace(/^https?:\/\//, ''))),
+      h('option', { value: '__add' }, '+ Adicionar servidor…'));
+  };
+  if (serverSel) {
+    fillSel();
+    serverSel.addEventListener('change', () => {
+      const old = mainServer();
+      if (serverSel.value === '__add') {
+        fillSel(); // volta a mostrar o em uso
+        const live = S.lists.find((l) => l.id === ex.id) || ex;
+        openServers({ ...live, server: old, servers: serverLines() }, null, () => {
+          const now = S.lists.find((l) => l.id === ex.id);
+          if (now) {
+            server.value = now.server;
+            reserves.splice(0, reserves.length, ...parseServers((now.servers || []).join('\n')));
+          }
+          fillSel();
+          setTimeout(() => focusEl(serverSel), 50);
+        });
+        return;
+      }
+      if (!reserves.includes(old)) reserves.push(old);
+      server.value = serverSel.value;
+    });
+  }
   const panes = {
     xtream: h('div',
-      field('Servidor', server, 'Endereço com porta, como o provedor informou. Pode colar o link get.php inteiro.'),
+      serverSel ? field('Servidor', serverSel, 'O que está em uso. Escolha outro para trocar, ou “Adicionar servidor” para incluir mais.')
+        : field('Servidor', server, 'Endereço com porta, como o provedor informou. Pode colar o link get.php inteiro.'),
       h('div.row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass)))),
     url: h('div', field('Link da lista (M3U/M3U8)', url), xtHint),
     file: h('div', h('div.field', h('label', 'Arquivo da lista'),

@@ -15,7 +15,7 @@ import { startLifeline } from './core/lifeline.js';
 import { guideView } from './views/guide.js';
 import { searchView } from './views/search.js';
 import { settingsView } from './views/settings.js';
-import { openListForm, welcomeView } from './views/lists.js';
+import { openListForm, openListPhone, welcomeView } from './views/lists.js';
 import { overlayKey, isOverlayOpen } from './views/vodplayer.js';
 import { ensureTerms, termsAccepted } from './views/terms.js';
 import { initTvKeyboard } from './tv/tvkeyboard.js';
@@ -67,6 +67,7 @@ const ctx = {
   useList,
   refreshList,
   editList: (l) => openListForm(l, onListSaved, deleteList),
+  phoneEdit: (l) => openListPhone(l, { onSaved: onListSaved, onRefresh: refreshList, onDelete: deleteList }),
   addList: () => openListForm(null, onListSaved),
   deleteList,
 };

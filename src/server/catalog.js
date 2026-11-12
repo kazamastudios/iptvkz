@@ -337,7 +337,32 @@ function xtreamBase(server) {
 // Mesma conta em vários endereços: o principal primeiro, depois os reservas (list.servers), sem repetir.
 function serversOf(list) {
   const all = [list.server, ...(Array.isArray(list.servers) ? list.servers : [])].map((s) => String(s || '').trim()).filter(Boolean);
-  return [...new Set(all.map(xtreamBase))];
+  // cada endereço passa pelo conserto (http errado, get.php, texto em volta); o que não der para ler fica como veio
+  return [...new Set(all.flatMap((s) => { const p = fixServers(s); return p.length ? p : [xtreamBase(s)]; }))];
+}
+
+// O mesmo conserto da tela (parseServers em views/lists.js): vários endereços num texto, http faltando ou
+// digitado errado (htp://, http:/, https//), barra no fim, link get.php inteiro.
+function fixServers(text) {
+  const out = [];
+  for (const raw of String(text || '').split(/[\s,;|]+/)) {
+    let t = raw.replace(/^[<("'[]+/, '').replace(/[>)"'\].,;:]+$/, '');
+    if (!t) continue;
+    let https = false;
+    const sch = t.match(/^h?t{1,2}p{1,2}(s?)(?:[:;.]+\/*|\/+)/i);
+    if (sch) { https = !!sch[1]; t = t.slice(sch[0].length); }
+    t = t.replace(/^\/+/, '');
+    const m = t.match(/^([^/?#]+)([^?#]*)/);
+    if (!m) continue;
+    const hostPort = m[1].toLowerCase().replace(/\.+$/, '');
+    const path = m[2].replace(/\/(get|player_api|xmltv)\.php.*$/i, '').replace(/\/+$/, '');
+    const [host, port, more] = hostPort.split(':');
+    if (more !== undefined || !/^(localhost|\d{1,3}(\.\d{1,3}){3}|[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,})$/.test(host)) continue;
+    if (port !== undefined && !/^\d{1,5}$/.test(port)) continue;
+    const s = `${https ? 'https' : 'http'}://${hostPort}${path}`;
+    if (!out.includes(s)) out.push(s);
+  }
+  return out;
 }
 
 // Endereço que respondeu na última carga da lista (o principal ou um reserva); as consultas seguintes usam ele.
@@ -345,7 +370,8 @@ const activeBase = new Map(); // id da lista -> base
 
 function xtream(list) {
   const act = list.id && activeBase.get(list.id);
-  const base = act && serversOf(list).includes(act) ? act : xtreamBase(list.server);
+  const all = serversOf(list);
+  const base = act && all.includes(act) ? act : all[0] || xtreamBase(list.server);
   const u = encodeURIComponent(list.username || '');
   const p = encodeURIComponent(list.password || '');
   const pathU = encodeURIComponent(list.username || '');

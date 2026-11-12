@@ -295,7 +295,7 @@ async function handleApi(req, res, url) {
     if (!req.isLocal) return sendJson(res, 403, { error: 'Só na própria TV' });
     if (p === '/api/pair/start' && m === 'POST') {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
-      return sendJson(res, 200, pairing.begin(PORT, body.address, body.list));
+      return sendJson(res, 200, pairing.begin(PORT, body.address, body.list, body.mode));
     }
     if (p === '/api/pair/status' && m === 'GET') return sendJson(res, 200, pairing.status(q.get('token')));
     if (p === '/api/pair/restore' && m === 'POST') {
