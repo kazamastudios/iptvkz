@@ -252,7 +252,8 @@ async function handleApi(req, res, url) {
     if (!/^https?:\/\//i.test(b.url || '')) return sendJson(res, 400, { error: 'Vídeo inválido' });
     return sendJson(res, 200, await cast.play({
       id: b.id, url: b.url, title: String(b.title || '').slice(0, 200), live: !!b.live, startAt: Number(b.startAt) || 0,
-      mediaUrl: (tvIp) => `http://${addressFacing(tvIp)}:${PORT}/proxy?url=${encodeURIComponent(b.url)}`,
+      // a TV busca o vídeo direto no provedor: continua tocando mesmo com este aparelho desligado
+      mediaUrl: () => b.url,
     }));
   }
   if (p === '/api/cast/control' && m === 'POST') {

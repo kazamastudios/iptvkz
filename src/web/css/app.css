@@ -1337,3 +1337,5 @@ html { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adju
 .poster .btags .badge.seen { background: rgba(14, 90, 60, .92); }
 /* número do episódio na imagem: só aparece no celular (lá a coluna do número some) */
 .ep .thumb .epn { display: none; position: absolute; left: 6px; top: 6px; z-index: 1; background: rgba(0,0,0,.75); font-size: 10px; height: 18px; }
+/* sem o destaque azul do Android ao tocar (a propriedade é herdada: uma regra só, sem `*`) */
+html { -webkit-tap-highlight-color: transparent; }

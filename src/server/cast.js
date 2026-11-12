@@ -1,7 +1,7 @@
 // "Assistir na TV": acha na rede de casa as TVs que recebem vídeo (Chromecast/Android TV/Google TV pelo protocolo
 // Cast, LG/Samsung/outras pelo DLNA) e manda o vídeo para elas tocarem, sem instalar nada na TV.
-// O vídeo sai deste servidor (o proxy, que já cuida do User-Agent e do HLS); só a TV escolhida pode buscá-lo
-// enquanto a transmissão dura (allowed()). Sem bibliotecas: mDNS, SSDP, SOAP e o protocolo Cast feitos aqui.
+// A TV recebe o endereço original do vídeo e busca direto no provedor: depois de mandar, ela toca sozinha, sem
+// depender deste aparelho. Sem bibliotecas: mDNS, SSDP, SOAP e o protocolo Cast feitos aqui.
 const dgram = require('dgram');
 const tls = require('tls');
 const net = require('./network');
