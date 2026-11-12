@@ -14,7 +14,7 @@ def hasKey = env('ANDROID_KEYSTORE') != ''
 android {
     namespace 'com.lucasyemz.iptvkz'
     compileSdk 36
-    ndkVersion '26.3.11579264'
+    ndkVersion '27.2.12479018' // r27c: libc++_shared em 16 KB (Google Play); o mesmo da libnode (.github/workflows/libnode.yml)
 
     defaultConfig {
         minSdk 24

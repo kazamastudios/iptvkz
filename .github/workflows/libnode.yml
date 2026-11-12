@@ -1,0 +1,88 @@
+# Compila o Node do app Android (nodejs-mobile) com páginas de 16 KB, exigência da Google Play
+# (TV desde 01/08/2026; celular nas atualizações a partir de 01/02/2027). A versão pronta do nodejs-mobile
+# (v18.20.4, a última) vem alinhada em 4 KB.
+# Rodar à mão (Actions > libnode 16 KB > Run workflow). O resultado vira uma release deste repositório
+# (tag libnode-v18.20.4-16k), que o scripts/build-android.js baixa no lugar da do nodejs-mobile.
+name: libnode 16 KB
+
+on:
+  workflow_dispatch:
+  # roda também quando este arquivo muda (o botão manual só aparece com o arquivo na main)
+  push:
+    paths: ['.github/workflows/libnode.yml']
+
+permissions:
+  contents: write
+
+env:
+  NODE_MOBILE: v18.20.4
+  NDK: '27.2.12479018' # r27c: o mesmo do app (platforms/android/app/build.gradle)
+  TAG: libnode-v18.20.4-16k
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: [arm64, arm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # o configurador do nodejs-mobile 18 aceita até o 3.11
+
+      - name: NDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK" > /dev/null
+
+      - name: Código do nodejs-mobile
+        run: git clone --depth 1 --branch "$NODE_MOBILE" https://github.com/nodejs-mobile/nodejs-mobile.git src
+
+      - name: Compilar (16 KB)
+        working-directory: src
+        env:
+          # alinhamento de 16 KB em todo .so gerado para o Android (o host continua normal)
+          LDFLAGS: -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384
+        run: ./tools/android_build.sh "$ANDROID_HOME/ndk/$NDK" 24 ${{ matrix.arch }}
+
+      - name: Conferir o alinhamento
+        run: |
+          so=$(ls src/out_android/*/libnode.so)
+          "$ANDROID_HOME/ndk/$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -lW "$so" | awk '$1=="LOAD"{print $NF}' | sort -u | tee align.txt
+          if grep -qv 0x4000 align.txt; then echo "libnode.so não está em 16 KB"; exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libnode-${{ matrix.arch }}
+          path: src/out_android/*/libnode.so
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: built
+      # Mesmo formato do zip do nodejs-mobile (bin/<abi>/libnode.so + include/): os cabeçalhos não mudam com o
+      # alinhamento, vêm do zip oficial; só as bibliotecas são trocadas pelas compiladas aqui.
+      - name: Montar o zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$NODE_MOBILE" --repo nodejs-mobile/nodejs-mobile -p "nodejs-mobile-$NODE_MOBILE-android.zip" -D official
+          mkdir pkg && cd pkg
+          unzip -q ../official/*.zip 'include/*'
+          for abi in arm64-v8a armeabi-v7a; do
+            mkdir -p "bin/$abi"
+            cp ../built/*/"$abi"/libnode.so "bin/$abi/libnode.so"
+          done
+          zip -q -r "../nodejs-mobile-$NODE_MOBILE-android-16k.zip" bin include
+      - name: Publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false \
+            --title "libnode $NODE_MOBILE (16 KB)" \
+            --notes "Node.js for Mobile Apps $NODE_MOBILE compilado com NDK r27c e páginas de 16 KB, para o app Android (Google Play)." \
+            "nodejs-mobile-$NODE_MOBILE-android-16k.zip"

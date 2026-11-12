@@ -16,6 +16,11 @@ const android = path.join(root, 'platforms', 'android');
 const out = path.join(root, 'dist', 'android');
 const playOut = path.join(out, 'play');
 const NODE_VERSION = 'v18.20.4';
+// Node do app compilado com páginas de 16 KB (exigência da Google Play): release deste repositório, gerada pelo
+// .github/workflows/libnode.yml a partir do nodejs-mobile (a versão pronta dele vem em 4 KB).
+const LIBNODE_TAG = 'libnode-v18.20.4-16k';
+const LIBNODE_REPO = process.env.LIBNODE_REPO || 'lucasyemz/iptvkz';
+const NDK_VERSION = '27.2.12479018';
 const PLAY = process.argv.includes('--play');
 const WIN = process.platform === 'win32';
 const TAR = path.join(process.env.SystemRoot || 'C:\Windows', 'System32', 'tar.exe'); // o do Windows, não o do Git
@@ -32,14 +37,38 @@ function props() {
 // Node para Android: versão fixa, baixada uma vez para app/libnode.
 function ensureLibnode() {
   const target = path.join(android, 'app', 'libnode');
-  if (fs.existsSync(path.join(target, 'include', 'node', 'node.h'))) return;
+  const mark = path.join(target, '16k.txt'); // a libnode antiga (4 KB) não tem este arquivo: é trocada
+  if (fs.existsSync(path.join(target, 'include', 'node', 'node.h')) && fs.existsSync(mark)) return;
+  fs.rmSync(target, { recursive: true, force: true });
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'libnode-'));
-  const zip = `nodejs-mobile-${NODE_VERSION}-android.zip`;
-  run('gh', ['release', 'download', NODE_VERSION, '--repo', 'nodejs-mobile/nodejs-mobile', '-p', zip, '-D', tmp]);
+  const zip = `nodejs-mobile-${NODE_VERSION}-android-16k.zip`;
+  run('gh', ['release', 'download', LIBNODE_TAG, '--repo', LIBNODE_REPO, '-p', zip, '-D', tmp]);
   fs.mkdirSync(target, { recursive: true });
   if (WIN) run(TAR, ['-xf', path.join(tmp, zip), '-C', target, 'bin/armeabi-v7a', 'bin/arm64-v8a', 'include']);
   else run('unzip', ['-q', '-o', path.join(tmp, zip), 'bin/armeabi-v7a/*', 'bin/arm64-v8a/*', 'include/*', '-d', target]);
+  fs.writeFileSync(mark, `${LIBNODE_TAG}\n`);
   fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+// Google Play: toda biblioteca nativa de 64 bits alinhada em 16 KB. Confere dentro do APK ou do AAB pronto.
+function check16k(pkg, prefix) {
+  const ndk = path.join(process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || '', 'ndk', NDK_VERSION);
+  const host = WIN ? 'windows-x86_64' : process.platform === 'darwin' ? 'darwin-x86_64' : 'linux-x86_64';
+  const readelf = path.join(ndk, 'toolchains', 'llvm', 'prebuilt', host, 'bin', WIN ? 'llvm-readelf.exe' : 'llvm-readelf');
+  if (!fs.existsSync(readelf)) { console.log('llvm-readelf não encontrado: alinhamento de 16 KB não conferido.'); return; }
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'iptvkz-16k-'));
+  if (WIN) run(TAR, ['-xf', pkg, '-C', tmp, `${prefix}lib/arm64-v8a`]);
+  else run('unzip', ['-q', '-o', pkg, `${prefix}lib/arm64-v8a/*`, '-d', tmp]);
+  const dir = path.join(tmp, prefix, 'lib', 'arm64-v8a');
+  const bad = [];
+  for (const so of fs.readdirSync(dir)) {
+    const out = execFileSync(readelf, ['-lW', path.join(dir, so)], { encoding: 'utf8' });
+    const aligns = out.split('\n').filter((l) => /^\s*LOAD\b/.test(l)).map((l) => parseInt(l.trim().split(/\s+/).pop(), 16));
+    if (aligns.some((a) => a < 0x4000)) bad.push(so);
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
+  if (bad.length) throw new Error('Bibliotecas fora dos 16 KB (a Google Play recusa): ' + bad.join(', '));
+  console.log('Bibliotecas de 64 bits em 16 KB: ok.');
 }
 
 // No Linux/macOS usa o zip; no Windows, o tar do sistema (bsdtar), que grava caminhos com "/" como o Android espera.
@@ -104,6 +133,7 @@ function developer(v) {
   gradle('assembleDeveloperRelease', { BUNDLE_VERSION: String(bundleVersion) });
   const apk = path.join(out, 'IPTVKZ-android.apk');
   fs.copyFileSync(path.join(android, 'app', 'build', 'outputs', 'apk', 'developer', 'release', 'app-developer-release.apk'), apk);
+  check16k(apk, '');
 
   const keyFile = process.env.ANDROID_UPDATE_KEY;
   if (!keyFile) {
@@ -161,6 +191,7 @@ function play(v) {
   const name = `IPTVKZ-play-${v.nativeName}-${versionCode}${signed ? '' : '-UNSIGNED'}.aab`;
   const aab = path.join(playOut, name);
   fs.copyFileSync(path.join(android, 'app', 'build', 'outputs', 'bundle', 'playRelease', 'app-play-release.aab'), aab);
+  check16k(aab, 'base/');
   fs.writeFileSync(aab + '.sha256', `${sha256(aab)}  ${name}\n`);
   console.log(`${name}: ${(fs.statSync(aab).size / 1048576).toFixed(1)} MB${signed ? '' : ' (sem assinatura: não envie à Play)'}`);
   checkBundle(aab);
