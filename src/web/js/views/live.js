@@ -182,7 +182,8 @@ export function liveView(params, ctx) {
           cat === 'fav' ? 'Nenhum favorito ainda. Clique na ★ de um canal para adicionar.' : cat === 'recent' ? 'Nenhum canal assistido ainda.' : 'Nenhum canal encontrado.'));
         return;
       }
-      inc = windowed(grid, list, (ch) => channelCard(ch, false), { root: scroll, batch: 90, onBatch: loadEpgFor });
+      // na TV, só o que cabe na tela e um pouco mais: montar 90 canais (logo e guia) de uma vez derrubava o FPS na troca de tela
+      inc = windowed(grid, list, (ch) => channelCard(ch, false), { root: scroll, batch: TV.on ? 30 : 90, onBatch: loadEpgFor });
     }
     fillGrid();
     ctx.setTitle('TV ao Vivo');
@@ -246,7 +247,7 @@ export function liveView(params, ctx) {
       sideScroll.replaceChildren();
       list = filtered();
       if (!list.length) sideScroll.append(h('div.empty', 'Nada aqui.'));
-      sideInc = windowed(sideScroll, list, (ch) => channelCard(ch, true), { root: sideScroll, batch: 80, onBatch: loadEpgFor });
+      sideInc = windowed(sideScroll, list, (ch) => channelCard(ch, true), { root: sideScroll, batch: TV.on ? 30 : 80, onBatch: loadEpgFor });
       scrollToPlaying();
     }
     watchEls.fillSide = fillSide;
