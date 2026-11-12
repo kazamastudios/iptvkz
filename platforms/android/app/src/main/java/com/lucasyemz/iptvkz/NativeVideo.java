@@ -24,6 +24,7 @@ import androidx.media3.common.text.Cue;
 import androidx.media3.common.text.CueGroup;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DecoderCounters;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
@@ -120,8 +121,14 @@ final class NativeVideo implements Player.Listener {
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15000)
                 .setReadTimeoutMs(20000);
+        // Começa a tocar com 1 s de vídeo guardado (o padrão espera 2,5 s): abrir e voltar a tocar depois de arrastar a
+        // barra ficam mais rápidos. Depois de uma pausa por falta de dados, espera 2 s para não engasgar de novo.
+        DefaultLoadControl load = new DefaultLoadControl.Builder()
+                .setBufferDurationsMs(DefaultLoadControl.DEFAULT_MIN_BUFFER_MS, DefaultLoadControl.DEFAULT_MAX_BUFFER_MS, 1000, 2000)
+                .build();
         player = new ExoPlayer.Builder(ctx, renderers)
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(http, extractors))
+                .setLoadControl(load)
                 .build();
         TrackSelectionParameters.Builder p = player.getTrackSelectionParameters().buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true); // a interface decide a legenda
