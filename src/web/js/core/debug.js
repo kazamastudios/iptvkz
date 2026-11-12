@@ -1,4 +1,4 @@
-// Modo de depuração (só no app Beta, ligado em Configurações): painel no canto de cima à esquerda, em qualquer
+// Modo de depuração (só no app Beta, ligado em Configurações): painel no canto de baixo à direita, em qualquer
 // tela, com o que importa ali. Cada parte do app registra uma seção (debugSection) que devolve linhas
 // [rótulo, valor, tom]; o tom pinta o número: verde bom, amarelo no limite, vermelho ruim.
 // Desligado, nada roda (nem o medidor de quadros da interface).
@@ -54,6 +54,7 @@ function render() {
   const mem = performance.memory ? `${nf(performance.memory.usedJSHeapSize / 1048576)} MB` : '—';
   const memPct = performance.memory ? performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit : NaN;
   rows.push(['Aparelho', `${innerWidth}×${innerHeight} · zoom ${document.documentElement.style.zoom || 1} · densidade ${devicePixelRatio || 1}`, '', `memória ${mem}`, tone(memPct, 0.5, 0.8)]);
+  hud.classList.toggle('above-player', !!document.querySelector('.player'));
   hud.replaceChildren(...rows.map(([label, v1, t1, v2, t2]) => h('div',
     h('span.dbg-l', label), h('span' + (t1 ? '.dbg-' + t1 : ''), v1), v2 ? h('span' + (t2 ? '.dbg-' + t2 : ''), v2) : null)));
 }

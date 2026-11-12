@@ -422,8 +422,9 @@ input, select, textarea { font: inherit; color: inherit; }
 .player .net-tag i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
 .player .net-tag.hidden { opacity: 0; }
 /* Modo de depuração (Beta): painel no canto de cima à esquerda, por cima de tudo, sem pegar cliques */
-.debug-hud { position: fixed; top: 8px; left: 8px; z-index: 99999; max-width: min(620px, 70vw); padding: 7px 10px; border-radius: 10px; background: rgba(0, 0, 0, .78); color: #d8d8e2; font: 11px/1.55 ui-monospace, Consolas, monospace; pointer-events: none; }
+.debug-hud { position: fixed; bottom: 8px; right: 8px; z-index: 99999; max-width: min(620px, 70vw); padding: 7px 10px; border-radius: 10px; background: rgba(0, 0, 0, .78); color: #d8d8e2; font: 11px/1.55 ui-monospace, Consolas, monospace; pointer-events: none; }
 .debug-hud > div > span + span { margin-left: 8px; }
+.debug-hud.above-player { bottom: 96px; } /* no player, logo acima da barra de controles */
 .debug-hud .dbg-l { display: inline-block; min-width: 92px; color: #8a8aa0; }
 .debug-hud .dbg-good { color: #3ddc97; }
 .debug-hud .dbg-warn { color: #ffb547; }
