@@ -266,7 +266,7 @@ export class Player {
     const on = (ev, fn) => v.addEventListener(ev, fn);
     on('play', () => this._setIcon(this.btnPlay, 'pause'));
     on('pause', () => { this._setIcon(this.btnPlay, 'play'); this._showCtrl(); this._report(); });
-    on('waiting', () => { this._spin(true); this._netStall(true); });
+    on('waiting', () => { this._spin(true); this._netStall(true); if (this.hadFrame) this.stalls = (this.stalls || 0) + 1; });
     on('playing', () => {
       this._spin(false);
       this._netStall(false);
@@ -346,6 +346,7 @@ export class Player {
   load(src) {
     this.src = src;
     this.loadAt = performance.now(); // para o "abriu em N ms" do menu
+    this.stalls = 0;
     this.openMs = null;
     this.perf = null;
     this.hadFrame = false;
@@ -1410,13 +1411,48 @@ export class Player {
   _applyStats(on) {
     this.hud.classList.toggle('hidden', !on);
     this.btnStats.classList.toggle('on', on);
-    if (on) this._renderHud();
+    clearInterval(this._hudT);
+    // relógio próprio: atualiza a cada segundo mesmo quando o player não informa quadros (LG) ou está parado
+    if (on) {
+      this._renderHud();
+      this._hudT = setInterval(() => this._renderHud(), 1000);
+    }
   }
 
   _renderHud() {
     if (!this.hud || this.hud.classList.contains('hidden')) return;
-    this.hud.firstChild.textContent = `Reprodução: ${this._playingInfo()}`;
-    this.hud.lastChild.textContent = this._perfInfo();
+    const v = this.video;
+    const nf = (n, d = 0) => (Number.isFinite(n) ? n.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }) : '—');
+    let ahead = 0;
+    try {
+      const b = v.buffered;
+      for (let i = 0; i < b.length; i++) if (b.start(i) <= v.currentTime + 0.5 && b.end(i) > v.currentTime) ahead = b.end(i) - v.currentTime;
+    } catch {}
+    const state = this.castEl && !this.castEl.classList.contains('hidden') ? 'tocando na TV'
+      : !this.errorEl.classList.contains('hidden') ? 'erro na tela'
+        : v.paused ? 'pausado' : !this.center.classList.contains('hidden') ? 'carregando' : 'tocando';
+    const lines = [
+      `Reprodução: ${this._playingInfo()}`,
+      this._perfInfo(),
+      `Tempo: ${fmtTime(v.currentTime || 0)}${Number.isFinite(v.duration) ? ' / ' + fmtTime(v.duration) : this.opts.live ? ' (ao vivo)' : ''} · reserva ${nf(ahead, 1)} s · ${state} · readyState ${v.readyState}`,
+    ];
+    const net = [`travadas ${this.stalls || 0}`, `tentativas ${this.attempts || 0}`];
+    if (this.usingAlt) net.push('link alternativo');
+    if (this.hls && this.hls.levels && this.hls.levels[this.hls.currentLevel]) {
+      const l = this.hls.levels[this.hls.currentLevel];
+      net.unshift(`nível ${l.height || '?'}p ${nf(l.bitrate / 1e6, 1)} Mbps${this.hls.autoLevelEnabled ? ' (auto)' : ''}`, `banda estimada ${nf(this.hls.bandwidthEstimate / 1e6, 1)} Mbps`);
+    }
+    lines.push(`Rede: ${net.join(' · ')}`);
+    // só o servidor e o tipo do arquivo: o endereço das listas leva usuário e senha
+    try {
+      const u = new URL(this.currentUrl());
+      const ext = (u.pathname.match(/\.([a-z0-9]{2,5})$/i) || [])[1] || 'sem extensão';
+      lines.push(`Fonte: ${u.hostname} · ${ext} · motor ${this.engine || '—'}`);
+    } catch {}
+    const mem = performance.memory ? ` · memória JS ${nf(performance.memory.usedJSHeapSize / 1048576)} de ${nf(performance.memory.jsHeapSizeLimit / 1048576)} MB` : '';
+    const zoom = document.documentElement.style.zoom || '1';
+    lines.push(`Aparelho: ${TV.on ? 'TV' : isTouch() ? 'celular' : 'PC'} · tela ${innerWidth}×${innerHeight} (zoom ${zoom}, densidade ${window.devicePixelRatio || 1}) · vídeo na tela ${v.clientWidth}×${v.clientHeight}${mem}`);
+    this.hud.replaceChildren(...lines.map((t) => h('div', t)));
   }
 
   _perfInfo() {
@@ -1544,6 +1580,7 @@ export class Player {
     clearInterval(this._subTimer);
     clearInterval(this._perfTimer);
     clearInterval(this._castT); // a TV continua tocando se o player fechar; dá para parar pela TV
+    clearInterval(this._hudT);
     clearTimeout(this._netT);
     clearInterval(this._watchdog);
     clearTimeout(this._retryT);
