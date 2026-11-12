@@ -387,6 +387,35 @@ function xtream(list) {
   };
 }
 
+// Nomes de categoria mais curtos: muitas listas repetem a seção no começo ("FILMES | DC", "SERIES | DC",
+// "CANAIS: ESPORTES"). Se a maioria das categorias de uma seção começa com o mesmo trecho antes de um separador
+// (| : - – • »), ele sai de todas que o têm. Não mexe se o nome ficaria vazio ou repetido. Vale para Xtream e
+// M3U, em todo aparelho, e também para listas já baixadas (é aplicado ao abrir o catálogo).
+const CAT_SEP = /^\s*([^|:\-–•»]{1,24}?)\s*[|:\-–•»]+\s*(\S.*)$/;
+const foldName = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+function tidyCats(list) {
+  if (!Array.isArray(list) || list.length < 3) return list;
+  const count = new Map();
+  for (const c of list) {
+    const m = CAT_SEP.exec(c.name || '');
+    if (m) count.set(foldName(m[1]), (count.get(foldName(m[1])) || 0) + 1);
+  }
+  let best = null;
+  for (const [k, n] of count) if (!best || n > best[1]) best = [k, n];
+  if (!best || best[1] < 3 || best[1] < list.length * 0.5) return list;
+  const cut = (name) => { const m = CAT_SEP.exec(name || ''); return m && foldName(m[1]) === best[0] ? m[2].trim() : null; };
+  const seen = new Map();
+  for (const c of list) { const n = cut(c.name); if (n) seen.set(foldName(n), (seen.get(foldName(n)) || 0) + 1); }
+  return list.map((c) => {
+    const n = cut(c.name);
+    return n && seen.get(foldName(n)) === 1 ? { ...c, name: n } : c;
+  });
+}
+function tidyCatalog(c) {
+  for (const k of ['live', 'movies', 'series']) if (c && c[k] && c[k].cats) c[k].cats = tidyCats(c[k].cats);
+  return c;
+}
+
 function cats(arr) {
   return (Array.isArray(arr) ? arr : []).map((c) => ({ id: String(c.category_id), name: c.category_name || 'Sem nome' }));
 }
@@ -712,7 +741,7 @@ async function build(list) {
   } else {
     data = buildFromM3U(await fetchText(list.url), list);
   }
-  const catalog = { v: 1, listId: list.id, updatedAt: Date.now(), ...data };
+  const catalog = tidyCatalog({ v: 1, listId: list.id, updatedAt: Date.now(), ...data });
   store.writeJson(`catalog-${list.id}.json`, catalog);
   memory.set(list.id, catalog);
   return catalog;
@@ -730,6 +759,7 @@ async function getCatalog(list, { force = false } = {}) {
   if (force) return { catalog: await refresh(list), refreshing: false };
   let cached = memory.get(list.id) || store.readJson(`catalog-${list.id}.json`, null);
   if (cached) {
+    tidyCatalog(cached); // listas baixadas antes da limpeza dos nomes
     memory.set(list.id, cached);
     if (cached.base && !activeBase.has(list.id)) activeBase.set(list.id, cached.base);
     const stale = Date.now() - cached.updatedAt > STALE_MS;
