@@ -1,6 +1,7 @@
 // Configurações: listas, categorias (ocultar/ordenar), reprodução e sobre.
 import { h, ico, fmtAgo, confirmDialog, toast } from '../core/util.js';
 import { installTvButton } from './installtv.js';
+import { isBeta, debugOn, setDebug } from '../core/debug.js';
 import {
   S, C, activeList, orderedCats, setCatHidden, setCatOrder, resetCats, setSetting, saveNow, api,
   parentalEnabled, adultLocked, pinHash, checkPin, unlockAdult, lockAdult, setCatAdult, adultCatCount, buildLabel,
@@ -298,6 +299,14 @@ export function settingsView(params, ctx) {
         h('label.switch', autoNext, h('span.tr'), h('span', 'Automático'))))));
 
   // ---------- sobre ----------
+  // Beta: modo de depuração (painel com FPS, travadas, lista e vídeo, em qualquer tela)
+  if (isBeta()) {
+    page.append(h('div.set-section', h('h3', 'Depuração (Beta)'),
+      h('div.pref-grid', h('div.pref',
+        h('div.lbl', 'Modo de depuração'),
+        h('div.sub', 'Mostra no canto da tela FPS, travadas, memória, a lista e o vídeo, com cores: verde bom, amarelo no limite, vermelho ruim. Vale só neste aparelho.'),
+        sw(debugOn(), (on) => setDebug(on), 'Depuração')))));
+  }
   page.append(h('div.set-section',
     h('h3', 'Sobre'),
     (() => {

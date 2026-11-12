@@ -8,6 +8,7 @@ import { claimScreen, heartbeat, endScreen } from './sessions.js';
 import { readSubFile, cuesAt, subHtml } from './subs.js';
 import { TV, focusEl, syncFocus } from '../tv/tv.js';
 import { NativeVideo, nativeVideoAvailable } from './nativevideo.js';
+import { debugSection, tone } from '../core/debug.js';
 import { remuxStatus, remuxReady, remuxOffered, remuxSize, installRemux, probeMedia, browserAudio, RemuxVideo } from './remux.js';
 
 const LANGS = {
@@ -47,10 +48,6 @@ export function playerLibs() {
   }
   return libsPromise;
 }
-
-// App Beta (build de teste): o servidor marca a página com html.beta
-const isBeta = () => document.documentElement.classList.contains('beta');
-const STATS_KEY = 'iptvkz.statsHud';
 
 // É a própria TV (sem tela de toque)? O app no celular também liga o modo TV, mas lá mandar para a TV faz sentido.
 const onRealTv = () => TV.on && !(navigator.maxTouchPoints > 0);
@@ -157,9 +154,6 @@ export class Player {
       this.toggleMenu('av');
     });
     this.btnPip = this._btn('pip', 'Picture-in-picture', () => this.togglePip());
-    // Beta: liga e desliga o painel de informações (quem toca, formato, FPS, quadros perdidos) no canto do vídeo
-    this.btnStats = this._btn('stats', 'Informações de reprodução (Beta)', () => this.toggleStats());
-    this.hud = h('div.stats-hud.hidden', h('div'), h('div'));
     // PC e celular: mandar o vídeo para uma TV da rede (Chromecast/Android TV pelo Cast, LG e outras pelo DLNA)
     this.btnCast = this._btn('cast', 'Assistir na TV', (e) => {
       e.stopPropagation();
@@ -198,7 +192,7 @@ export class Player {
     left.push(o.live ? h('span.badge.onair.live-badge', 'AO VIVO') : this.timeEl);
 
     // filmes e séries já abrem ocupando a tela: tela cheia só no ao vivo, que no PC toca numa janela ao lado da lista
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, isBeta() ? this.btnStats : null, onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
@@ -219,7 +213,7 @@ export class Player {
     // Internet lenta: aviso discreto no canto, para não parecer defeito do player. Some quando o vídeo volta a fluir.
     this.netTag = h('div.net-tag.hidden', h('i'), h('span', 'Internet lenta'));
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
-    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.hud, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
+    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
     this.host.append(this.root);
   }
 
@@ -337,9 +331,7 @@ export class Player {
     this._perfTimer = setInterval(() => this._samplePerf(), 1000);
     this._watchdog = setInterval(() => { this._checkStall(); this._checkImage(); this._checkSound(); }, 5000);
     this._showCtrl();
-    let keep = false;
-    try { keep = localStorage.getItem(STATS_KEY) === '1'; } catch {}
-    if (isBeta() && keep) this._applyStats(true);
+    debugSection('player', () => this._debugRows());
   }
 
   // ---------- carregamento ----------
@@ -1399,60 +1391,39 @@ export class Player {
     const fps = dt > 0 ? shown / dt : 0;
     // média curta: um segundo isolado oscila
     this.perf = { fps: this.perf ? this.perf.fps * 0.6 + fps * 0.4 : fps, total: q.totalVideoFrames, dropped: q.droppedVideoFrames };
-    this._renderHud();
   }
 
-  toggleStats() {
-    const on = this.hud.classList.contains('hidden');
-    try { localStorage.setItem(STATS_KEY, on ? '1' : ''); } catch {}
-    this._applyStats(on);
-  }
-
-  _applyStats(on) {
-    this.hud.classList.toggle('hidden', !on);
-    this.btnStats.classList.toggle('on', on);
-    clearInterval(this._hudT);
-    // relógio próprio: atualiza a cada segundo mesmo quando o player não informa quadros (LG) ou está parado
-    if (on) {
-      this._renderHud();
-      this._hudT = setInterval(() => this._renderHud(), 1000);
-    }
-  }
-
-  _renderHud() {
-    if (!this.hud || this.hud.classList.contains('hidden')) return;
+  // Modo de depuração (Configurações, no Beta): o que importa do vídeo, com cor no que pode estar ruim.
+  _debugRows() {
     const v = this.video;
     const nf = (n, d = 0) => (Number.isFinite(n) ? n.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }) : '—');
     let ahead = 0;
     try {
       const b = v.buffered;
-      for (let i = 0; i < b.length; i++) if (b.start(i) <= v.currentTime + 0.5 && b.end(i) > v.currentTime) ahead = b.end(i) - v.currentTime;
+      for (let k = 0; k < b.length; k++) if (b.start(k) <= v.currentTime + 0.5 && b.end(k) > v.currentTime) ahead = b.end(k) - v.currentTime;
     } catch {}
     const state = this.castEl && !this.castEl.classList.contains('hidden') ? 'tocando na TV'
       : !this.errorEl.classList.contains('hidden') ? 'erro na tela'
         : v.paused ? 'pausado' : !this.center.classList.contains('hidden') ? 'carregando' : 'tocando';
-    const lines = [
-      `Reprodução: ${this._playingInfo()}`,
-      this._perfInfo(),
-      `Tempo: ${fmtTime(v.currentTime || 0)}${Number.isFinite(v.duration) ? ' / ' + fmtTime(v.duration) : this.opts.live ? ' (ao vivo)' : ''} · reserva ${nf(ahead, 1)} s · ${state} · readyState ${v.readyState}`,
+    const p = this.perf;
+    const lost = p && p.total ? (p.dropped / p.total) * 100 : NaN;
+    const rows = [
+      ['Reprodução', this._playingInfo()],
+      ['Vídeo', p && p.fps > 0.5 ? `${nf(p.fps, 1)} fps · ${nf(1000 / p.fps, 1)} ms/quadro` : 'FPS não informado', '',
+        p && p.total ? `${nf(p.dropped)} de ${nf(p.total)} perdidos (${nf(lost, 1)}%)` : '', tone(lost, 1, 5)],
+      ['Abriu em', this.openMs != null ? `${nf(this.openMs)} ms` : '—', tone(this.openMs, 1500, 4000), state, state === 'erro na tela' ? 'bad' : ''],
+      ['Tempo', `${fmtTime(v.currentTime || 0)}${Number.isFinite(v.duration) ? ' / ' + fmtTime(v.duration) : this.opts.live ? ' (ao vivo)' : ''}`, '',
+        `reserva ${nf(ahead, 1)} s`, tone(ahead, 10, 3, true)],
     ];
-    const net = [`travadas ${this.stalls || 0}`, `tentativas ${this.attempts || 0}`];
-    if (this.usingAlt) net.push('link alternativo');
-    if (this.hls && this.hls.levels && this.hls.levels[this.hls.currentLevel]) {
-      const l = this.hls.levels[this.hls.currentLevel];
-      net.unshift(`nível ${l.height || '?'}p ${nf(l.bitrate / 1e6, 1)} Mbps${this.hls.autoLevelEnabled ? ' (auto)' : ''}`, `banda estimada ${nf(this.hls.bandwidthEstimate / 1e6, 1)} Mbps`);
-    }
-    lines.push(`Rede: ${net.join(' · ')}`);
+    const lvl = this.hls && this.hls.levels && this.hls.levels[this.hls.currentLevel];
+    rows.push(['Rede', lvl ? `${lvl.height || '?'}p ${nf(lvl.bitrate / 1e6, 1)} Mbps${this.hls.autoLevelEnabled ? ' auto' : ''} · banda ${nf(this.hls.bandwidthEstimate / 1e6, 1)} Mbps` : `tentativas ${this.attempts || 0}${this.usingAlt ? ' · link alternativo' : ''}`, '',
+      `travadas ${this.stalls || 0}`, tone(this.stalls || 0, 0, 2)]);
     // só o servidor e o tipo do arquivo: o endereço das listas leva usuário e senha
     try {
       const u = new URL(this.currentUrl());
-      const ext = (u.pathname.match(/\.([a-z0-9]{2,5})$/i) || [])[1] || 'sem extensão';
-      lines.push(`Fonte: ${u.hostname} · ${ext} · motor ${this.engine || '—'}`);
+      rows.push(['Fonte', `${u.hostname} · ${(u.pathname.match(/[.]([a-z0-9]{2,5})$/i) || [])[1] || 'sem extensão'} · ${this.engine || '—'}`]);
     } catch {}
-    const mem = performance.memory ? ` · memória JS ${nf(performance.memory.usedJSHeapSize / 1048576)} de ${nf(performance.memory.jsHeapSizeLimit / 1048576)} MB` : '';
-    const zoom = document.documentElement.style.zoom || '1';
-    lines.push(`Aparelho: ${TV.on ? 'TV' : isTouch() ? 'celular' : 'PC'} · tela ${innerWidth}×${innerHeight} (zoom ${zoom}, densidade ${window.devicePixelRatio || 1}) · vídeo na tela ${v.clientWidth}×${v.clientHeight}${mem}`);
-    this.hud.replaceChildren(...lines.map((t) => h('div', t)));
+    return rows;
   }
 
   _perfInfo() {
@@ -1580,7 +1551,7 @@ export class Player {
     clearInterval(this._subTimer);
     clearInterval(this._perfTimer);
     clearInterval(this._castT); // a TV continua tocando se o player fechar; dá para parar pela TV
-    clearInterval(this._hudT);
+    debugSection('player', null);
     clearTimeout(this._netT);
     clearInterval(this._watchdog);
     clearTimeout(this._retryT);

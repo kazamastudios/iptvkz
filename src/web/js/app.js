@@ -1,5 +1,6 @@
 // IPTVKZ — casca do app: barra lateral, rotas, carregamento da lista ativa e teclado.
 import { $, h, ico, debounce, toast, fmtAgo, isBack, closeTopModal, confirmDialog, skPosters, skChannels } from './core/util.js';
+import { applyDebug, debugSection, tone } from './core/debug.js';
 import { TV, KB, setKbNav, detectTv, applyTv, move, DIRS, focusFirst, focusEl, isNative, normKey, syncFocus, initKeyDebug, exitApp } from './tv/tv.js';
 import { icon } from './core/icons.js';
 import {
@@ -517,6 +518,8 @@ function showError() {
 let loadToken = 0;
 let showLoading = null;
 
+let lastLoad = null; // quanto a lista levou para carregar (modo de depuração)
+
 async function loadActive(force = false) {
   const list = activeList();
   checkListStatus();
@@ -538,7 +541,9 @@ async function loadActive(force = false) {
   if (parseHash().name === 'settings') route();
   else showLoading();
   try {
+    const t0 = performance.now();
     const r = await loadCatalog(list.id, { force });
+    lastLoad = { ms: Math.round(performance.now() - t0), at: Date.now() };
     if (token !== loadToken) return; // trocou ou excluiu a lista enquanto carregava
     appState = 'ready';
     warmSearch();
@@ -843,6 +848,24 @@ async function waitForInternet() {
   });
 }
 
+// Modo de depuração: o que importa na tela atual (lista, catálogo, quanto há desenhado)
+debugSection('app', () => {
+  const c = C();
+  const rows = [];
+  const route = parseHash().name;
+  if (c) {
+    const n = (x) => x.toLocaleString('pt-BR');
+    rows.push(['Lista', `${(activeList() || {}).name || '—'} · ${n(c.live.items.length)} canais · ${n(c.movies.items.length)} filmes · ${n(c.series.items.length)} séries`, '',
+      lastLoad ? `carregou em ${n(lastLoad.ms)} ms` : '', tone(lastLoad && lastLoad.ms, 3000, 10000)]);
+  } else rows.push(['Lista', appState === 'loading' ? 'carregando...' : appState === 'error' ? 'erro ao carregar' : 'nenhuma', appState === 'error' ? 'bad' : '']);
+  const nodes = document.getElementsByTagName('*').length;
+  const imgs = [...document.images];
+  const pending = imgs.filter((i) => !i.complete).length;
+  rows.push(['Tela', `${route} · ${document.querySelectorAll('#view .poster, #view .ch-card, #view .ep').length} itens`, '',
+    `${nodes.toLocaleString('pt-BR')} elementos · ${imgs.length} imagens${pending ? ` (${pending} carregando)` : ''}`, tone(nodes, 3000, 8000)]);
+  return rows;
+});
+
 (async function boot() {
   setTimeout(hideSplash, 15000);
   detectTv();
@@ -853,6 +876,7 @@ async function waitForInternet() {
   document.addEventListener('mousemove', (e) => { if (Math.abs(e.movementX) + Math.abs(e.movementY) > 3) setKbNav(false); }, { passive: true });
   initTvKeyboard();
   initSmoothScroll();
+  applyDebug();
   window.addEventListener('resize', applyTv);
   try {
     await loadState();
