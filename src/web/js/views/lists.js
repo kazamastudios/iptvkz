@@ -39,7 +39,7 @@ function pairingBox(onList, onRestore, onReady) {
     qr.make();
     box.replaceChildren(
       h('img.pair-qr', { src: qr.createDataURL(6, 3), alt: 'QR Code para adicionar a lista pelo celular' }),
-      h('div', h('b', 'Mais rápido pelo celular'), h('p.muted', 'Escaneie com a câmera, no mesmo Wi-Fi da TV, e preencha a lista por lá. Uma lista baixada no celular entra por “Carregar lista”.')));
+      h('div', h('b', TV.on ? 'Mais rápido pelo celular' : 'Ou mande pelo celular'), h('p.muted', `Escaneie com a câmera, no mesmo Wi-Fi ${TV.on ? 'da TV' : 'deste computador'}, e preencha a lista por lá. Uma lista baixada no celular entra por “Carregar lista”.`)));
     box.classList.remove('hidden');
     if (onReady) onReady();
     poll();
@@ -273,7 +273,9 @@ export function openListForm(existing, onSaved, onDelete) {
   }
   const saveBtn = h('button.btn.primary', { type: 'submit' }, existing ? 'Salvar e recarregar' : 'Adicionar lista');
   setTab(tab);
-  const pairing = TV.on && !existing ? pairingBox((list) => {
+  // TV e PC: QR para mandar a lista pelo celular (no PC é opcional, dá para digitar). No celular não faz sentido.
+  const touchOnly = !TV.on && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  const pairing = !touchOnly && !existing ? pairingBox((list) => {
     // o que veio do celular entra no mesmo caminho do formulário (validação e lista repetida)
     const x = list.type === 'm3u' ? xtreamFromUrl(list.url) : xtreamFromUrl(list.server);
     name.value = list.name;

@@ -59,6 +59,7 @@ function boot() {
       const { port } = await server.start({
         portFallback: true,
         keepAlive: true,
+        pairing: true, // QR para mandar a lista pelo celular (src/server/pairing.js)
         onQuit: () => { quitting = true; app.quit(); },
         autostart: autostartAdapter(),
       });
