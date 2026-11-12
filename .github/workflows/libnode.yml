@@ -22,15 +22,19 @@ env:
 jobs:
   build:
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         arch: [arm64, arm]
-    runs-on: ubuntu-latest
+    # Node 18 compila com o GCC da época (o 15 do ubuntu-latest não serve para as ferramentas do host)
+    runs-on: ubuntu-22.04
     timeout-minutes: 240
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11' # o configurador do nodejs-mobile 18 aceita até o 3.11
+
+      - name: Ferramentas de 32 bits (as ferramentas do V8 para ARM 32 rodam como 32 bits no host)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq g++-multilib > /dev/null
 
       - name: NDK
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK" > /dev/null
