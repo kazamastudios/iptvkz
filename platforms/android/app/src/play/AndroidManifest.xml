@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Versão da Google Play: celular e Android TV / Google TV, como o APK do GitHub (leanback e toque opcionais,
+     herdados do manifesto principal). Só tira o que a Play não permite: instalar APK e atualizar fora da loja
+     (isso fica em src/developer). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

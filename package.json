@@ -15,6 +15,7 @@
     "ipk:store": "node scripts/build-ipk.js --store",
     "ipk:store:fhd": "node scripts/build-ipk.js --store --fhd",
     "android": "node scripts/build-android.js",
+    "android:play": "node scripts/build-android.js --play",
     "test": "node --test scripts/test-server.js"
   },
   "engines": {

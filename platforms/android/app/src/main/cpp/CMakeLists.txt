@@ -5,3 +5,5 @@ add_library(node SHARED IMPORTED)
 set_target_properties(node PROPERTIES IMPORTED_LOCATION ${LIBNODE_DIR}/bin/${ANDROID_ABI}/libnode.so)
 target_include_directories(native-lib PRIVATE ${LIBNODE_DIR}/include/node)
 target_link_libraries(native-lib node log)
+# Alinhamento de 16 KB (aparelhos Android 15+ com páginas de 16 KB). O NDK r26 ainda usa 4 KB por padrão.
+target_link_options(native-lib PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")

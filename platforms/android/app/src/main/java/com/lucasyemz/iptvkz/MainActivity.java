@@ -19,6 +19,7 @@ import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -162,7 +163,7 @@ public class MainActivity extends Activity {
         message.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, width * 0.01458f);
         message.setPadding(0, Math.round(width * 0.01146f), 0, 0);
         message.setGravity(Gravity.CENTER);
-        message.setText("Verificando se há atualizações");
+        message.setText(Updater.ENABLED ? "Verificando se há atualizações" : "Abrindo");
         box.addView(message, new LinearLayout.LayoutParams(-1, textHeight));
         splash = box;
         root.addView(splash, new ViewGroup.LayoutParams(-1, -1));
@@ -184,6 +185,7 @@ public class MainActivity extends Activity {
 
     /** Sem internet ou com o GitHub fora, desiste logo e abre com a versão que já tem. */
     private void updateAtBoot() throws InterruptedException {
+        if (!Updater.ENABLED) return;
         AtomicLong limit = new AtomicLong(System.currentTimeMillis() + CHECK_LIMIT_MS);
         Thread t = new Thread(() -> {
             try {
@@ -324,6 +326,9 @@ public class MainActivity extends Activity {
         s.setDisplayZoomControls(false);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        // A interface vem toda do servidor local; o WebView não precisa ler arquivos do aparelho.
+        s.setAllowFileAccess(false);
+        s.setAllowContentAccess(false);
         // só a TV se apresenta como TV: no celular a página usa o modo de toque
         s.setUserAgentString(s.getUserAgentString() + (isTv ? " SmartTV" : "") + " IPTVKZ-Android");
         web.addJavascriptInterface(new Object() {
@@ -354,7 +359,11 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(video, "IPTVKZVideo");
         web.setWebViewClient(new WebViewClient() {
             @Override
-            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return false; }
+            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                // A tela principal fica no servidor local, que é quem tem acesso à ponte IPTVKZAndroid.
+                // Quadros internos (trailer do YouTube) seguem livres.
+                return r.isForMainFrame() && !isLocalPage(r.getUrl());
+            }
 
             @Override
             public void onPageFinished(WebView v, String url) {
@@ -377,6 +386,11 @@ public class MainActivity extends Activity {
         });
         root.addView(web, new ViewGroup.LayoutParams(-1, -1));
         web.requestFocus();
+    }
+
+    /** Endereço do próprio servidor embutido (http://127.0.0.1:porta). */
+    private static boolean isLocalPage(Uri u) {
+        return "http".equals(u.getScheme()) && "127.0.0.1".equals(u.getHost());
     }
 
     private void boot() {
