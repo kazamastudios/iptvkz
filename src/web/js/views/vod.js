@@ -59,7 +59,7 @@ function smallPoster(src) {
 // Nome sem o ano repetido: o ano já aparece na linha de baixo (card) ou nas informações (página do filme ou da
 // série e destaque), então "Outra Mamãe (2026)" vira "Outra Mamãe". Só tira o ano do fim do nome, e só quando é o
 // mesmo ano do item.
-function cardName(item) {
+export function cardName(item) {
   const name = String(item.name || '');
   if (!item.year) return name;
   const short = name.replace(new RegExp(String.raw`\s*[([]?\s*${Number(item.year)}\s*[)\]]?\s*$`), '').trim();
@@ -416,7 +416,7 @@ export function streamHero(ctx) {
       versions.replaceChildren();
       acts.replaceChildren(
         h('button.btn.primary.big', { onclick: () => ctx.navigate(`#/${cfg.series.detail}?id=${encodeURIComponent(item.id)}`) }, ico('play'), 'Ver episódios'),
-        trailerButton(item.name, trailer), laterButton(section, item), favButton(section, item));
+        trailerButton(cardName(item), trailer), laterButton(section, item), favButton(section, item));
     }
     if (at >= 0) {
       const now = acts.querySelectorAll('button');
@@ -709,7 +709,7 @@ function movieActions(movie, version, trailer, refresh, box) {
     h('button.btn.primary.big', { onclick: () => playMovie(movie, version, { onClose: refresh }) }, ico('play'),
       resumable ? `Continuar de ${p.t < 3600 ? fmtTime(p.t) : fmtClockSec(p.t)}` : 'Assistir'),
     resumable ? h('button.btn.big', { onclick: () => playMovie(movie, version, { fromStart: true, onClose: refresh }) }, ico('refresh'), 'Do início') : null,
-    trailerButton(movie.name, trailer),
+    trailerButton(cardName(movie), trailer),
     laterButton('movies', movie),
     favButton('movies', movie),
     h('button.btn' + (isWatched(movie.id) ? '.seen-on' : ''), {
@@ -950,7 +950,7 @@ export function serieView(params, ctx) {
     }
     d.acts.replaceChildren(
       target ? h('button.btn.primary.big', { onclick: () => play(target.season, target.ep.id, { fromStart: !!target.fromStart }) }, ico('play'), target.label) : null,
-      trailerButton(serie.name, trailer),
+      trailerButton(cardName(serie), trailer),
       d.laterBtn,
       d.favBtn,
     );

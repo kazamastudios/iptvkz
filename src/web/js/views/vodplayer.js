@@ -3,6 +3,7 @@ import { h } from '../core/util.js';
 import { Player } from '../player/player.js';
 import { setProgress, getProgress, setSetting, versionNames } from '../core/store.js';
 import { TV, focusFirst } from '../tv/tv.js';
+import { cardName } from './vod.js';
 
 let active = null; // { player, el, close }
 
@@ -63,7 +64,7 @@ function resumePoint(id) {
 export function playMovie(movie, version, { fromStart = false, onClose } = {}) {
   const startAt = fromStart ? 0 : resumePoint(movie.id);
   open({
-    title: movie.name + (movie.versions.length > 1 ? ` · ${versionNames(movie.versions)[version.label]}` : ''),
+    title: cardName(movie) + (movie.versions.length > 1 ? ` · ${versionNames(movie.versions)[version.label]}` : ''),
     versions: movie.versions,
     version,
     startAt,
@@ -88,7 +89,7 @@ export function playEpisode(serie, seasons, seasonNum, epId, { versionLabel, fro
   const version = ep.versions.find((v) => v.label === versionLabel) || ep.versions[0];
   const nxt = flat[idx + 1];
   const label = (s, e) => `T${s}:E${e.num}`;
-  const title = `${serie.name} · ${label(season, ep)} · ${ep.title}`;
+  const title = `${cardName(serie)} · ${label(season, ep)} · ${ep.title}`;
 
   setProgress('s:' + serie.id, { kind: 'serie-last', ep: ep.id, season, num: ep.num, title: ep.title, version: versionLabel });
   open({
