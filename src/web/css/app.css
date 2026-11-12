@@ -1285,3 +1285,6 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
 .saved-tabs a { padding: 8px 16px; border-radius: 999px; color: var(--muted); font-weight: 500; text-decoration: none; }
 .saved-tabs a.on { background: var(--card-2); color: var(--text); }
 .top-settings.active { color: var(--accent); }
+
+/* Sem zoom no toque (pinça e toque duplo), em toda tela; a rolagem continua normal. Ver também o viewport em index.html */
+html { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
