@@ -966,7 +966,8 @@ export class Player {
       const ratio = ratioAt(e);
       this.seekTip.style.left = ratio * 100 + '%';
       this.seekTip.textContent = fmtTime(ratio * d);
-      this.preview.show(ratio * d, ratio, seek.getBoundingClientRect().width / (parseFloat(document.documentElement.style.zoom) || 1));
+      // arrastando: nenhuma busca de miniatura (só a bolinha e o tempo); o vídeo busca uma vez, ao soltar
+      this.preview.show(ratio * d, ratio, seek.getBoundingClientRect().width / (parseFloat(document.documentElement.style.zoom) || 1), !dragging);
       if (dragging) { lastRatio = ratio; show(ratio); }
     });
     seek.addEventListener('pointerleave', () => this.preview.hide(150));
@@ -1049,11 +1050,10 @@ export class Player {
 
   // Prévia busca quadros com uma conexão a mais: só quando o formato e a conta permitem,
   // para não derrubar o vídeo principal em contas de conexão única.
+  // Miniatura do ponto da barra: desligada. Cada miniatura abria uma segunda conexão com o provedor, que em listas
+  // IPTV disputava com o vídeo (ou derrubava ele, no limite de telas) e travava o arraste. Fica só o tempo do ponto.
   async _previewAllowed() {
-    // TVs têm um só decodificador: um segundo vídeo derruba o principal e ele volta ao ponto anterior.
-    if (TV.on || this.engine !== 'native') return false;
-    const r = await api(`/api/list-status?list=${encodeURIComponent(C().listId)}`);
-    return r.maxCons == null || r.maxCons - (r.activeCons || 0) >= 1;
+    return false;
   }
 
   // ---------- próximo episódio ----------
