@@ -1342,3 +1342,9 @@ html { -webkit-tap-highlight-color: transparent; }
 /* Assistir na TV (página do filme/série): lista de TVs */
 .cast-pick { display: grid; gap: 8px; }
 .cast-pick .cast-dev { justify-content: flex-start; height: 48px; }
+/* Mais opções da lista (Configurações): uma opção por linha, com uma explicação curta */
+.list-opts { display: grid; gap: 8px; }
+.list-opts .menu-opt { justify-content: flex-start; height: auto; min-height: 56px; padding: 10px 14px; gap: 14px; text-align: left; }
+.list-opts .menu-opt > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.list-opts .menu-opt small { color: var(--muted); font-weight: 400; font-size: 12px; white-space: normal; }
+.list-opts .menu-opt.danger, .list-opts .menu-opt.danger .ico { color: var(--bad, #ff6b6b); }

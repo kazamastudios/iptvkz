@@ -1,5 +1,5 @@
 // Configurações: listas, categorias (ocultar/ordenar), reprodução e sobre.
-import { h, ico, fmtAgo, confirmDialog, toast } from '../core/util.js';
+import { h, ico, fmtAgo, confirmDialog, toast, modal } from '../core/util.js';
 import { installTvButton } from './installtv.js';
 import { isBeta, debugOn, setDebug } from '../core/debug.js';
 import {
@@ -52,20 +52,25 @@ export function settingsView(params, ctx) {
         !isActive ? h('button.btn.small.primary', { onclick: () => ctx.useList(l.id) }, 'Usar esta') : null,
         h('button.btn.small', { onclick: () => ctx.refreshList(l.id) }, ico('refresh'), 'Atualizar'),
         h('button.btn.small', { onclick: () => ctx.editList(l) }, ico('edit'), 'Editar'),
-        t === 'xtream' ? h('button.btn.small', { onclick: () => openServers(l, (nl) => ctx.refreshList(nl.id)) }, ico('server'), 'Servidores') : null,
-        canPhoneEdit() ? h('button.btn.small', { onclick: () => ctx.phoneEdit(l) }, ico('qr'), 'Editar pelo celular') : null,
-        h('button.btn.small', {
-          title: TV.on ? 'Baixar esta lista no celular, para usar em outro aparelho' : 'Baixar esta lista num arquivo, para usar em outro aparelho',
-          onclick: () => (TV.on ? openListSave(l) : downloadList(l)),
-        }, ico('download'), 'Baixar lista'),
-        h('button.btn.small.ghost', {
-          onclick: async () => {
-            if (await confirmDialog('Excluir lista', `Excluir “${l.name}”? Favoritos e progresso dessa lista também serão apagados.`, 'Excluir', true)) {
-              ctx.deleteList(l.id);
-            }
-          },
-        }, ico('trash'), 'Excluir'))));
+        // o resto num menu: o cartão fica com poucos botões (no PC, na TV e no celular)
+        h('button.btn.small', { title: 'Mais opções desta lista', onclick: () => listMenu(l) }, ico('more'), 'Mais'))));
   }
+  // Mais opções de uma lista: janela com uma opção por linha (funciona igual com mouse, controle e toque)
+  function listMenu(l) {
+    const isXt = listType(l) === 'xtream';
+    let m;
+    const item = (icon, label, hint, fn, danger) => h('button.btn.menu-opt' + (danger ? '.danger' : ''), { type: 'button', onclick: () => { m.close(); fn(); } },
+      ico(icon), h('span', h('b', label), hint ? h('small', hint) : null));
+    m = modal(l.name, h('div.list-opts',
+      isXt ? item('server', 'Servidores', 'Testar e trocar o endereço do provedor', () => openServers(l, (nl) => ctx.refreshList(nl.id))) : null,
+      canPhoneEdit() ? item('qr', 'Editar pelo celular', 'QR Code para mudar a lista no celular', () => ctx.phoneEdit(l)) : null,
+      item('download', 'Baixar lista', TV.on ? 'Leva a lista para outro aparelho pelo celular' : 'Arquivo para usar em outro aparelho', () => (TV.on ? openListSave(l) : downloadList(l))),
+      item('trash', 'Excluir lista', 'Apaga também favoritos e progresso dela', async () => {
+        if (await confirmDialog('Excluir lista', `Excluir “${l.name}”? Favoritos e progresso dessa lista também serão apagados.`, 'Excluir', true)) ctx.deleteList(l.id);
+      }, true)));
+    setTimeout(() => focusEl(m.el ? m.el.querySelector('.menu-opt') : document.querySelector('.modal .menu-opt')), 50);
+  }
+
   // até 2 listas: bloco à direita delas; com 3 ou mais, uma linha própria embaixo
   cards.append(h('button.list-card.add-card' + (S.lists.length >= 3 ? '.add-row' : ''), { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar lista'));
   page.append(h('div.set-section', h('h3', 'Listas'), h('p', TV.on || !matchMedia('(max-width: 760px)').matches ? 'Troque de lista pelo seletor no topo da barra lateral.' : 'Troque de lista pelo último botão da barra de baixo, o que mostra o nome da lista.'), cards));
