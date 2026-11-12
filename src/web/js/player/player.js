@@ -26,6 +26,28 @@ function trackLabel(t, i) {
   return name || nice || `Faixa ${i + 1}`;
 }
 
+// Os tocadores de HLS e de TS (uns 630 KB) só carregam quando um vídeo vai tocar: ler os dois a cada abertura do
+// app pesava, principalmente na TV. O ?v= da build deixa o aparelho guardar em cache até a próxima versão.
+let libsPromise = null;
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => { s.remove(); reject(new Error(src)); };
+    document.head.append(s);
+  });
+}
+export function playerLibs() {
+  if (window.Hls && window.mpegts) return Promise.resolve();
+  if (!libsPromise) {
+    const v = encodeURIComponent((S.build && (S.build.build || S.build.commit || S.build.version)) || '');
+    libsPromise = Promise.all([loadScript(`/vendor/hls.min.js?v=${v}`), loadScript(`/vendor/mpegts.js?v=${v}`)])
+      .catch((e) => { libsPromise = null; throw e; });
+  }
+  return libsPromise;
+}
+
 // Celular/tablet: sem mouse; o toque mostra ou esconde os controles.
 const isTouch = () => !TV.on && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 
@@ -171,7 +193,7 @@ export class Player {
 
     // Antes do primeiro quadro: fundo escuro com a logo pequena do menu e o anel girando (diferente da splash,
     // para não parecer que o app reabriu). Some com um fade quando o vídeo começa. Depois, nas travadinhas, só o anel.
-    this.cover = h('div.pl-cover', h('img', { src: '/img/logo-sidebar.png', alt: '' }), h('div.spinner'));
+    this.cover = h('div.pl-cover', h('img', { src: '/img/logo-sidebar.webp', alt: '' }), h('div.spinner'));
     this.center = h('div.center', h('div.spinner'));
     this.errorEl = h('div.perror.hidden');
     this.menu = h('div.pmenu.hidden');
@@ -406,7 +428,8 @@ export class Player {
     this._spin(true);
     this.netTag.classList.add('hidden');
     this._netStall(true); // demorando muito para abrir também mostra o aviso
-    const ok = await claimScreen();
+    // o limite de telas e os tocadores ao mesmo tempo; sem os tocadores, o vídeo vai pelo player do navegador
+    const [ok] = await Promise.all([claimScreen(), playerLibs().catch(() => {})]);
     if (this.destroyed || token !== this._loadToken) return;
     if (!ok) {
       this._spin(false);

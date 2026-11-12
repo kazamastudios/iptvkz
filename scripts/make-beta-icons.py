@@ -154,3 +154,7 @@ for n in ("logo-horizontal.webp", "logo-horizontal.png"):
 web("logo-sidebar.png", wide_logo)
 for n in ("icon.png", "icon-192.png", "icon-small.png"):
     web(n, ribbon)
+
+# versões leves (WebP, no tamanho em que aparecem) dos logos da interface, oficial e Beta
+import runpy
+runpy.run_path(P("scripts", "make-web-images.py"))

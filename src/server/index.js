@@ -124,6 +124,8 @@ function looksLikeManifest(url, ct) {
   try { return new URL(url).pathname.toLowerCase().endsWith('.m3u8'); } catch { return false; }
 }
 
+const PROXY_CONNECT_MS = 20000;
+
 async function handleProxy(req, res, query) {
   let target;
   try {
@@ -139,11 +141,21 @@ async function handleProxy(req, res, query) {
 
   const controller = new AbortController();
   res.on('close', () => controller.abort());
+  // Servidor da lista que aceita a conexão e nunca responde: desiste depois de um tempo, em vez de deixar a
+  // conexão pendurada (ela conta no limite de telas da lista). Só até a resposta começar; o vídeo pode durar horas.
+  let timedOut = false;
+  const connectTimer = setTimeout(() => { timedOut = true; controller.abort(); }, PROXY_CONNECT_MS);
 
   let upstream;
   try {
     upstream = await fetch(target.href, { headers, redirect: 'follow', signal: controller.signal });
+    clearTimeout(connectTimer);
   } catch (err) {
+    clearTimeout(connectTimer);
+    if (timedOut && !res.headersSent) {
+      res.writeHead(504, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('O servidor da lista não respondeu');
+    }
     if (controller.signal.aborted) return;
     res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('Falha ao conectar: ' + (err.cause?.code || err.message));
@@ -407,7 +419,7 @@ const staticGz = new Map();
 // App Beta (qualquer build fora da versão publicada, e rodando pelo código): a página nasce com a classe "beta"
 // (tema âmbar, ver app.css) e os logos saem na versão âmbar (img/*-beta.*, de scripts/make-beta-icons.py).
 const isBeta = () => buildInfo().channel !== 'producao';
-const BETA_IMG = /^\/img\/(logo-horizontal|logo-sidebar|icon|icon-192|icon-small)\.(png|webp)$/;
+const BETA_IMG = /^\/img\/(logo-horizontal|logo-sidebar|icon|icon-192|icon-small|icon-256)\.(png|webp)$/;
 
 function serveStatic(req, res, pathname) {
   let rel;
@@ -428,7 +440,12 @@ function serveStatic(req, res, pathname) {
     if (statErr || !st.isFile()) return missing();
     // o aparelho pergunta se mudou; sem mudança, não baixa de novo
     const etag = `"${st.mtimeMs.toString(36)}-${st.size.toString(36)}"`;
-    const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: etag };
+    // Cache: tocadores com a versão no endereço (?v=) ficam até a próxima versão; imagens e bibliotecas, um dia.
+    // Página e código do app são sempre conferidos (o ETag evita baixar de novo o que não mudou).
+    const versioned = rel.startsWith('/vendor/') && /[?&]v=[^&]+/.test(req.url);
+    const longLived = rel.startsWith('/vendor/') || rel.startsWith('/img/') || /^\/favicon/.test(rel);
+    const cache = versioned ? 'public, max-age=31536000, immutable' : longLived ? 'public, max-age=86400' : 'no-cache';
+    const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': cache, ETag: etag };
     if (req.headers['if-none-match'] === etag) {
       res.writeHead(304, headers);
       return res.end();

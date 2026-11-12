@@ -832,7 +832,7 @@ async function waitForInternet() {
       note.textContent = 'Ainda sem internet. Tentando de novo a cada 5 segundos.';
     }
     showState(h('div.center-state.welcome.offline',
-      h('img.logo-big', { src: '/img/icon.png', alt: '' }),
+      h('img.logo-big', { src: '/img/icon-256.webp', alt: '' }),
       h('h2', 'Sem internet'),
       h('p', 'O IPTVKZ precisa de internet para carregar a lista e os vídeos. Confira o Wi-Fi ou o cabo do aparelho; o app continua assim que a conexão voltar.'),
       btn, note), 'IPTVKZ');

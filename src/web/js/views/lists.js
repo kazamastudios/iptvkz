@@ -382,7 +382,7 @@ export function openListForm(existing, onSaved, onDelete) {
 
 export function welcomeView(onAdd) {
   return h('div.center-state.welcome',
-    h('img.logo-big', { src: '/img/icon.png', alt: '' }),
+    h('img.logo-big', { src: '/img/icon-256.webp', alt: '' }),
     h('h2', 'Bem-vindo ao IPTVKZ'),
     h('p', 'Adicione a sua lista para começar. Funciona com links M3U, arquivos .m3u e contas Xtream Codes.'),
     h('button.btn.primary.big', { style: { marginTop: '10px' }, onclick: onAdd }, ico('plus'), 'Adicionar minha lista'));

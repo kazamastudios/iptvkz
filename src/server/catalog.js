@@ -376,12 +376,11 @@ async function buildFromXtream(list) {
       return [];
     }
   };
-  const liveCats = await get('get_live_categories');
-  const liveStreams = await get('get_live_streams');
-  const vodCats = await get('get_vod_categories');
-  const vodStreams = await get('get_vod_streams');
-  const serCats = await get('get_series_categories');
-  const serList = await get('get_series');
+  // Os 6 pedidos são independentes: em paralelo, a lista carrega no tempo do mais lento, não na soma de todos.
+  const [liveCats, liveStreams, vodCats, vodStreams, serCats, serList] = await Promise.all([
+    get('get_live_categories'), get('get_live_streams'), get('get_vod_categories'),
+    get('get_vod_streams'), get('get_series_categories'), get('get_series'),
+  ]);
 
   const live = (Array.isArray(liveStreams) ? liveStreams : []).map((s) => ({
     id: 'l' + s.stream_id,
