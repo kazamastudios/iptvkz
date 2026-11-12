@@ -387,32 +387,58 @@ function xtream(list) {
   };
 }
 
-// Nomes de categoria mais curtos: muitas listas repetem a seção no começo ("FILMES | DC", "SERIES | DC",
-// "CANAIS: ESPORTES"). Se a maioria das categorias de uma seção começa com o mesmo trecho antes de um separador
-// (| : - – • »), ele sai de todas que o têm. Não mexe se o nome ficaria vazio ou repetido. Vale para Xtream e
-// M3U, em todo aparelho, e também para listas já baixadas (é aplicado ao abrir o catálogo).
-const CAT_SEP = /^\s*([^|:\-–•»]{1,24}?)\s*[|:\-–•»]+\s*(\S.*)$/;
-const foldName = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-function tidyCats(list) {
-  if (!Array.isArray(list) || list.length < 3) return list;
-  const count = new Map();
-  for (const c of list) {
-    const m = CAT_SEP.exec(c.name || '');
-    if (m) count.set(foldName(m[1]), (count.get(foldName(m[1])) || 0) + 1);
+// Nomes de categoria mais curtos: muitas listas repetem a seção em todas as categorias, cada uma do seu jeito
+// ("FILMES | DC", "SERIES - DC", "CANAIS: ESPORTES", "[VOD] Ação", "DC | FILMES"). Em cada seção o app procura o
+// trecho que a maioria das categorias repete (no começo ou no fim, com separador ou entre colchetes) e só tira esse.
+// Lista sem padrão fica como está; nunca deixa nome vazio ou repetido. Vale para Xtream e M3U, em todo aparelho, e
+// também para listas já baixadas (é aplicado ao abrir o catálogo).
+const CAT_FORMS = [
+  ['pre', /^\s*([^|:\-–•»\/[\]()]{1,24}?)\s*[|:\-–•»\/]+\s*(\S.*)$/], // FILMES | DC
+  ['pre', /^\s*[[(]([^|:\-–•»\/[\]()]{1,24}?)[\])]\s*[|:\-–•»\/]*\s*(\S.*)$/], // [FILMES] DC
+  ['suf', /^(.*?\S)\s*[|:\-–•»\/]+\s*([^|:\-–•»\/[\]()]{1,24}?)\s*$/], // DC | FILMES
+  ['suf', /^(.*?\S)\s*[[(]([^|:\-–•»\/[\]()]{1,24}?)[\])]\s*$/], // DC (FILMES)
+];
+const foldName = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+// cada forma que o nome casa: [chave do padrão, nome sem o trecho]
+function catParts(name) {
+  const out = [];
+  for (const [kind, re] of CAT_FORMS) {
+    const m = re.exec(name || '');
+    if (!m) continue;
+    const tag = kind === 'pre' ? m[1] : m[2];
+    const rest = (kind === 'pre' ? m[2] : m[1]).trim();
+    if (rest) out.push([`${kind}:${foldName(tag)}`, rest]);
   }
+  return out;
+}
+// O nome da própria seção repetido na categoria não diz nada: sai mesmo quando não é a maioria
+const SECTION_WORDS = {
+  live: ['canais', 'canal', 'tv', 'live', 'ao vivo', 'tv ao vivo'],
+  movies: ['filmes', 'filme', 'movies', 'movie', 'vod'],
+  series: ['series', 'serie', 'tv shows', 'shows'],
+};
+function tidyCats(list, section) {
+  if (!Array.isArray(list) || !list.length) return list;
+  const own = new Set((SECTION_WORDS[section] || []).flatMap((w) => [`pre:${w}`, `suf:${w}`]));
+  const count = new Map();
+  for (const c of list) for (const key of new Set(catParts(c.name).map((p) => p[0]))) count.set(key, (count.get(key) || 0) + 1);
   let best = null;
   for (const [k, n] of count) if (!best || n > best[1]) best = [k, n];
-  if (!best || best[1] < 3 || best[1] < list.length * 0.5) return list;
-  const cut = (name) => { const m = CAT_SEP.exec(name || ''); return m && foldName(m[1]) === best[0] ? m[2].trim() : null; };
+  const keys = new Set([...count.keys()].filter((k) => own.has(k)));
+  if (best && best[1] >= 3 && best[1] >= list.length * 0.5) keys.add(best[0]);
+  if (!keys.size) return list;
+  const cut = (name) => { const p = catParts(name).find((x) => keys.has(x[0])); return p ? p[1] : null; };
   const seen = new Map();
   for (const c of list) { const n = cut(c.name); if (n) seen.set(foldName(n), (seen.get(foldName(n)) || 0) + 1); }
+  // também não pode virar o nome de outra categoria que já existe sem o trecho
+  for (const c of list) if (!cut(c.name)) seen.set(foldName(c.name), (seen.get(foldName(c.name)) || 0) + 1);
   return list.map((c) => {
     const n = cut(c.name);
     return n && seen.get(foldName(n)) === 1 ? { ...c, name: n } : c;
   });
 }
 function tidyCatalog(c) {
-  for (const k of ['live', 'movies', 'series']) if (c && c[k] && c[k].cats) c[k].cats = tidyCats(c[k].cats);
+  for (const k of ['live', 'movies', 'series']) if (c && c[k] && c[k].cats) c[k].cats = tidyCats(c[k].cats, k);
   return c;
 }
 
