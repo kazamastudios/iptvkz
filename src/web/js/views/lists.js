@@ -190,6 +190,42 @@ export function openListForm(existing, onSaved, onDelete) {
   const name = h('input.input', { value: ex.name || '', placeholder: 'Ex.: Minha lista' });
   const url = h('input.input', { value: ex.url || '', placeholder: 'http://.../lista.m3u' });
   const server = h('input.input', { value: ex.server || '', placeholder: 'http://servidor.com:8080' });
+  // Mesma conta em outros endereços do provedor: reservas se o principal cair, e dá para testar qual é o mais rápido
+  const extraServers = h('textarea.input', { rows: 3, placeholder: 'Um endereço por linha (opcional)', value: (ex.servers || []).join('\n') });
+  const speedBox = h('div.speed-box');
+  const serverLines = () => extraServers.value.split(/\s*[\n,;]\s*/).map((s) => s.trim()).filter(Boolean);
+  const speedBtn = h('button.btn.small', {
+    type: 'button',
+    onclick: async () => {
+      if (!server.value.trim() || !user.value.trim()) return showErr('Preencha servidor e usuário para testar.');
+      showErr('');
+      speedBtn.disabled = true;
+      speedBox.replaceChildren(h('div.row', h('div.spinner.small'), h('span.muted', 'Testando um servidor de cada vez...')));
+      try {
+        const r = await api('/api/list-speed', { method: 'POST', body: JSON.stringify({ id: ex.id, server: server.value.trim(), servers: serverLines(), username: user.value.trim(), password: pass.value }) });
+        const short = (s) => s.replace(/^https?:\/\//, '');
+        speedBox.replaceChildren(...r.results.map((x, i) => h('div.speed-row' + (i === r.fastest ? '.best' : ''),
+          h('span.speed-host', short(x.server)),
+          h('span' + (x.ms == null ? '.bad' : x.ms < 800 ? '.good' : x.ms < 2000 ? '.warn' : '.bad'), x.ms == null ? (x.state === 'offline' ? 'fora do ar' : 'recusou') : `${x.ms} ms`),
+          i === r.fastest ? h('span.badge.gold', 'mais rápido') : null,
+          i > 0 && x.ms != null ? h('button.btn.small.ghost', {
+            type: 'button',
+            onclick: () => {
+              // troca: este vira o principal e o antigo principal vai para os reservas
+              const old = server.value.trim();
+              server.value = x.server;
+              extraServers.value = [old, ...serverLines().filter((s) => short(s) !== short(x.server))].join('\n');
+              speedBox.replaceChildren(h('span.muted', `Usando ${short(x.server)}. Salve para aplicar.`));
+            },
+          }, 'Usar este') : null)));
+        if (r.fastest > 0) toast(`${short(r.results[r.fastest].server)} está mais rápido que o seu principal`, 'info');
+      } catch (e2) {
+        speedBox.replaceChildren(h('span.bad', e2.message || String(e2)));
+      } finally {
+        speedBtn.disabled = false;
+      }
+    },
+  }, ico('refresh'), 'Testar servidores');
   const user = h('input.input', { value: ex.username || '', autocomplete: 'off' });
   const pass = h('input.input', { value: ex.password || '', type: 'password', autocomplete: 'new-password' });
   const showPass = h('button.icon-btn', { type: 'button', title: 'Mostrar senha', onclick: () => { pass.type = pass.type === 'password' ? 'text' : 'password'; } }, ico('eye'));
@@ -246,7 +282,9 @@ export function openListForm(existing, onSaved, onDelete) {
   const panes = {
     xtream: h('div',
       field('Servidor', server, 'Endereço com porta, como o provedor informou. Pode colar o link get.php inteiro.'),
-      h('div.row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass)))),
+      h('div.row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass))),
+      field('Outros servidores da mesma conta', extraServers, 'Se o provedor deu mais de um endereço. Se o principal cair, o app usa o próximo.'),
+      h('div.row', { style: { gap: '8px', marginBottom: '12px' } }, speedBtn), speedBox),
     url: h('div', field('Link da lista (M3U/M3U8)', url), xtHint),
     file: h('div', h('div.field', h('label', 'Arquivo da lista'),
       h('div.row', h('button.btn', { type: 'button', onclick: () => fileInput.click() }, ico('upload'), 'Escolher arquivo'), fileLabel), fileInput)),
@@ -340,7 +378,7 @@ export function openListForm(existing, onSaved, onDelete) {
       createdAt: ex.createdAt || Date.now(),
     };
     if (tab === 'xtream') {
-      Object.assign(list, { server: server.value.trim(), username: user.value.trim(), password: pass.value });
+      Object.assign(list, { server: server.value.trim(), servers: serverLines().filter((s) => s !== server.value.trim()), username: user.value.trim(), password: pass.value });
       if (!list.server || !list.username || !list.password) return showErr('Preencha servidor, usuário e senha.');
       if (!list.name) list.name = list.server.replace(/^https?:\/\//, '').split(/[:/]/)[0];
     } else if (tab === 'url') {

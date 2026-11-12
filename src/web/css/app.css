@@ -1222,3 +1222,10 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
    Evite regras com "*": o estilo de cada elemento da tela passa a ser recalculado com elas. */
 .tv .card, .tv .list-card, .tv .set-section, .tv .modal, .tv .pmenu, .tv .hero, .tv .detail .hero, .tv .shelf-row,
 .tv .player-box, .tv .status-pop, .tv .toast, .tv .poster .thumb, .tv .ch-card { box-shadow: none !important; }
+
+/* Teste de velocidade dos servidores (Editar lista) */
+.speed-box { display: grid; gap: 6px; margin-bottom: 12px; }
+.speed-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2, rgba(255,255,255,.04)); }
+.speed-row.best { outline: 1px solid var(--accent); }
+.speed-host { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.speed-row .good { color: var(--ok, #3ecf8e); } .speed-row .warn { color: var(--warn, #f5b642); } .speed-row .bad, .speed-box .bad { color: var(--bad, #ff6b6b); }

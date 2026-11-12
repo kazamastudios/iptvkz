@@ -382,6 +382,15 @@ async function handleApi(req, res, url) {
 
   if (p === '/api/net' && m === 'GET') return sendJson(res, 200, await net.checkInternet());
 
+  if (p === '/api/list-speed' && m === 'POST') {
+    const b = await readJsonBody(req);
+    // a senha pode não vir (lista já salva): usa a da lista guardada
+    const saved = b.id ? store.getList(b.id) : null;
+    const cfg = { server: b.server, servers: b.servers, username: b.username || (saved && saved.username), password: b.password || (saved && saved.password) };
+    if (!cfg.server || !cfg.username) return sendJson(res, 400, { error: 'Preencha servidor e usuário.' });
+    return sendJson(res, 200, await catalogs.speedTest(cfg));
+  }
+
   if (p === '/api/list-status' && m === 'GET') {
     return sendJson(res, 200, await catalogs.checkStatus(requireList(q.get('list'))));
   }

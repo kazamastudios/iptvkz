@@ -334,8 +334,18 @@ function xtreamBase(server) {
   return s;
 }
 
+// Mesma conta em vários endereços: o principal primeiro, depois os reservas (list.servers), sem repetir.
+function serversOf(list) {
+  const all = [list.server, ...(Array.isArray(list.servers) ? list.servers : [])].map((s) => String(s || '').trim()).filter(Boolean);
+  return [...new Set(all.map(xtreamBase))];
+}
+
+// Endereço que respondeu na última carga da lista (o principal ou um reserva); as consultas seguintes usam ele.
+const activeBase = new Map(); // id da lista -> base
+
 function xtream(list) {
-  const base = xtreamBase(list.server);
+  const act = list.id && activeBase.get(list.id);
+  const base = act && serversOf(list).includes(act) ? act : xtreamBase(list.server);
   const u = encodeURIComponent(list.username || '');
   const p = encodeURIComponent(list.password || '');
   const pathU = encodeURIComponent(list.username || '');
@@ -536,12 +546,12 @@ function xtreamFromLink(url) {
   return null;
 }
 
-async function checkXtream(cfg) {
+async function checkXtream(cfg, timeout = STATUS_TIMEOUT) {
   const x = xtream(cfg);
   const q = `username=${encodeURIComponent(cfg.username || '')}&password=${encodeURIComponent(cfg.password || '')}`;
   let res;
   try {
-    res = await fetchWithTimeout(`${x.base}/player_api.php?${q}`, {}, STATUS_TIMEOUT);
+    res = await fetchWithTimeout(`${x.base}/player_api.php?${q}`, {}, timeout);
   } catch {
     return { state: 'offline' };
   }
@@ -598,6 +608,21 @@ async function checkM3uLink(url) {
   return /^\uFEFF?\s*#EXTM3U/i.test(head) ? { state: 'active' } : { state: 'refused' };
 }
 
+// Teste de velocidade dos servidores da mesma conta: um de cada vez (leve para a TV e para o provedor),
+// mede quanto cada um leva para responder ao login. Devolve na ordem da lista; "fastest" é o índice do melhor.
+async function speedTest(cfg) {
+  const out = [];
+  for (const server of serversOf(cfg)) {
+    const t0 = Date.now();
+    const r = await checkXtream({ server, username: cfg.username, password: cfg.password }, 8000);
+    const ok = ['active', 'expiring'].includes(r.state);
+    out.push({ server, state: r.state, ms: ok ? Date.now() - t0 : null });
+  }
+  let fastest = -1;
+  out.forEach((r, i) => { if (r.ms != null && (fastest < 0 || r.ms < out[fastest].ms)) fastest = i; });
+  return { results: out, fastest };
+}
+
 async function checkStatus(list) {
   let result;
   if (list.type === 'xtream') result = await checkXtream(list);
@@ -617,7 +642,18 @@ const inflight = new Map(); // id -> Promise
 async function build(list) {
   let data;
   if (list.type === 'xtream') {
-    data = await buildFromXtream(list);
+    // Fora do ar? tenta os servidores reservas da mesma conta, na ordem
+    let firstErr = null;
+    for (const s of serversOf(list)) {
+      activeBase.set(list.id, s);
+      try {
+        data = { ...(await buildFromXtream(list)), base: s };
+        break;
+      } catch (e) {
+        if (!firstErr) firstErr = e;
+      }
+    }
+    if (!data) { activeBase.delete(list.id); throw firstErr || new Error('Servidor não respondeu'); }
   } else if (list.source === 'file') {
     let text;
     try {
@@ -648,6 +684,7 @@ async function getCatalog(list, { force = false } = {}) {
   let cached = memory.get(list.id) || store.readJson(`catalog-${list.id}.json`, null);
   if (cached) {
     memory.set(list.id, cached);
+    if (cached.base && !activeBase.has(list.id)) activeBase.set(list.id, cached.base);
     const stale = Date.now() - cached.updatedAt > STALE_MS;
     if (stale) refresh(list).catch(() => {});
     return { catalog: cached, refreshing: stale || inflight.has(list.id) };
@@ -665,6 +702,7 @@ function forget(id) {
 
 module.exports = {
   getCatalog,
+  speedTest,
   isRefreshing,
   forget,
   xtreamSeriesInfo,
