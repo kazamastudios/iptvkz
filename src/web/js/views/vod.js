@@ -56,8 +56,9 @@ function smallPoster(src) {
   return String(src || '').replace(/(image\.tmdb\.org\/t\/p\/)(?:w\d+_and_h\d+_[a-z0-9]+|w(?:500|600|780)|original)\//, '$1w342/');
 }
 
-// Nome no card: o ano já aparece na linha de baixo, então "Outra Mamãe (2026)" vira "Outra Mamãe".
-// Só tira o ano do fim do nome, e só quando é o mesmo ano do item (a página do filme mantém o nome completo).
+// Nome sem o ano repetido: o ano já aparece na linha de baixo (card) ou nas informações (página do filme ou da
+// série e destaque), então "Outra Mamãe (2026)" vira "Outra Mamãe". Só tira o ano do fim do nome, e só quando é o
+// mesmo ano do item.
 function cardName(item) {
   const name = String(item.name || '');
   if (!item.year) return name;
@@ -439,7 +440,7 @@ export function streamHero(ctx) {
   };
 
   const fill = (item, section) => {
-    title.textContent = item.name;
+    title.textContent = cardName(item);
     const bits = [item.year, item.rating ? '★ ' + Number(item.rating).toFixed(1) : null, whereStopped(section, item) || null];
     meta.replaceChildren(...bits.filter(Boolean).map((t) => h('span', String(t))));
     // sinopse: a da lista se houver; senão linhas de carregamento até o detalhe chegar (a altura é fixa: sem pulo)
@@ -765,7 +766,7 @@ function heroBase(item, section, ctx) {
   // Voltar visível (PC e celular não têm a tecla do controle; na TV ela também funciona)
   const back = h('button.btn.small.ghost.detail-back', { type: 'button', onclick: () => ctx.back(`#/${section}`) }, ico('back'), 'Voltar');
   const inner = h('div.inner', back,
-    h('div.hero', poster, h('div', { style: { flex: 1, minWidth: 0 } }, h('h2', item.name), meta, versions, plot, credits, acts)));
+    h('div.hero', poster, h('div', { style: { flex: 1, minWidth: 0 } }, h('h2', cardName(item)), meta, versions, plot, credits, acts)));
   return {
     el: h('div.detail', backdrop, inner), inner, meta, versions, acts, favBtn, fillMeta, plot, laterBtn,
     settleArt: () => { clearTimeout(artTimer); settleArt(); },
