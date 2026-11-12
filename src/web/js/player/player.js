@@ -861,8 +861,13 @@ export class Player {
   seekBy(s) {
     const v = this.video;
     if (this.opts.live || !Number.isFinite(v.duration)) return;
-    const target = Math.max(0, Math.min(v.duration - 1, v.currentTime + s));
+    // a partir do que está na tela (vários toques seguidos somam, mesmo antes do vídeo chegar no anterior)
+    const target = Math.max(0, Math.min(v.duration - 1, this._shownTime() + s));
+    this.resumeAt = 0;
+    this._seekTo = { t: target, at: Date.now() };
     v.currentTime = target;
+    this._updateSeek();
+    this.timeEl.textContent = `${fmtTime(target)} / ${fmtTime(v.duration)}`;
     this._flashSeek(s);
     if (this.preview) {
       this.preview.show(target, target / v.duration, this._seekEl.offsetWidth);
@@ -984,15 +989,12 @@ export class Player {
   }
 
   // Tempo mostrado na tela: logo depois de soltar a barra, o ponto escolhido, até o vídeo chegar lá (ou 8 s)
-  // O player nativo diz que já está no ponto novo logo ao pedir, e depois ainda informa a posição antiga por um
-  // instante: a tela só solta o ponto escolhido quando o vídeo estiver nele por pelo menos 1,2 s (ou depois de 10 s).
+  // Logo depois de soltar a barra, o player nativo ainda informa a posição antiga por um instante: durante 1,5 s a
+  // tela mostra o ponto escolhido. Mais que isso prendia a tela num ponto enquanto a pessoa já tinha ido para outro.
   _shownTime() {
     const v = this.video;
     const s = this._seekTo;
-    if (!s) return v.currentTime;
-    const near = Math.abs(v.currentTime - s.t) < 2;
-    const age = Date.now() - s.at;
-    if (age < 10000 && (!near || age < 1200)) return near ? v.currentTime : s.t;
+    if (s && Date.now() - s.at < 1500) return s.t;
     this._seekTo = null;
     return v.currentTime;
   }
@@ -1486,6 +1488,8 @@ export class Player {
   _commitScrub() {
     clearTimeout(this._scrubT);
     if (!this.scrub) return;
+    this.resumeAt = 0;
+    this._seekTo = { t: this.scrub.t, at: Date.now() };
     this.video.currentTime = this.scrub.t;
     this.scrub = null;
     this.seekTip.classList.remove('on');
