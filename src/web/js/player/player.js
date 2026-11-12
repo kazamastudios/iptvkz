@@ -939,12 +939,17 @@ export class Player {
       if (Number.isFinite(d)) this.timeEl.textContent = `${fmtTime(ratio * d)} / ${fmtTime(d)}`;
       clearTimeout(this._hideT); // controles não somem no meio do arraste
     };
+    // última posição do arraste: o "cancelar" do toque (o Android assumiu o gesto) chega sem coordenadas, e ler a
+    // posição dele mandava o vídeo para o começo
+    let lastRatio = 0;
     const finish = (e) => {
       if (!dragging) return;
       dragging = false;
       const d = this.video.duration;
-      if (!Number.isFinite(d)) return;
-      const t = ratioAt(e) * d;
+      if (!Number.isFinite(d) || d <= 0) return;
+      const ratio = e.type === 'pointercancel' ? lastRatio : ratioAt(e);
+      const t = ratio * d;
+      this.resumeAt = 0; // a escolha da pessoa vale mais que o "continuar de onde parou" que ainda não foi aplicado
       this._seekTo = { t, at: Date.now() };
       show(t / d);
       this._scheduleHide(3000);
@@ -957,13 +962,16 @@ export class Player {
       this.seekTip.style.left = ratio * 100 + '%';
       this.seekTip.textContent = fmtTime(ratio * d);
       this.preview.show(ratio * d, ratio, seek.getBoundingClientRect().width / (parseFloat(document.documentElement.style.zoom) || 1));
-      if (dragging) show(ratio);
+      if (dragging) { lastRatio = ratio; show(ratio); }
     });
     seek.addEventListener('pointerleave', () => this.preview.hide(150));
     seek.addEventListener('pointerdown', (e) => {
+      // sem a duração (o vídeo ainda abrindo), não há para onde ir: a bolinha não se mexe à toa
+      if (!Number.isFinite(this.video.duration) || this.video.duration <= 0) return;
       dragging = true;
       seek.setPointerCapture(e.pointerId);
-      show(ratioAt(e));
+      lastRatio = ratioAt(e);
+      show(lastRatio);
     });
     seek.addEventListener('pointerup', finish);
     seek.addEventListener('pointercancel', finish);
