@@ -36,7 +36,7 @@
   "main": "platforms/desktop/main.js",
   "author": {
     "name": "Kazama Studios",
-    "email": "lukkolly@gmail.com"
+    "email": "contato@kazamastudios.com.br"
   },
   "license": "MIT",
   "homepage": "https://github.com/kazamastudios/iptvkz",
@@ -111,7 +111,7 @@
         "AppImage",
         "deb"
       ],
-      "maintainer": "Kazama Studios <lukkolly@gmail.com>"
+      "maintainer": "Kazama Studios <contato@kazamastudios.com.br>"
     },
     "publish": {
       "provider": "github",

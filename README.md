@@ -251,3 +251,4 @@ O servidor local faz proxy dos streams (resolve CORS e links `http`), junta as l
 - **[Termos de Uso](https://iptvkz.kazamastudios.com.br/termos.html):** aceitos na primeira vez que o app abre (e no instalador do Windows).
 - **[Política de Privacidade](https://iptvkz.kazamastudios.com.br/privacidade.html):** o app não coleta dados; tudo fica no seu aparelho.
 - **Código:** [Licença MIT](LICENSE).
+- **Suporte:** [página de suporte](https://iptvkz.kazamastudios.com.br/suporte.html) ou `suporte@kazamastudios.com.br`. Outros assuntos: `contato@kazamastudios.com.br`.

@@ -64,7 +64,7 @@
   var input = el('input', { class: 'help__input', type: 'text', maxlength: '200', autocomplete: 'off', placeholder: 'Escreva sua dúvida', 'aria-label': 'Sua dúvida' });
   var ask = el('form', { class: 'help__ask', on: { submit: function (e) { e.preventDefault(); perguntar(input.value); } } }, [input, el('button', { class: 'btn btn--primary', type: 'submit', text: 'Enviar' })]);
   var toForm = el('a', { class: 'help__report', href: 'suporte.html', text: 'Não achei a resposta. Falar com a equipe' });
-  var tvNote = el('p', { class: 'help__tvnote', text: 'Para escrever para a equipe, abra iptvkz.kazamastudios.com.br/suporte.html no celular.' });
+  var tvNote = el('p', { class: 'help__tvnote', text: 'Para falar com a equipe, escreva para suporte@kazamastudios.com.br ou abra iptvkz.kazamastudios.com.br/suporte.html no celular.' });
   var chat = el('div', { class: 'help__view' }, [log, chips, ask, toForm, tvNote]);
 
   var title = el('h2', { class: 'help__title', text: 'Ajuda do IPTVKZ' });
