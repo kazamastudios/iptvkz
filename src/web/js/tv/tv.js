@@ -346,7 +346,10 @@ export function focusFirst(root) {
     const b = scope.querySelector('#view .detail .btn.primary');
     return b && visible(b) ? b : null;
   };
-  focusEl(inView('.ch-card, .poster, .ep, .g-prog') || detailMain() || inView('.cat-item.on, .btn.primary', true) || inView('*') || els[0]);
+  // Streaming, "Ver tudo": o destaque ocupa o alto da tela e a grade começa mais abaixo, fora da conta do inView;
+  // o foco vai para o primeiro card dela (antes caía no seletor de lista da barra lateral)
+  const streamGrid = () => scope.querySelector('#view .stream-cat .poster-grid .poster');
+  focusEl(inView('.ch-card, .poster, .ep, .g-prog') || detailMain() || streamGrid() || inView('.cat-item.on, .btn.primary, .saved-tabs a.on', true) || inView('*') || els[0]);
 }
 
 // Botões dentro de um cartão (ex.: ★) só são alcançáveis a partir do próprio cartão.
