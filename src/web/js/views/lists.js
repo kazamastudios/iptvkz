@@ -279,12 +279,20 @@ export function openListForm(existing, onSaved, onDelete) {
   });
 
   const field = (label, input, hint) => h('div.field', h('label', label), input, hint ? h('div.hint', hint) : null);
+  // Escondido até pedir: a lista simples continua só com servidor, usuário e senha
+  const moreServers = h('div' + ((ex.servers || []).length ? '' : '.hidden'),
+    field('Outros endereços do mesmo provedor', extraServers, 'Mesmo usuário e senha. Se o principal cair, o app usa o próximo.'),
+    h('div.row', { style: { gap: '8px', marginBottom: '12px' } }, speedBtn), speedBox);
+  const moreServersBtn = h('button.btn.small.ghost' + ((ex.servers || []).length ? '.hidden' : ''), {
+    type: 'button',
+    style: { marginBottom: '12px' },
+    onclick: () => { moreServersBtn.classList.add('hidden'); moreServers.classList.remove('hidden'); extraServers.focus(); },
+  }, ico('plus'), 'O provedor deu mais de um servidor?');
   const panes = {
     xtream: h('div',
       field('Servidor', server, 'Endereço com porta, como o provedor informou. Pode colar o link get.php inteiro.'),
       h('div.row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass))),
-      field('Outros servidores da mesma conta', extraServers, 'Se o provedor deu mais de um endereço. Se o principal cair, o app usa o próximo.'),
-      h('div.row', { style: { gap: '8px', marginBottom: '12px' } }, speedBtn), speedBox),
+      moreServersBtn, moreServers),
     url: h('div', field('Link da lista (M3U/M3U8)', url), xtHint),
     file: h('div', h('div.field', h('label', 'Arquivo da lista'),
       h('div.row', h('button.btn', { type: 'button', onclick: () => fileInput.click() }, ico('upload'), 'Escolher arquivo'), fileLabel), fileInput)),
