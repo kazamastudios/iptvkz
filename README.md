@@ -250,6 +250,18 @@ data/                listas e preferências ao rodar pelo código (fora do Git)
 
 O servidor local faz proxy dos streams (resolve CORS e links `http`), junta as listas num catálogo único e processa o guia. Ele aceita só o próprio aparelho e, se você ligar, aparelhos da sua rede de casa, sempre pelo IP ou pelo nome do aparelho na rede (sites abertos no navegador não conseguem usá-lo). As regras de organização estão no [`CLAUDE.md`](CLAUDE.md).
 
+## Apoie o projeto
+
+O IPTVKZ é gratuito, sem anúncios e feito por uma pessoa só, no tempo livre. Ele não tem servidor: tudo roda no seu
+aparelho, então o único custo fixo é o domínio do site.
+
+Se o app te ajuda, dá para apoiar pelo [GitHub Sponsors](https://github.com/sponsors/kazamastudios), com qualquer valor,
+uma vez ou todo mês. Outras formas de ajudar, que também contam muito:
+
+- dar uma estrela no repositório;
+- avisar quando algo não funcionar, abrindo uma [issue](https://github.com/kazamastudios/iptvkz/issues);
+- indicar o app para quem procura um player de IPTV.
+
 ## Termos e licença
 
 - **[Termos de Uso](https://iptvkz.kazamastudios.com.br/termos.html):** aceitos na primeira vez que o app abre (e no instalador do Windows).
