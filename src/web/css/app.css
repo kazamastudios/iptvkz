@@ -1207,7 +1207,10 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
   html:not(.tv-wide) .ch-head { padding: 0 14px 10px; }
   html:not(.tv-wide) .ch-head .filter, html:not(.tv-wide) .grid-head .filter { width: 100% !important; order: 3; }
   html:not(.tv-wide) .grid-head { flex-wrap: wrap; }
-  html:not(.tv-wide) .sort-select { width: 100%; }
+  /* ordem do Ver tudo: os botões rolam de lado dentro da fileira (a página não), como a faixa de categorias */
+  html:not(.tv-wide) .sort-chips { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  html:not(.tv-wide) .sort-chips::-webkit-scrollbar { display: none; }
+  html:not(.tv-wide) .sort-chips .chip { flex: none; }
   html:not(.tv-wide) .grid-head { max-width: 100%; }
   html:not(.tv-wide) .ch-scroll { padding: 0 14px 20px; }
   html:not(.tv-wide) .ch-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
