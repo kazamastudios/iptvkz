@@ -9,7 +9,7 @@ import {
 import { pinDialog } from './pin.js';
 import { TV, setTvMode, exitApp, focusEl } from '../tv/tv.js';
 import { showTermsDialog } from './terms.js';
-import { openListSave, downloadList } from './lists.js';
+import { openListSave, downloadList, openServers } from './lists.js';
 
 const TYPE = { xtream: 'Xtream Codes', url: 'Link M3U', file: 'Arquivo M3U' };
 
@@ -29,7 +29,8 @@ export function settingsView(params, ctx) {
   // ---------- listas ----------
   const cards = h('div.list-cards');
   const act = activeList();
-  for (const l of S.lists) {
+  // a lista em uso sempre primeiro (à esquerda)
+  for (const l of [...S.lists].sort((x, y) => (act && y.id === act.id) - (act && x.id === act.id))) {
     const isActive = act && l.id === act.id;
     const t = listType(l);
     const stats = h('div.stats');
@@ -51,6 +52,7 @@ export function settingsView(params, ctx) {
         !isActive ? h('button.btn.small.primary', { onclick: () => ctx.useList(l.id) }, 'Usar esta') : null,
         h('button.btn.small', { onclick: () => ctx.refreshList(l.id) }, ico('refresh'), 'Atualizar'),
         h('button.btn.small', { onclick: () => ctx.editList(l) }, ico('edit'), 'Editar'),
+        t === 'xtream' ? h('button.btn.small', { onclick: () => openServers(l, (nl) => ctx.refreshList(nl.id)) }, ico('server'), 'Servidores') : null,
         h('button.btn.small', {
           title: TV.on ? 'Baixar esta lista no celular, para usar em outro aparelho' : 'Baixar esta lista num arquivo, para usar em outro aparelho',
           onclick: () => (TV.on ? openListSave(l) : downloadList(l)),

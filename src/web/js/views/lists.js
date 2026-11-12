@@ -172,6 +172,101 @@ export function parseServers(text) {
   return out;
 }
 
+// Servidores de uma lista Xtream (mesmo usuário e senha): o em uso primeiro, depois os outros, do mais rápido ao
+// mais lento depois do teste. "Usar este" troca o servidor em uso e recarrega a lista; dá para tirar e adicionar.
+// O campo de digitar só abre com "Adicionar servidor" (na TV, focar um campo abre o teclado).
+export function openServers(list, onChanged) {
+  let main = parseServers(list.server)[0] || list.server;
+  let others = parseServers((list.servers || []).join('\n')).filter((s) => s !== main);
+  const results = new Map(); // servidor -> { ms, state }
+  const short = (s) => String(s).replace(/^https?:\/\//, '');
+  const err = h('div.error-box.hidden');
+  const showErr = (msg) => { err.textContent = msg; err.classList.toggle('hidden', !msg); };
+  const rowsBox = h('div.speed-box');
+  const addInput = h('input.input', { placeholder: 'http://servidor.com:8080 (pode colar vários)', autocomplete: 'off' });
+  const addBox = h('div.row.hidden', { style: { gap: '8px', marginBottom: '10px' } }, addInput,
+    h('button.btn.small', { type: 'button', onclick: () => addFromInput() }, 'Adicionar'));
+  const addBtn = h('button.btn.small.ghost', { type: 'button', onclick: () => { addBox.classList.remove('hidden'); addInput.focus(); } }, ico('plus'), 'Adicionar servidor');
+
+  async function save(newMain) {
+    const changed = newMain && newMain !== main;
+    if (changed) { others = [main, ...others.filter((x) => x !== newMain)]; main = newMain; }
+    const i = S.lists.findIndex((l) => l.id === list.id);
+    if (i < 0) return;
+    S.lists[i] = { ...S.lists[i], server: main, servers: others.slice() };
+    list = S.lists[i];
+    await saveNow('lists');
+    render();
+    if (changed) { toast(`Usando ${short(main)}`, 'ok'); onChanged && onChanged(list); }
+  }
+  function addFromInput() {
+    const got = parseServers(addInput.value).filter((s) => s !== main && !others.includes(s));
+    if (!got.length) return showErr(addInput.value.trim() ? 'Endereço não reconhecido. Ex.: http://servidor.com:8080' : '');
+    showErr('');
+    others.push(...got);
+    addInput.value = '';
+    addBox.classList.add('hidden');
+    save().then(() => focusEl(addBtn));
+  }
+  addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addFromInput(); } });
+
+  function render() {
+    // depois do teste: do mais rápido ao mais lento, fora do ar no fim
+    const rank = (s) => { const r = results.get(s); return !r ? 1e9 : r.ms == null ? 2e9 : r.ms; };
+    const sorted = results.size ? [...others].sort((a, b) => rank(a) - rank(b)) : others;
+    const best = results.size ? [main, ...others].filter((s) => results.get(s) && results.get(s).ms != null).sort((a, b) => rank(a) - rank(b))[0] : null;
+    rowsBox.replaceChildren(...[main, ...sorted].map((s, i) => {
+      const r = results.get(s);
+      return h('div.speed-row' + (i === 0 ? '.best' : ''),
+        h('span.speed-host', short(s)),
+        i === 0 ? h('span.badge.onair', 'EM USO') : null,
+        s === best ? h('span.badge.gold', 'mais rápido') : null,
+        r ? h('span.' + (r.ms == null ? 'bad' : r.ms < 800 ? 'good' : r.ms < 2000 ? 'warn' : 'bad'), r.ms == null ? (r.state === 'offline' ? 'fora do ar' : 'recusou') : `${r.ms} ms`) : null,
+        i > 0 && !(r && r.ms == null) ? h('button.btn.small', { type: 'button', onclick: () => save(s) }, 'Usar este') : null,
+        i > 0 ? h('button.icon-btn', {
+          type: 'button',
+          title: 'Tirar este servidor',
+          onclick: () => { others = others.filter((x) => x !== s); results.delete(s); save(); },
+        }, ico('trash')) : null);
+    }));
+  }
+
+  const testBtn = h('button.btn.small.primary', {
+    type: 'button',
+    onclick: async () => {
+      showErr('');
+      testBtn.disabled = true;
+      testBtn.replaceChildren(h('div.spinner.small'), 'Testando...');
+      try {
+        const r = await api('/api/list-speed', { method: 'POST', body: JSON.stringify({ id: list.id, server: main, servers: others, username: list.username }) });
+        results.clear();
+        for (const x of r.results) results.set(x.server, x);
+        // endereço que só respondeu no outro protocolo (http <-> https): guarda o que funcionou
+        const fixed = r.results.map((x) => x.server);
+        if (fixed.length && (fixed[0] !== main || fixed.slice(1).join() !== others.join())) {
+          main = fixed[0];
+          others = fixed.slice(1);
+          await save();
+        } else render();
+        const best = r.fastest >= 0 ? r.results[r.fastest] : null;
+        if (best && r.fastest > 0) toast(`${short(best.server)} está mais rápido que o em uso`, 'info');
+      } catch (e2) {
+        showErr(e2.message || String(e2));
+      } finally {
+        testBtn.disabled = false;
+        testBtn.replaceChildren(ico('refresh'), 'Testar servidores');
+      }
+    },
+  }, ico('refresh'), 'Testar servidores');
+
+  render();
+  modal(`Servidores · ${list.name}`, h('div',
+    h('p.muted', { style: { margin: '0 0 12px' } }, 'Endereços da mesma conta (mesmo usuário e senha). O primeiro é o que está em uso; se ele cair, o app usa o próximo.'),
+    err, rowsBox, addBox,
+    h('div.row', { style: { gap: '8px', marginTop: '4px' } }, testBtn, addBtn)), { wide: true });
+  setTimeout(() => focusEl(testBtn), 50);
+}
+
 function xtreamFromUrl(url) {
   try {
     const u = new URL(url.trim());
@@ -215,79 +310,11 @@ export function openListForm(existing, onSaved, onDelete) {
   const name = h('input.input', { value: ex.name || '', placeholder: 'Ex.: Minha lista' });
   const url = h('input.input', { value: ex.url || '', placeholder: 'http://.../lista.m3u' });
   const server = h('input.input', { value: ex.server || '', placeholder: 'http://servidor.com:8080' });
-  // Outros servidores da mesma conta, em lista: cada um com o resultado do teste, "Usar este" (vira o principal)
-  // e remover. O campo de digitar só abre com "Adicionar servidor" (na TV, focar um campo abre o teclado).
-  let reserves = parseServers((ex.servers || []).join('\n'));
-  const results = new Map(); // servidor -> { ms, state }
-  let fastest = null;
-  const short = (s) => String(s).replace(/^https?:\/\//, '');
+  // Reservas da mesma conta: a tela fica em Configurações > Servidores. Aqui só guarda o que veio junto
+  // (vários endereços colados no Servidor, ou o campo do celular), e mantém os que a lista já tinha.
+  const reserves = parseServers((ex.servers || []).join('\n'));
   const mainServer = () => parseServers(server.value)[0] || server.value.trim();
   const serverLines = () => reserves.filter((s) => s !== mainServer());
-  const rowsBox = h('div.speed-box');
-  const addInput = h('input.input', { placeholder: 'http://servidor.com:8080 (pode colar vários)', autocomplete: 'off' });
-  const addBtn = h('button.btn.small.ghost', { type: 'button', onclick: () => openAdd() }, ico('plus'), 'Adicionar servidor');
-  const addBox = h('div.row.hidden', { style: { gap: '8px', marginBottom: '10px' } }, addInput,
-    h('button.btn.small', { type: 'button', onclick: () => addFromInput() }, 'Adicionar'));
-  function openAdd() {
-    addBox.classList.remove('hidden');
-    addInput.focus();
-  }
-  function addFromInput() {
-    const got = parseServers(addInput.value).filter((s) => s !== mainServer() && !reserves.includes(s));
-    if (!got.length) return showErr(addInput.value.trim() ? 'Endereço não reconhecido. Ex.: http://servidor.com:8080' : '');
-    showErr('');
-    reserves.push(...got);
-    addInput.value = '';
-    addBox.classList.add('hidden');
-    renderRows();
-    focusEl(addBtn);
-  }
-  addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addFromInput(); } });
-  function renderRows() {
-    const main = mainServer();
-    const all = main ? [main, ...serverLines()] : serverLines();
-    rowsBox.replaceChildren(...(all.length > 1 || results.size ? all : []).map((s, i) => {
-      const r = results.get(s);
-      return h('div.speed-row' + (s === fastest ? '.best' : ''),
-        h('span.speed-host', short(s)),
-        i === 0 && main ? h('span.faint', 'principal') : null,
-        r ? h('span.' + (r.ms == null ? 'bad' : r.ms < 800 ? 'good' : r.ms < 2000 ? 'warn' : 'bad'), r.ms == null ? (r.state === 'offline' ? 'fora do ar' : 'recusou') : `${r.ms} ms`) : null,
-        s === fastest && all.length > 1 ? h('span.badge.gold', 'mais rápido') : null,
-        i > 0 && !(r && r.ms == null) ? h('button.btn.small.ghost', {
-          type: 'button',
-          title: 'Este vira o principal; o principal de antes fica como reserva. Salve para aplicar.',
-          onclick: () => { reserves = [main, ...reserves.filter((x) => x !== s)]; server.value = s; renderRows(); },
-        }, 'Usar este') : null,
-        i > 0 ? h('button.icon-btn', { type: 'button', title: 'Tirar este servidor', onclick: () => { reserves = reserves.filter((x) => x !== s); results.delete(s); renderRows(); } }, ico('trash')) : null);
-    }));
-  }
-  const speedBtn = h('button.btn.small', {
-    type: 'button',
-    onclick: async () => {
-      if (!server.value.trim() || !user.value.trim()) return showErr('Preencha servidor e usuário para testar.');
-      showErr('');
-      speedBtn.disabled = true;
-      speedBtn.replaceChildren(h('div.spinner.small'), 'Testando...');
-      try {
-        const r = await api('/api/list-speed', { method: 'POST', body: JSON.stringify({ id: ex.id, server: mainServer(), servers: serverLines(), username: user.value.trim(), password: pass.value }) });
-        // os endereços voltam corrigidos (http <-> https que respondeu)
-        results.clear();
-        if (r.results.length) {
-          server.value = r.results[0].server;
-          reserves = r.results.slice(1).map((x) => x.server);
-          for (const x of r.results) results.set(x.server, x);
-        }
-        fastest = r.fastest >= 0 ? r.results[r.fastest].server : null;
-        renderRows();
-        if (r.fastest > 0) toast(`${short(fastest)} está mais rápido que o seu principal`, 'info');
-      } catch (e2) {
-        showErr(e2.message || String(e2));
-      } finally {
-        speedBtn.disabled = false;
-        speedBtn.replaceChildren(ico('refresh'), 'Testar servidores');
-      }
-    },
-  }, ico('refresh'), 'Testar servidores');
   const user = h('input.input', { value: ex.username || '', autocomplete: 'off' });
   const pass = h('input.input', { value: ex.password || '', type: 'password', autocomplete: 'new-password' });
   const showPass = h('button.icon-btn', { type: 'button', title: 'Mostrar senha', onclick: () => { pass.type = pass.type === 'password' ? 'text' : 'password'; } }, ico('eye'));
@@ -339,36 +366,17 @@ export function openListForm(existing, onSaved, onDelete) {
       user.value = x.username;
       pass.value = x.password;
     } else if (many.length) setServers(many[0], many.slice(1));
-    renderRows();
   });
 
   const field = (label, input, hint) => h('div.field', h('label', label), input, hint ? h('div.hint', hint) : null);
-  // Escondido até pedir: a lista simples continua só com servidor, usuário e senha
-  const moreServers = h('div' + (reserves.length ? '' : '.hidden'),
-    h('div.field', h('label', 'Outros servidores do mesmo provedor'),
-      h('div.hint', { style: { margin: '0 0 8px' } }, 'Mesmo usuário e senha. Se o principal cair, o app usa o próximo.')),
-    rowsBox, addBox,
-    h('div.row', { style: { gap: '8px', marginBottom: '12px' } }, addBtn, speedBtn));
-  const moreServersBtn = h('button.btn.small.ghost' + (reserves.length ? '.hidden' : ''), {
-    type: 'button',
-    style: { marginBottom: '12px' },
-    onclick: () => { moreServersBtn.classList.add('hidden'); moreServers.classList.remove('hidden'); renderRows(); openAdd(); },
-  }, ico('plus'), 'O provedor deu mais de um servidor?');
-  // principal + reservas de uma vez (texto colado, celular): mostra os reservas se houver
+
   const setServers = (main, extra) => {
     if (main) server.value = main;
     for (const x of extra || []) if (x !== mainServer() && !reserves.includes(x)) reserves.push(x);
-    if (reserves.length) {
-      moreServersBtn.classList.add('hidden');
-      moreServers.classList.remove('hidden');
-    }
-    renderRows();
   };
-  renderRows();
   const panes = {
     xtream: h('div',
       field('Servidor', server, 'Endereço com porta, como o provedor informou. Pode colar o link get.php inteiro.'),
-      moreServersBtn, moreServers,
       h('div.row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass)))),
     url: h('div', field('Link da lista (M3U/M3U8)', url), xtHint),
     file: h('div', h('div.field', h('label', 'Arquivo da lista'),

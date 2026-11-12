@@ -366,6 +366,37 @@ async function checkListStatus() {
   renderListStatus();
   const [tone] = STATUS_INFO[data.state] || ['idle'];
   if (tone === 'bad' && prev !== data.state && isPlaying()) toast(`${list.name}: ${STATUS_DETAIL[data.state]}`, 'error', 9000);
+  if (data.state === 'offline' && net.state === 'online') suggestServer(list);
+}
+
+// Servidor em uso fora do ar, com internet funcionando: testa os outros servidores da mesma conta e sugere
+// trocar para o mais rápido que responder. Sem internet não sugere (o problema é outro). Uma vez por servidor
+// a cada sessão, para não insistir.
+const suggested = new Set();
+async function suggestServer(list) {
+  if (list.type !== 'xtream' || !(list.servers || []).length) return;
+  const key = `${list.id}|${list.server}`;
+  if (suggested.has(key)) return;
+  suggested.add(key);
+  let r;
+  try {
+    r = await api('/api/list-speed', { method: 'POST', body: JSON.stringify({ id: list.id, server: list.server, servers: list.servers, username: list.username }) });
+  } catch { return; }
+  const ok = r.results.filter((x, i) => i > 0 && x.ms != null).sort((a, b) => a.ms - b.ms)[0];
+  if (!ok || r.results[0].ms != null) return; // nenhum outro responde, ou o em uso voltou
+  const short = (s) => String(s).replace(/^https?:\/\//, '');
+  toast(`O servidor ${short(list.server)} não está respondendo. ${short(ok.server)} está funcionando.`, 'error', 15000, {
+    label: 'Usar este',
+    fn: async () => {
+      const i = S.lists.findIndex((l) => l.id === list.id);
+      if (i < 0) return;
+      const old = S.lists[i];
+      S.lists[i] = { ...old, server: ok.server, servers: [old.server, ...(old.servers || []).filter((s) => s !== ok.server)] };
+      await saveNow('lists');
+      toast(`Usando ${short(ok.server)}`, 'ok');
+      refreshList(list.id);
+    },
+  });
 }
 
 // Ao voltar para o app, atualiza na hora (sem repetir se acabou de verificar).

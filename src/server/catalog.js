@@ -632,7 +632,7 @@ async function speedTest(cfg) {
 
 async function checkStatus(list) {
   let result;
-  if (list.type === 'xtream') result = await checkXtream(list);
+  if (list.type === 'xtream') result = await checkXtream({ server: list.server, username: list.username, password: list.password });
   else if (list.source === 'file') result = { state: 'local' };
   else {
     const cfg = xtreamFromLink(list.url);
