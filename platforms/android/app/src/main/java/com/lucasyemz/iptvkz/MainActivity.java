@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
@@ -63,6 +64,7 @@ public class MainActivity extends Activity {
     private static native int startNode(String[] args);
 
     private final Handler main = new Handler(Looper.getMainLooper());
+    private boolean isTv;
     private FrameLayout root;
     private WebView web;
     private View fullscreen;
@@ -82,6 +84,10 @@ public class MainActivity extends Activity {
         // fica sabendo que o teclado abriu). TV: o teclado fica por cima e a página mantém o tamanho; encolhida, a
         // barra lateral não cabia, ganhava barra de rolagem e a tela inteira se mexia.
         boolean tv = getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK);
+        isTv = tv;
+        // Como os apps de streaming: na TV, sempre deitado; no celular, as telas em pé e o vídeo deitado
+        // (setVideoLandscape, chamado pelo player); no tablet, gira à vontade.
+        setRequestedOrientation(baseOrientation());
         getWindow().setSoftInputMode(tv && Build.VERSION.SDK_INT >= 30
                 ? WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
                 : WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
@@ -252,6 +258,13 @@ public class MainActivity extends Activity {
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    private int baseOrientation() {
+        if (isTv) return ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
+        return getResources().getConfiguration().smallestScreenWidthDp >= 600
+                ? ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+                : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+    }
+
     private void createWebView() {
         // app Beta (build no PC): a página pode ser inspecionada pelo PC (chrome://inspect), para testar no aparelho
         if (getPackageName().endsWith(".beta")) WebView.setWebContentsDebuggingEnabled(true);
@@ -262,7 +275,8 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SmartTV IPTVKZ-Android");
+        // só a TV se apresenta como TV: no celular a página usa o modo de toque
+        s.setUserAgentString(s.getUserAgentString() + (isTv ? " SmartTV" : "") + " IPTVKZ-Android");
         web.addJavascriptInterface(new Object() {
             @JavascriptInterface
             public void exit() { main.post(MainActivity.this::quit); }
@@ -276,6 +290,12 @@ public class MainActivity extends Activity {
 
             @JavascriptInterface
             public boolean isKeyboardVisible() { return keyboardVisible; }
+
+            // vídeo em tela cheia (filme, série, canal ampliado): deita a tela; ao sair, volta ao normal do aparelho
+            @JavascriptInterface
+            public void setVideoLandscape(boolean on) {
+                main.post(() -> setRequestedOrientation(on && !isTv ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : baseOrientation()));
+            }
         }, "IPTVKZAndroid");
         video = new NativeVideo(this, root, web);
         web.addJavascriptInterface(video, "IPTVKZVideo");

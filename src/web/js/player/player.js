@@ -102,6 +102,12 @@ function detectEngine(url, live) {
   return 'native';
 }
 
+// App Android no celular: as telas ficam em pé e o vídeo em tela cheia deita, como nos apps de streaming.
+// Na TV e fora do app Android não faz nada.
+function videoLandscape(on) {
+  try { if (window.IPTVKZAndroid && window.IPTVKZAndroid.setVideoLandscape) window.IPTVKZAndroid.setVideoLandscape(!!on); } catch {}
+}
+
 export class Player {
   /**
    * opts: { live, title, onBack, onEnded, onTime(t,d), next: {title} | null, onNext,
@@ -214,6 +220,7 @@ export class Player {
     this.netTag = h('div.net-tag.hidden', h('i'), h('span', 'Internet lenta'));
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
     this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
+    if (!opts.live) videoLandscape(true); // filme e série: o player já abre deitado no celular
     this.host.append(this.root);
   }
 
@@ -863,9 +870,11 @@ export class Player {
   }
 
   toggleFullscreen() {
-    if (this.exo) {
-      this.root.classList.toggle('pseudo-fs');
-      return this._setIcon(this.btnFs, this.root.classList.contains('pseudo-fs') ? 'exitFs' : 'fullscreen');
+    // app Android: a tela cheia é da própria página (a do WebView não é confiável), e no celular ela deita a tela
+    if (this.exo || window.IPTVKZAndroid) {
+      const on = this.root.classList.toggle('pseudo-fs');
+      if (this.opts.live) videoLandscape(on);
+      return this._setIcon(this.btnFs, on ? 'exitFs' : 'fullscreen');
     }
     if (document.fullscreenElement) return document.exitFullscreen().catch(() => {});
     // iPhone: só o próprio vídeo entra em tela cheia
@@ -1549,6 +1558,7 @@ export class Player {
   destroy() {
     this._report();
     this.destroyed = true;
+    videoLandscape(false);
     clearInterval(this._subTimer);
     clearInterval(this._perfTimer);
     clearInterval(this._castT); // a TV continua tocando se o player fechar; dá para parar pela TV
