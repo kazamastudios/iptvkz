@@ -65,7 +65,8 @@ export function settingsView(params, ctx) {
           },
         }, ico('trash'), 'Excluir'))));
   }
-  cards.append(h('button.list-card.add-card', { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar lista'));
+  // até 2 listas: bloco à direita delas; com 3 ou mais, uma linha própria embaixo
+  cards.append(h('button.list-card.add-card' + (S.lists.length >= 3 ? '.add-row' : ''), { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar lista'));
   page.append(h('div.set-section', h('h3', 'Listas'), h('p', 'Troque de lista pelo seletor no topo da barra lateral.'), cards));
 
   // ---------- categorias ----------

@@ -499,8 +499,11 @@ export function move(dir) {
     const cy = r.top + r.height / 2;
     let primary;
     let overlap;
-    if (dir === 'right') { if (r.left < a.right - 4 && cx <= ax + 2) continue; primary = Math.max(0, r.left - a.right); overlap = Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top); }
-    else if (dir === 'left') { if (r.right > a.left + 4 && cx >= ax - 2) continue; primary = Math.max(0, a.left - r.right); overlap = Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top); }
+    // ←/→: quem começa antes da borda do atual só conta se estiver na mesma linha (botões que quebraram em duas
+    // linhas: o da linha de cima, um pouco mais à direita, não é "à direita")
+    const rowOverlap = Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top);
+    if (dir === 'right') { if (r.left < a.right - 4 && (cx <= ax + 2 || rowOverlap <= 0)) continue; primary = Math.max(0, r.left - a.right); overlap = rowOverlap; }
+    else if (dir === 'left') { if (r.right > a.left + 4 && (cx >= ax - 2 || rowOverlap <= 0)) continue; primary = Math.max(0, a.left - r.right); overlap = rowOverlap; }
     else if (dir === 'down') { if (r.top < a.bottom - 4 && cy <= ay + 2) continue; primary = Math.max(0, r.top - a.bottom); overlap = Math.min(a.right, r.right) - Math.max(a.left, r.left); }
     else { if (r.bottom > a.top + 4 && cy >= ay - 2) continue; primary = Math.max(0, a.top - r.bottom); overlap = Math.min(a.right, r.right) - Math.max(a.left, r.left); }
     // ↑/↓ não escolhem quem está ao lado, na mesma altura (ex.: o cartão vizinho)
