@@ -994,7 +994,7 @@ export function serieView(params, ctx) {
       const r = p && p.d ? p.t / p.d : 0;
       const stopped = isStarted(p);
       const th = img(ep.img || serie.poster, ep.title, 'cover');
-      th.append(h('div.play', ico('play')));
+      th.append(h('div.play', ico('play')), h('span.badge.epn', `E${ep.num}`)); // número na imagem: só no celular (CSS)
       if (watched && !stopped) th.append(h('span.badge.seen.seen-mark', '✓ Assistido'));
       const hasVersion = !!serieVersions || ep.versions.some((v) => v.label === versionLabel);
       const meta = [ep.dur ? fmtDur(ep.dur) : null, stopped ? `Parou em ${fmtTime(p.t)}` : watched ? 'Assistido' : null].filter(Boolean).join(' · ');

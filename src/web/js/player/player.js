@@ -930,6 +930,25 @@ export class Player {
       return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
     };
     let dragging = false;
+    // Arrastar: a bolinha e o tempo seguem o dedo/mouse na hora; o vídeo só busca ao soltar, e até ele chegar lá
+    // a tela fica no ponto escolhido (_seekTo), sem voltar para a posição antiga enquanto carrega.
+    const show = (ratio) => {
+      const d = this.video.duration;
+      this._paintSeek(ratio);
+      if (Number.isFinite(d)) this.timeEl.textContent = `${fmtTime(ratio * d)} / ${fmtTime(d)}`;
+      clearTimeout(this._hideT); // controles não somem no meio do arraste
+    };
+    const finish = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      const d = this.video.duration;
+      if (!Number.isFinite(d)) return;
+      const t = ratioAt(e) * d;
+      this._seekTo = { t, at: Date.now() };
+      show(t / d);
+      this._scheduleHide(3000);
+      setTimeout(() => { this.video.currentTime = t; }, 0); // o pedido segue depois do desenho
+    };
     seek.addEventListener('pointermove', (e) => {
       const d = this.video.duration;
       if (!Number.isFinite(d)) return;
@@ -937,20 +956,16 @@ export class Player {
       this.seekTip.style.left = ratio * 100 + '%';
       this.seekTip.textContent = fmtTime(ratio * d);
       this.preview.show(ratio * d, ratio, seek.getBoundingClientRect().width / (parseFloat(document.documentElement.style.zoom) || 1));
-      if (dragging) this._paintSeek(ratio);
+      if (dragging) show(ratio);
     });
     seek.addEventListener('pointerleave', () => this.preview.hide(150));
     seek.addEventListener('pointerdown', (e) => {
       dragging = true;
       seek.setPointerCapture(e.pointerId);
-      this._paintSeek(ratioAt(e));
+      show(ratioAt(e));
     });
-    seek.addEventListener('pointerup', (e) => {
-      if (!dragging) return;
-      dragging = false;
-      const d = this.video.duration;
-      if (Number.isFinite(d)) this.video.currentTime = ratioAt(e) * d;
-    });
+    seek.addEventListener('pointerup', finish);
+    seek.addEventListener('pointercancel', finish);
     this._isDragging = () => dragging;
   }
 
@@ -959,12 +974,21 @@ export class Player {
     this.seekKnob.style.left = ratio * 100 + '%';
   }
 
+  // Tempo mostrado na tela: logo depois de soltar a barra, o ponto escolhido, até o vídeo chegar lá (ou 8 s)
+  _shownTime() {
+    const v = this.video;
+    const s = this._seekTo;
+    if (s && Math.abs(v.currentTime - s.t) > 1.5 && Date.now() - s.at < 8000) return s.t;
+    this._seekTo = null;
+    return v.currentTime;
+  }
+
   _updateSeek() {
     if (this.opts.live || !this.seekFill) return;
     const v = this.video;
     const d = v.duration;
     if (!Number.isFinite(d) || d <= 0) return;
-    if (!this._isDragging() && !this.scrub) this._paintSeek(v.currentTime / d);
+    if (!this._isDragging() && !this.scrub) this._paintSeek(this._shownTime() / d);
     try {
       const b = v.buffered;
       for (let i = 0; i < b.length; i++) {
@@ -982,7 +1006,7 @@ export class Player {
     if (this.attempts && this.playFrom != null && v.currentTime - this.playFrom > 10) this.attempts = 0;
     if (!this.opts.live) {
       this.preview.capture();
-      if (!this.scrub) this.timeEl.textContent = `${fmtTime(v.currentTime)} / ${fmtTime(v.duration)}`;
+      if (!this.scrub && !this._isDragging()) this.timeEl.textContent = `${fmtTime(this._shownTime())} / ${fmtTime(v.duration)}`;
       this._updateSeek();
       const now = Date.now();
       if (!this._lastReport || now - this._lastReport > 10000) this._report();

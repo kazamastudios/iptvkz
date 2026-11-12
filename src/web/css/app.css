@@ -1216,6 +1216,19 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
   html:not(.tv-wide) .shelf-head > .faint { order: 0; flex: none; margin: 0 0 8px auto; align-self: baseline; }
   html:not(.tv-wide) .shelf > .shelf-body, html:not(.tv-wide) .shelf > .shelf-row { order: 1; flex: 1 0 100%; min-width: 0; }
   html:not(.tv-wide) .shelf-head > :not(h3):not(.faint) { order: 2; margin-top: 6px; }
+  /* Episódios no celular: imagem menor com o número numa etiqueta; ao lado, título (2 linhas) e duração; embaixo,
+     na largura toda, a descrição e a barra. Antes era tudo numa fileira só e o texto ficava espremido. */
+  html:not(.tv-wide) .ep { display: grid; grid-template-columns: 128px minmax(0, 1fr) auto; grid-template-areas: 'thumb t btn' 'thumb m btn' 'd d d' 'bar bar bar'; column-gap: 10px; row-gap: 4px; align-items: start; padding: 8px; }
+  html:not(.tv-wide) .detail .inner { padding-left: 14px; padding-right: 14px; } /* mesma margem das outras telas */
+  html:not(.tv-wide) .ep .n { display: none; }
+  html:not(.tv-wide) .ep .thumb { grid-area: thumb; width: 128px; }
+  html:not(.tv-wide) .ep .thumb .epn { display: inline-flex; }
+  html:not(.tv-wide) .ep .info { display: contents; }
+  html:not(.tv-wide) .ep .t { grid-area: t; font-size: 14px; line-height: 1.3; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  html:not(.tv-wide) .ep .info > .faint { grid-area: m; }
+  html:not(.tv-wide) .ep .d { grid-area: d; margin-top: 4px; }
+  html:not(.tv-wide) .ep .bar { grid-area: bar; max-width: none; }
+  html:not(.tv-wide) .ep .seen-btn { grid-area: btn; align-self: start; }
   /* ordem do Ver tudo: os botões rolam de lado dentro da fileira (a página não), como a faixa de categorias */
   html:not(.tv-wide) .sort-chips { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   html:not(.tv-wide) .sort-chips::-webkit-scrollbar { display: none; }
@@ -1315,3 +1328,5 @@ html { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adju
 .poster .btags.over-bar { bottom: 18px; }
 .poster .btags .badge { background: rgba(0,0,0,.75); font-size: 10px; height: 18px; }
 .poster .btags .badge.seen { background: rgba(14, 90, 60, .92); }
+/* número do episódio na imagem: só aparece no celular (lá a coluna do número some) */
+.ep .thumb .epn { display: none; position: absolute; left: 6px; top: 6px; z-index: 1; background: rgba(0,0,0,.75); font-size: 10px; height: 18px; }
