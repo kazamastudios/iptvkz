@@ -612,11 +612,18 @@ async function checkM3uLink(url) {
 // mede quanto cada um leva para responder ao login. Devolve na ordem da lista; "fastest" é o índice do melhor.
 async function speedTest(cfg) {
   const out = [];
-  for (const server of serversOf(cfg)) {
-    const t0 = Date.now();
-    const r = await checkXtream({ server, username: cfg.username, password: cfg.password }, 8000);
+  for (let server of serversOf(cfg)) {
+    let t0 = Date.now();
+    let r = await checkXtream({ server, username: cfg.username, password: cfg.password }, 8000);
+    if (r.state === 'offline') {
+      // talvez o endereço seja https (ou http) e foi digitado do outro jeito
+      const other = server.startsWith('https://') ? server.replace(/^https/, 'http') : server.replace(/^http/, 'https');
+      t0 = Date.now();
+      const r2 = await checkXtream({ server: other, username: cfg.username, password: cfg.password }, 8000);
+      if (r2.state !== 'offline') { server = other; r = r2; }
+    }
     const ok = ['active', 'expiring'].includes(r.state);
-    out.push({ server, state: r.state, ms: ok ? Date.now() - t0 : null });
+    if (!out.some((x) => x.server === server)) out.push({ server, state: r.state, ms: ok ? Date.now() - t0 : null });
   }
   let fastest = -1;
   out.forEach((r, i) => { if (r.ms != null && (fastest < 0 || r.ms < out[fastest].ms)) fastest = i; });

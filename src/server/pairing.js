@@ -57,7 +57,7 @@ function clean(body) {
   const text = (v) => String(v == null ? '' : v).trim().slice(0, MAX_FIELD);
   const name = text(body.name);
   if (body.type === 'xtream') {
-    const list = { type: 'xtream', name, server: text(body.server), username: text(body.username), password: String(body.password == null ? '' : body.password).slice(0, MAX_FIELD) };
+    const list = { type: 'xtream', name, server: text(body.server), servers: String(body.servers == null ? '' : body.servers).slice(0, 8000), username: text(body.username), password: String(body.password == null ? '' : body.password).slice(0, MAX_FIELD) };
     return list.server && list.username && list.password ? list : null;
   }
   const url = text(body.url);
@@ -82,6 +82,8 @@ input[type=file]{height:auto;padding:14px;border-style:dashed;font-size:15px;col
 .send{display:flex;align-items:center;justify-content:center;width:100%;height:50px;border:0;border-radius:10px;background:#ff2a2a;color:#fff;font:600 17px system-ui;text-decoration:none}
 .send.alt{background:#14141d;border:1px solid #44445e}.send:disabled{opacity:.6}
 .warn{padding:12px;border-radius:10px;background:#2a1a10;color:#ffd2a8;font-size:14px}
+textarea{width:100%;padding:10px 12px;margin:0 0 14px;border-radius:10px;border:1px solid #33334a;background:#14141d;color:#fff;font:16px system-ui}
+.more{background:none;border:0;color:#c9c9d8;font:14px system-ui;padding:0 0 14px;text-decoration:underline}
 #err,#berr{color:#ff8a8a;font-size:14px;min-height:20px;margin-bottom:8px}.hidden{display:none}
 </style></head><body><main>
 <div id="done" class="hidden"><h1>Pronto!</h1><p id="donetext">A lista foi enviada. Continue na TV.</p></div>
@@ -90,6 +92,8 @@ input[type=file]{height:auto;padding:14px;border-style:dashed;font-size:15px;col
 <div class="tabs"><button type="button" id="tx" class="on">Xtream</button><button type="button" id="tm">Link M3U</button><button type="button" id="tb">Carregar lista</button></div>
 <form id="f">
 <div id="px"><label for="s">Servidor (ou cole o link get.php)</label><input id="s" autocomplete="off" autocapitalize="none" inputmode="url" placeholder="http://servidor.com:8080">
+<button type="button" class="more" id="mb">+ O provedor deu mais de um servidor?</button>
+<div id="ms" class="hidden"><label for="ss">Outros servidores do mesmo provedor</label><textarea id="ss" rows="4" autocapitalize="none" placeholder="Pode colar vários de uma vez, do jeito que vieram"></textarea></div>
 <label for="u">Usuário</label><input id="u" autocomplete="off" autocapitalize="none"><label for="w">Senha</label><input id="w" type="password" autocomplete="off"></div>
 <div id="pm" class="hidden"><label for="l">Link da lista</label><input id="l" autocomplete="off" autocapitalize="none" inputmode="url" placeholder="http://…/lista.m3u"></div>
 <label for="n">Nome (opcional)</label><input id="n" autocomplete="off" placeholder="Minha lista">
@@ -115,9 +119,10 @@ $('tx').onclick=function(){tab('xtream')};$('tm').onclick=function(){tab('m3u')}
 var lista=new URLSearchParams(location.search).get('lista');
 if(lista){$('main').className='hidden';$('save').className='';$('dl').href=location.pathname.replace(/\\/$/,'')+'/arquivo?lista='+encodeURIComponent(lista);$('dl').addEventListener('click',function(){$('saved').className=''})}
 function finish(t){$('main').className='hidden';$('donetext').textContent=t;$('done').className=''}
+$('mb').onclick=function(){$('mb').className='hidden';$('ms').className='';$('ss').focus()};
 $('s').addEventListener('change',function(){try{var u=new URL($('s').value.trim()),a=u.searchParams.get('username'),b=u.searchParams.get('password');if(a&&b&&/get\\.php|player_api\\.php/i.test(u.pathname)){$('s').value=u.protocol+'//'+u.host;$('u').value=a;$('w').value=b}}catch(e){}});
 $('f').addEventListener('submit',function(e){e.preventDefault();$('err').textContent='';$('b').disabled=true;
-fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:type,name:$('n').value,server:$('s').value,username:$('u').value,password:$('w').value,url:$('l').value})})
+fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:type,name:$('n').value,server:$('s').value,servers:$('ss').value,username:$('u').value,password:$('w').value,url:$('l').value})})
 .then(function(r){if(r.ok){finish('A lista foi enviada. Continue na TV.');return}if(r.status===410){$('err').textContent='Este código expirou. Escaneie o novo QR Code na TV.'}else{$('err').textContent='Confira os campos e tente de novo.'}$('b').disabled=false})
 .catch(function(){$('err').textContent='Não foi possível falar com a TV. Confira se o celular está no mesmo Wi-Fi.';$('b').disabled=false})});
 $('rb').addEventListener('click',function(){$('berr').textContent='';var file=$('a').files[0];

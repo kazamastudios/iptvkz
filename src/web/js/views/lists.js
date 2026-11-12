@@ -147,6 +147,31 @@ export function openListSave(list) {
 }
 
 // Links tipo http://host:porta/get.php?username=X&password=Y&type=m3u_plus viram Xtream.
+// Texto colado com um ou vários endereços (um por linha, ou separados por espaço, vírgula...). Conserta o que dá:
+// http faltando ou digitado errado (htp://, http:/, http;//), barra no fim, link get.php inteiro, maiúsculas.
+// Sem http ou https, fica http (o mais comum nos painéis); o teste de servidores tenta o outro se não responder.
+export function parseServers(text) {
+  const out = [];
+  for (const raw of String(text || '').split(/[\s,;|]+/)) {
+    let t = raw.replace(/^[<("'[]+/, '').replace(/[>)"'\].,;:]+$/, '');
+    if (!t) continue;
+    let https = false;
+    const sch = t.match(/^h?t{1,2}p{1,2}(s?)(?:[:;.]+\/*|\/+)/i);
+    if (sch) { https = !!sch[1]; t = t.slice(sch[0].length); }
+    t = t.replace(/^\/+/, '');
+    const m = t.match(/^([^/?#]+)([^?#]*)/);
+    if (!m) continue;
+    const hostPort = m[1].toLowerCase().replace(/\.+$/, '');
+    const path = m[2].replace(/\/(get|player_api|xmltv)\.php.*$/i, '').replace(/\/+$/, '');
+    const [host, port, more] = hostPort.split(':');
+    if (more !== undefined || !/^(localhost|\d{1,3}(\.\d{1,3}){3}|[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,})$/.test(host)) continue;
+    if (port !== undefined && !/^\d{1,5}$/.test(port)) continue;
+    const s = `${https ? 'https' : 'http'}://${hostPort}${path}`;
+    if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
 function xtreamFromUrl(url) {
   try {
     const u = new URL(url.trim());
@@ -193,7 +218,7 @@ export function openListForm(existing, onSaved, onDelete) {
   // Mesma conta em outros endereços do provedor: reservas se o principal cair, e dá para testar qual é o mais rápido
   const extraServers = h('textarea.input', { rows: 3, placeholder: 'Um endereço por linha (opcional)', value: (ex.servers || []).join('\n') });
   const speedBox = h('div.speed-box');
-  const serverLines = () => extraServers.value.split(/\s*[\n,;]\s*/).map((s) => s.trim()).filter(Boolean);
+  const serverLines = () => parseServers(extraServers.value);
   const speedBtn = h('button.btn.small', {
     type: 'button',
     onclick: async () => {
@@ -204,6 +229,10 @@ export function openListForm(existing, onSaved, onDelete) {
       try {
         const r = await api('/api/list-speed', { method: 'POST', body: JSON.stringify({ id: ex.id, server: server.value.trim(), servers: serverLines(), username: user.value.trim(), password: pass.value }) });
         const short = (s) => s.replace(/^https?:\/\//, '');
+        if (r.results.length) {
+          server.value = r.results[0].server;
+          extraServers.value = r.results.slice(1).map((x) => x.server).join('\n');
+        }
         speedBox.replaceChildren(...r.results.map((x, i) => h('div.speed-row' + (i === r.fastest ? '.best' : ''),
           h('span.speed-host', short(x.server)),
           h('span' + (x.ms == null ? '.bad' : x.ms < 800 ? '.good' : x.ms < 2000 ? '.warn' : '.bad'), x.ms == null ? (x.state === 'offline' ? 'fora do ar' : 'recusou') : `${x.ms} ms`),
@@ -270,29 +299,40 @@ export function openListForm(existing, onSaved, onDelete) {
     }
   });
   server.addEventListener('change', () => {
-    const x = xtreamFromUrl(server.value);
+    const many = parseServers(server.value);
+    const x = many.length > 1 ? null : xtreamFromUrl(server.value);
     if (x) {
       server.value = x.server;
       user.value = x.username;
       pass.value = x.password;
-    }
+    } else if (many.length) setServers(many[0], many.slice(1));
   });
 
   const field = (label, input, hint) => h('div.field', h('label', label), input, hint ? h('div.hint', hint) : null);
   // Escondido até pedir: a lista simples continua só com servidor, usuário e senha
   const moreServers = h('div' + ((ex.servers || []).length ? '' : '.hidden'),
-    field('Outros endereços do mesmo provedor', extraServers, 'Mesmo usuário e senha. Se o principal cair, o app usa o próximo.'),
+    field('Outros servidores do mesmo provedor', extraServers, 'Mesmo usuário e senha. Pode colar vários de uma vez, do jeito que vieram: o app arruma os links. Se o principal cair, usa o próximo.'),
     h('div.row', { style: { gap: '8px', marginBottom: '12px' } }, speedBtn), speedBox);
   const moreServersBtn = h('button.btn.small.ghost' + ((ex.servers || []).length ? '.hidden' : ''), {
     type: 'button',
     style: { marginBottom: '12px' },
     onclick: () => { moreServersBtn.classList.add('hidden'); moreServers.classList.remove('hidden'); extraServers.focus(); },
   }, ico('plus'), 'O provedor deu mais de um servidor?');
+  // principal + reservas de uma vez (texto colado, celular): mostra os reservas se houver
+  const setServers = (main, extra) => {
+    if (main) server.value = main;
+    const rest = (extra || []).filter((s) => s !== server.value);
+    if (rest.length) {
+      extraServers.value = rest.join('\n');
+      moreServersBtn.classList.add('hidden');
+      moreServers.classList.remove('hidden');
+    }
+  };
   const panes = {
     xtream: h('div',
       field('Servidor', server, 'Endereço com porta, como o provedor informou. Pode colar o link get.php inteiro.'),
-      h('div.row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass))),
-      moreServersBtn, moreServers),
+      moreServersBtn, moreServers,
+      h('div.row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass)))),
     url: h('div', field('Link da lista (M3U/M3U8)', url), xtHint),
     file: h('div', h('div.field', h('label', 'Arquivo da lista'),
       h('div.row', h('button.btn', { type: 'button', onclick: () => fileInput.click() }, ico('upload'), 'Escolher arquivo'), fileLabel), fileInput)),
@@ -325,8 +365,9 @@ export function openListForm(existing, onSaved, onDelete) {
     // o que veio do celular entra no mesmo caminho do formulário (validação e lista repetida)
     const x = list.type === 'm3u' ? xtreamFromUrl(list.url) : xtreamFromUrl(list.server);
     name.value = list.name;
-    if (x) { server.value = x.server; user.value = x.username; pass.value = x.password; setTab('xtream'); }
-    else if (list.type === 'xtream') { server.value = list.server; user.value = list.username; pass.value = list.password; setTab('xtream'); }
+    const fromPhone = list.type === 'xtream' ? parseServers(`${list.server}\n${list.servers || ''}`) : [];
+    if (x) { server.value = x.server; user.value = x.username; pass.value = x.password; setTab('xtream'); setServers(null, fromPhone); }
+    else if (list.type === 'xtream') { setServers(fromPhone[0] || list.server, fromPhone.slice(1)); user.value = list.username; pass.value = list.password; setTab('xtream'); }
     else { url.value = list.url; setTab('url'); }
     form.dispatchEvent(new Event('submit', { cancelable: true }));
   }, (summary, token) => confirmRestore(summary, token, () => m.close()), () => phoneHint.classList.remove('hidden')) : null;
