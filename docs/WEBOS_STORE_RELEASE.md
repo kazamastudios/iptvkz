@@ -89,7 +89,7 @@ Atenção: com o Modo Desenvolvedor ligado, a TV pode não aplicar o ACG como um
    - **Ícone de 400×400** e **capturas de 1920×1080** (veja "Capturas de tela").
    - **Política de privacidade:** o endereço público.
    - **Classificação etária:** responda o questionário (veja "Classificação").
-   - **Contato de suporte:** um e-mail da Kazama Studios, não o pessoal.
+   - **Contato de suporte:** `suporte@kazamastudios.com.br`.
 5. **Pacote:** envie `dist/webos/store/com.kazamastudios.iptvkz_<versão>_all.ipk`. A LG confere a assinatura e os metadados. Se recusar por falta de `requiredACG`, o build está desatualizado.
 6. **Self Checklist:** preencha com base na seção "App Self Checklist" abaixo e anexe o **UX Scenario** (fluxo das telas, abaixo).
 7. **Notas para o testador:** cole o texto de "Instruções para os testadores da LG", com a lista de teste.
@@ -125,7 +125,7 @@ A versão oficial está em https://iptvkz.kazamastudios.com.br/privacidade.html.
 - A versão da LG Content Store não procura atualizações fora da loja.
 - O cadastro pelo celular funciona só dentro da rede de casa, com um código de uso único que vale 15 minutos.
 - O arquivo de "Baixar lista" contém usuário e senha e fica com quem baixou.
-- Contato: o e-mail de suporte da Kazama Studios.
+- Contato: `suporte@kazamastudios.com.br`.
 
 ## Classificação
 

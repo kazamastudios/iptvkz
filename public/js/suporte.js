@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ISSUES = 'https://github.com/kazamastudios/iptvkz/issues/new';
+  var EMAIL = 'suporte@kazamastudios.com.br';
   var form = document.querySelector('[data-support-form]');
   var tvNote = document.querySelector('[data-support-tv]');
   var done = document.querySelector('[data-support-done]');
@@ -47,7 +47,7 @@
   }
   function linkReserva(d) {
     var corpo = 'Onde: ' + texto('area', d) + '\nQuando: ' + texto('momento', d) + '\nAparelho: ' + texto('aparelho', d) + '\nVersão: ' + (d.versao || 'não informada') + '\n\n' + d.mensagem;
-    return ISSUES + '?title=' + encodeURIComponent('[Suporte] ' + d.mensagem.slice(0, 60)) + '&body=' + encodeURIComponent(corpo.slice(0, 1500));
+    return 'mailto:' + EMAIL + '?subject=' + encodeURIComponent('[Suporte] ' + d.mensagem.slice(0, 60)) + '&body=' + encodeURIComponent(corpo.slice(0, 1500));
   }
   function mostrarErro(msg) {
     status.className = 'form-status is-bad';
@@ -73,9 +73,7 @@
       mostrarErro('Não foi possível enviar agora. Tente de novo em instantes ou ');
       var a = document.createElement('a');
       a.href = linkReserva(d);
-      a.target = '_blank';
-      a.rel = 'noopener';
-      a.textContent = 'envie pelo GitHub.';
+      a.textContent = 'envie por e-mail.';
       status.appendChild(a);
     });
   });
