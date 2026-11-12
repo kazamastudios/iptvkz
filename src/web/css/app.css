@@ -1339,3 +1339,6 @@ html { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adju
 .ep .thumb .epn { display: none; position: absolute; left: 6px; top: 6px; z-index: 1; background: rgba(0,0,0,.75); font-size: 10px; height: 18px; }
 /* sem o destaque azul do Android ao tocar (a propriedade é herdada: uma regra só, sem `*`) */
 html { -webkit-tap-highlight-color: transparent; }
+/* Assistir na TV (página do filme/série): lista de TVs */
+.cast-pick { display: grid; gap: 8px; }
+.cast-pick .cast-dev { justify-content: flex-start; height: 48px; }

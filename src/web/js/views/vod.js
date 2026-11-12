@@ -7,6 +7,7 @@ import {
   continueMovies, continueSeries, clearContinue, catItems, isLater, toggleLater, laterItems, adultLocked, isAdultItem, seriesDetail, movieDetail, preferredVersion, versionNames, setSetting,
 } from '../core/store.js';
 import { playMovie, playEpisode } from './vodplayer.js';
+import { castButton } from '../player/castpick.js';
 import { TV, KB, focusEl } from '../tv/tv.js';
 import { glideTo, glideTarget, stopGlide, scrolling } from '../core/smoothscroll.js';
 import { viewMode } from '../core/viewmode.js';
@@ -710,6 +711,8 @@ function movieActions(movie, version, trailer, refresh, box) {
       resumable ? `Continuar de ${p.t < 3600 ? fmtTime(p.t) : fmtClockSec(p.t)}` : 'Assistir'),
     resumable ? h('button.btn.big', { onclick: () => playMovie(movie, version, { fromStart: true, onClose: refresh }) }, ico('refresh'), 'Do início') : null,
     trailerButton(cardName(movie), trailer),
+    // manda o filme para uma TV da rede, de onde parou
+    castButton(() => ({ url: version.url, title: cardName(movie), startAt: isStarted(getProgress(movie.id)) ? getProgress(movie.id).t : 0 })),
     laterButton('movies', movie),
     favButton('movies', movie),
     h('button.btn' + (isWatched(movie.id) ? '.seen-on' : ''), {
@@ -951,6 +954,12 @@ export function serieView(params, ctx) {
     d.acts.replaceChildren(
       target ? h('button.btn.primary.big', { onclick: () => play(target.season, target.ep.id, { fromStart: !!target.fromStart }) }, ico('play'), target.label) : null,
       trailerButton(cardName(serie), trailer),
+      // manda para a TV o mesmo episódio do botão principal
+      target ? castButton(() => {
+        const ver = target.ep.versions.find((v) => v.label === versionLabel) || target.ep.versions[0];
+        const pe = getProgress(target.ep.id);
+        return { url: ver.url, title: `${cardName(serie)} · ${code(target)}`, startAt: !target.fromStart && isStarted(pe) ? pe.t : 0 };
+      }) : null,
       d.laterBtn,
       d.favBtn,
     );
