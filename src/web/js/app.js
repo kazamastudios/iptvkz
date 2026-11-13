@@ -669,6 +669,17 @@ function listBlocked() {
   const l = activeList();
   return l && status.listId === l.id && status.data && BLOCK_INFO[status.data.state] ? status.data.state : null;
 }
+// Botões das telas de erro, sempre do mesmo jeito: a ação principal sozinha em cima; as outras embaixo, do mesmo
+// tamanho (no celular, em duas colunas); excluir por último, discreto, separado do resto. Antes eram uma fileira
+// solta que quebrava em tamanhos diferentes no celular.
+function stateActions(primary, more, danger) {
+  const rest = (more || []).filter(Boolean);
+  return h('div.state-actions',
+    primary,
+    rest.length ? h('div.state-more', ...rest) : null,
+    danger || null);
+}
+
 // Lista Xtream com outros servidores do mesmo provedor: nas telas de erro e de bloqueio, dá para tentar outro
 // servidor na hora (seletor no PC e no celular; botões na TV, onde o controle anda melhor entre botões) e
 // testar todos (a tela Servidores, com o teste de velocidade). Sem outros servidores, não aparece nada.
@@ -688,22 +699,21 @@ function serverPicker(list) {
     checkListStatus();
     loadActive(true);
   };
-  const testAll = h('button.btn.ghost', {
+  const testAll = h('button.btn.ghost.small', {
     onclick: () => openServers(S.lists.find((l) => l.id === list.id) || list, () => { status.at = 0; checkListStatus(); loadActive(true); }),
   }, ico('server'), 'Testar servidores');
   let choose;
   if (TV.on) {
-    choose = h('div.row', { style: { flexWrap: 'wrap', gap: '8px', justifyContent: 'center' } },
-      ...others.slice(0, 3).map((s) => h('button.btn', { onclick: () => use(s) }, ico('refresh'), short(s))));
+    choose = h('div.server-try-row', ...others.slice(0, 3).map((s) => h('button.btn', { onclick: () => use(s) }, ico('refresh'), short(s))));
   } else {
     const sel = h('select.input', { 'aria-label': 'Outro servidor' }, ...others.map((s) => h('option', { value: s }, short(s))));
-    choose = h('div.row', { style: { gap: '8px', flexWrap: 'wrap', justifyContent: 'center' } },
-      sel, h('button.btn', { onclick: () => use(sel.value) }, ico('refresh'), 'Tentar com este'));
+    choose = h('div.server-try-row', sel, h('button.btn', { onclick: () => use(sel.value) }, ico('refresh'), 'Tentar com este'));
   }
   return h('div.server-try',
-    h('p.muted', { style: { margin: '18px 0 8px' } }, `Este provedor tem outros servidores. Em uso: ${short(main)}.`),
+    h('div.server-try-title', ico('server'), h('span', 'Tentar outro servidor')),
+    h('p.muted', `Em uso: ${short(main)}`),
     choose,
-    h('div', { style: { marginTop: '8px' } }, testAll));
+    testAll);
 }
 
 function showBlocked(state) {
@@ -728,14 +738,14 @@ function showBlocked(state) {
     h('h2', title),
     h('p', h('b', list.name), ` · ${text}`),
     h('p.muted', 'Enquanto isso, os canais, filmes e séries desta lista ficam indisponíveis.'),
-    h('div.row', { style: { marginTop: '8px', justifyContent: 'center', flexWrap: 'wrap', gap: '10px' } },
-      again,
+    stateActions(again, [
       h('button.btn', { onclick: () => ctx.editList(list) }, ico('edit'), 'Editar lista'),
       S.lists.length > 1
         ? h('button.btn', { onclick: () => ctx.navigate('#/settings') }, ico('settings'), 'Trocar de lista')
-        : h('button.btn', { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar outra lista'),
-      h('button.btn.ghost', { onclick: remove }, ico('trash'), 'Excluir lista')),
-    serverPicker(list)), 'IPTVKZ');
+        : h('button.btn', { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar outra'),
+    ]),
+    serverPicker(list),
+    h('button.btn.ghost.small.state-danger', { onclick: remove }, ico('trash'), 'Excluir lista')), 'IPTVKZ');
   if (TV.on) setTimeout(() => focusEl(again), 30);
 }
 
@@ -755,10 +765,10 @@ function showError() {
       ? h('p', 'O endereço desta lista foi bloqueado pela rede ou pela operadora que você está usando agora, e por isso ela não funciona aqui. Não é um problema do IPTVKZ. Consulte o provedor da lista para mais informações e para saber se o acesso é permitido.')
       : h('p', lastError),
     blocked ? h('p.faint', { style: { fontSize: '12px' } }, lastError) : null,
-    h('div.row', { style: { marginTop: '8px' } },
-      h('button.btn.primary', { onclick: () => loadActive(true) }, ico('refresh'), 'Tentar de novo'),
+    stateActions(h('button.btn.primary', { onclick: () => loadActive(true) }, ico('refresh'), 'Tentar de novo'), [
       list ? h('button.btn', { onclick: () => ctx.editList(list) }, ico('edit'), 'Editar lista') : null,
-      S.lists.length > 1 ? h('button.btn.ghost', { onclick: () => ctx.navigate('#/settings') }, 'Trocar de lista') : null),
+      S.lists.length > 1 ? h('button.btn', { onclick: () => ctx.navigate('#/settings') }, ico('settings'), 'Trocar de lista') : null,
+    ]),
     serverPicker(list)), 'IPTVKZ');
 }
 
