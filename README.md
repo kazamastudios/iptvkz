@@ -160,7 +160,7 @@ Também independente: o servidor roda dentro da TV.
 
 O IPTVKZ aparece na tela inicial da TV, com o banner próprio.
 
-Este APK é o **canal Developer**: atualiza sozinho pelo GitHub Releases. Uma versão para a **Google Play** (só Android TV, marca Kazama Studios) está em preparação, com outro identificador, então as duas podem ficar instaladas juntas. Ela é atualizada só pela loja. Veja [`docs/GOOGLE_PLAY_RELEASE.md`](docs/GOOGLE_PLAY_RELEASE.md).
+Este APK é o **canal Developer**: atualiza sozinho pelo GitHub Releases. A versão da **Google Play** (celular e Android TV, marca Kazama Studios, por enquanto em revisão e só para o Brasil) tem outro identificador, então as duas podem ficar instaladas juntas. Ela é atualizada só pela loja. Veja [`docs/GOOGLE_PLAY_RELEASE.md`](docs/GOOGLE_PLAY_RELEASE.md).
 
 ### Celular
 
