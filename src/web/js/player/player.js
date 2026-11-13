@@ -194,8 +194,10 @@ export class Player {
     if (!liveTv) left.push(this.btnAV, this.btnGear);
     left.push(o.live ? h('span.badge.onair.live-badge', 'AO VIVO') : this.timeEl);
 
-    // filmes e séries já abrem ocupando a tela: tela cheia só no ao vivo, que no PC toca numa janela ao lado da lista
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, !CAST_ENABLED || onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
+    // Tela cheia: no ao vivo (no PC ele toca numa janela ao lado da lista) e nos filmes e séries onde o player só
+    // ocupa a janela (PC, navegador). Na TV e no app Android os filmes já abrem na tela toda: lá o botão não aparece.
+    const fsBtn = o.live ? !liveTv : !TV.on && !window.IPTVKZAndroid;
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, !CAST_ENABLED || onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, fsBtn ? this.btnFs : null);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
