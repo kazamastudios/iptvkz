@@ -201,7 +201,7 @@ const STATUS_DETAIL = {
   refused: 'O servidor recusou o acesso: a lista pode ter expirado ou o usuário e a senha mudaram.',
   refusedM3u: 'O provedor não entregou a lista: o link pode ter expirado ou mudado.',
   offline: 'O servidor da lista não respondeu. Pode ser temporário.',
-  blocked: 'A rede ou a operadora que você está usando bloqueou o endereço desta lista. Não é um problema do IPTVKZ: em outra rede (como o Wi-Fi de casa) ela pode abrir normalmente.',
+  blocked: 'A rede ou a operadora que você está usando bloqueou o endereço desta lista. Não é um problema do IPTVKZ. Consulte o provedor da lista para mais informações e para saber se o acesso é permitido.',
   unknown: 'Sem conexão no momento: a lista será verificada quando a conexão voltar.',
   local: 'Lista de arquivo: não dá para saber se os links ainda funcionam.',
 };
@@ -712,7 +712,7 @@ function showError() {
     ico('alert'),
     h('h2', blocked ? 'A rede bloqueou esta lista' : 'Não foi possível carregar a lista'),
     blocked
-      ? h('p', 'O endereço desta lista foi bloqueado pela rede ou pela operadora que você está usando agora. Não é um problema do IPTVKZ. Em outra rede, como o Wi-Fi de casa, ela pode abrir normalmente. Se continuar, fale com o provedor da lista.')
+      ? h('p', 'O endereço desta lista foi bloqueado pela rede ou pela operadora que você está usando agora, e por isso ela não funciona aqui. Não é um problema do IPTVKZ. Consulte o provedor da lista para mais informações e para saber se o acesso é permitido.')
       : h('p', lastError),
     blocked ? h('p.faint', { style: { fontSize: '12px' } }, lastError) : null,
     h('div.row', { style: { marginTop: '8px' } },
