@@ -1021,9 +1021,13 @@ async function buildNow(list, { first, onSection, full = false, stamp = Date.now
   const light = lightOf(catalog);
   // Encolheu muito em relação à versão anterior (menos de 30% dos itens)? Pode ser mudança do provedor (plano,
   // conteúdo) ou um problema dele. A nova vale, mas a anterior fica guardada e a tela oferece voltar a ela.
+  // Só compara com a anterior se veio do mesmo lugar: trocar o link (ou a conta) ao editar é outra lista, e
+  // perguntar "voltar à anterior" traria o conteúdo do link antigo para a lista com o link novo.
   const prev = memory.get(list.id) || readMeta(list.id);
+  light.src = sourceKey(list);
+  const sameSource = prev && light.src && (prev.src === undefined || prev.src === light.src); // sem src: versão antiga
   const total = (c) => (c && c.counts ? c.counts.live + c.counts.movies + c.counts.series : 0);
-  if (prev && prev.files && total(prev) >= 50 && total(light) < total(prev) * 0.3) {
+  if (sameSource && prev.files && total(prev) >= 50 && total(light) < total(prev) * 0.3) {
     const { prev: _p, shrunk: _s, ...older } = prev;
     light.prev = older;
     light.shrunk = { before: total(prev), after: total(light) };
@@ -1035,6 +1039,14 @@ async function buildNow(list, { first, onSection, full = false, stamp = Date.now
   // grava um arquivo por seção, por trás (a tela não espera o armazenamento)
   saveFiles(list.id, light, parts).catch((e) => console.error('gravar catálogo', list.id, e.message));
   return light;
+}
+
+// De onde a lista vem, para saber se uma carga nova é a mesma lista: o link (M3U) ou a conta (Xtream; o servidor
+// pode mudar entre os reservas). Arquivo enviado: null (quem escolhe o arquivo novo é a própria pessoa).
+function sourceKey(list) {
+  if (list.type === 'xtream') return 'x' + hash(String(list.username || ''));
+  if (list.source === 'file') return null;
+  return 'u' + hash(String(list.url || ''));
 }
 
 // o resumo do catálogo: tudo menos as seções

@@ -507,6 +507,20 @@ test('erros de download em palavras: endereço inexistente e servidor que recusa
   await request('DELETE', '/api/list?list=erecusa');
 });
 
+test('editar a lista com outro link: a nova vale, sem perguntar se volta à anterior', async () => {
+  variant = 'full';
+  await addLists([{ id: 'troca', type: 'm3u', name: 'Troca', url: `${FAKE}/varia.m3u` }]);
+  const a = await request('GET', '/api/catalog?list=troca&section=live');
+  assert.strictEqual(a.json.catalog.live.items.length, 40);
+  await until(async () => (fs.existsSync(path.join(DATA, 'catalog-troca.meta.json')) ? true : null));
+  // a pessoa editou e colou o link de outra lista, bem menor
+  await addLists([{ id: 'troca', type: 'm3u', name: 'Troca', url: `${FAKE}/lista.m3u` }]);
+  const b = await request('GET', '/api/catalog?list=troca&section=live&refresh=1');
+  assert.strictEqual(b.json.catalog.live.items.length, 10);
+  assert.ok(!b.json.catalog.shrunk, 'outro link não é "a lista encolheu"');
+  await request('DELETE', '/api/list?list=troca');
+});
+
 test('M3U por link monta enquanto baixa: igual a montar com o texto inteiro', async () => {
   await addLists([{ id: 'pic', type: 'm3u', name: 'Picada', url: `${FAKE}/picada.m3u` }]);
   const sections = {};
@@ -566,6 +580,22 @@ test('pareamento pelo celular: chave de uso único, lista entregue uma vez', asy
   const got = await request('GET', '/api/pair/status?token=' + token);
   assert.strictEqual(got.json.list.url, 'http://exemplo.invalid/l.m3u');
   assert.strictEqual((await request('GET', '/api/pair/status?token=' + token)).json.list, null);
+});
+
+test('pareamento: link sem http é consertado e o que falta é dito ao celular', async () => {
+  const token = (await request('POST', '/api/pair/start', { body: { address: '192.168.0.50' } })).json.token;
+  const miss = await request('POST', '/pair/' + token, { body: { type: 'xtream', server: 'servidor.invalid:8080', username: 'demo' } });
+  assert.strictEqual(miss.status, 400);
+  assert.strictEqual(miss.json.error, 'Falta preencher a senha.');
+  const bad = await request('POST', '/pair/' + token, { body: { type: 'm3u', url: 'não sei o link' } });
+  assert.strictEqual(bad.status, 400);
+  assert.match(bad.json.error, /não parece certo/);
+  // recusar não gasta a chave: o mesmo QR continua valendo
+  for (const [typed, fixed] of [['exemplo.invalid/l.m3u', 'http://exemplo.invalid/l.m3u'], ['htp:/exemplo.invalid:8000/get.php?a=1', 'http://exemplo.invalid:8000/get.php?a=1']]) {
+    const t = (await request('POST', '/api/pair/start', { body: { address: '192.168.0.50' } })).json.token;
+    assert.strictEqual((await request('POST', '/pair/' + t, { body: { type: 'm3u', url: typed } })).status, 200, typed);
+    assert.strictEqual((await request('GET', '/api/pair/status?token=' + t)).json.list.url, fixed);
+  }
 });
 
 test('lista grande: 60 mil entradas montam em poucos segundos', async () => {

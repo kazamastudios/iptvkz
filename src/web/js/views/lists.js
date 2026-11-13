@@ -367,6 +367,14 @@ function linkName(url) {
   try { return new URL(url).hostname.replace(/^www\./, '') || 'Minha lista'; } catch { return 'Minha lista'; }
 }
 
+// Nome automático que já existe em outra lista ganha um número ("servidor.com 2"), para dar para saber qual é qual.
+function freeName(base, id) {
+  const taken = new Set(S.lists.filter((l) => l.id !== id).map((l) => l.name));
+  let n = base;
+  for (let i = 2; taken.has(n); i++) n = `${base} ${i}`;
+  return n;
+}
+
 function xtreamFromUrl(url) {
   try {
     const u = new URL(url.trim());
@@ -606,16 +614,16 @@ export function openListForm(existing, onSaved, onDelete) {
     if (tab === 'xtream') {
       Object.assign(list, { server: server.value.trim(), servers: serverLines(), username: user.value.trim(), password: pass.value });
       if (!list.server || !list.username || !list.password) return showErr('Preencha servidor, usuário e senha.');
-      if (!list.name) list.name = list.server.replace(/^https?:\/\//, '').split(/[:/]/)[0];
+      if (!list.name) list.name = freeName(list.server.replace(/^https?:\/\//, '').split(/[:/]/)[0], list.id);
     } else if (tab === 'url') {
       list.url = fixLink(url.value);
       url.value = list.url;
       if (!/^https?:\/\/[^/\s]+/i.test(list.url)) return showErr('Informe o link da lista, como http://servidor.com/lista.m3u');
       // sem nome: o do servidor (com várias listas, "Minha lista" repetido não diz qual é qual)
-      if (!list.name) list.name = linkName(list.url);
+      if (!list.name) list.name = freeName(linkName(list.url), list.id);
     } else {
       if (!pickedFile && ex.source !== 'file') return showErr('Escolha o arquivo .m3u da lista.');
-      if (!list.name) list.name = 'Minha lista';
+      if (!list.name) list.name = freeName('Minha lista', list.id);
     }
 
     const dup = findDuplicate(list);

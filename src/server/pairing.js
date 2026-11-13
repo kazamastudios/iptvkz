@@ -73,15 +73,30 @@ function cleanEdit(f) {
   };
 }
 
+// Link colado no celular: sem http (o mais comum) ganha http://, e o http digitado errado (htp:/, http;//) é
+// consertado. Igual ao formulário da TV (fixLink em src/web/js/views/lists.js).
+function fixLink(text) {
+  let t = String(text || '').trim().replace(/^[<("']+/, '').replace(/[>)"']+$/, '');
+  const sch = t.match(/^h?t{1,2}p{1,2}(s?)(?:[:;.]+\/*|\/+)/i);
+  if (sch) t = `http${sch[1] ? 's' : ''}://` + t.slice(sch[0].length);
+  else if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]|$)|^localhost(:\d+)?([/?#]|$)/i.test(t)) t = 'http://' + t;
+  return t;
+}
+
+// O que o celular mandou, conferido. Sem condição de virar lista: { error } com o que falta, para o celular mostrar.
 function clean(body) {
   const text = (v) => String(v == null ? '' : v).trim().slice(0, MAX_FIELD);
   const name = text(body.name);
   if (body.type === 'xtream') {
     const list = { type: 'xtream', name, server: text(body.server), servers: String(body.servers == null ? '' : body.servers).slice(0, 8000), username: text(body.username), password: String(body.password == null ? '' : body.password).slice(0, MAX_FIELD) };
-    return list.server && list.username && list.password ? list : null;
+    const missing = [!list.server && 'o servidor', !list.username && 'o usuário', !list.password && 'a senha'].filter(Boolean);
+    if (missing.length) return { error: `Falta preencher ${missing.length > 1 ? `${missing.slice(0, -1).join(', ')} e ${missing[missing.length - 1]}` : missing[0]}.` };
+    return list;
   }
-  const url = text(body.url);
-  return /^https?:\/\//i.test(url) ? { type: 'm3u', name, url } : null;
+  const url = fixLink(body.url);
+  if (!url) return { error: 'Cole o link da lista.' };
+  if (!/^https?:\/\/[^/\s]+/i.test(url)) return { error: 'Esse link não parece certo. Ele começa com http:// e tem o endereço do provedor, como http://servidor.com/lista.m3u' };
+  return { type: 'm3u', name, url };
 }
 
 const HEADERS = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
@@ -143,10 +158,11 @@ $('mb').onclick=function(){$('mb').className='hidden';$('ms').className='';$('ss
 $('s').addEventListener('change',function(){try{var u=new URL($('s').value.trim()),a=u.searchParams.get('username'),b=u.searchParams.get('password');if(a&&b&&/get\\.php|player_api\\.php/i.test(u.pathname)){$('s').value=u.protocol+'//'+u.host;$('u').value=a;$('w').value=b}}catch(e){}});
 $('f').addEventListener('submit',function(e){e.preventDefault();$('err').textContent='';$('b').disabled=true;
 fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:type,name:$('n').value,server:$('s').value,servers:$('ss').value,username:$('u').value,password:$('w').value,url:$('l').value})})
-.then(function(r){if(r.ok){finish('A lista foi enviada. Continue na TV.');return}if(r.status===410){$('err').textContent='Este código expirou. Escaneie o novo QR Code na TV.'}else{$('err').textContent='Confira os campos e tente de novo.'}$('b').disabled=false})
+.then(function(r){if(r.ok){finish('A lista foi enviada. Continue na TV.');return}return r.json().catch(function(){return {}}).then(function(j){
+$('err').textContent=r.status===410?'Este código expirou. Escaneie o novo QR Code na TV.':(j.error||'Confira os campos e tente de novo.');$('b').disabled=false})})
 .catch(function(){$('err').textContent='Não foi possível falar com a TV. Confira se o celular está no mesmo Wi-Fi.';$('b').disabled=false})});
 $('rb').addEventListener('click',function(){$('berr').textContent='';var file=$('a').files[0];
-if(!file){$('berr').textContent='Escolha o arquivo de backup.';return}
+if(!file){$('berr').textContent='Escolha o arquivo da lista baixada (começa com “iptvkz-lista”).';return}
 $('rb').disabled=true;file.text().then(function(t){return fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:t})})
 .then(function(r){return r.json().catch(function(){return {}}).then(function(j){
 if(r.ok){finish('Lista enviada. Confirme na TV.');return}
@@ -294,7 +310,7 @@ function handle(req, res, url) {
       return json(200, { ok: true });
     }
     const list = clean(body);
-    if (!list) { res.writeHead(400, HEADERS); return res.end(); }
+    if (list.error) return json(400, { error: list.error });
     s.received = list;
     s.used = true;
     res.writeHead(200, HEADERS);

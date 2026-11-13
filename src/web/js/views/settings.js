@@ -74,7 +74,10 @@ export function settingsView(params, ctx) {
 
   // até 2 listas: bloco à direita delas; com 3 ou mais, uma linha própria embaixo
   cards.append(h('button.list-card.add-card' + (S.lists.length >= 3 ? '.add-row' : ''), { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar lista'));
-  page.append(h('div.set-section', h('h3', 'Listas'), h('p', TV.on || !matchMedia('(max-width: 760px)').matches ? 'Troque de lista pelo seletor no topo da barra lateral.' : 'Troque de lista pelo último botão da barra de baixo, o que mostra o nome da lista.'), cards));
+  // sem nenhuma lista não há o que trocar: a dica é adicionar
+  const listHint = !S.lists.length ? 'Nenhuma lista ainda. Adicione a sua para começar.'
+    : TV.on || !matchMedia('(max-width: 760px)').matches ? 'Troque de lista pelo seletor no topo da barra lateral.' : 'Troque de lista pelo último botão da barra de baixo, o que mostra o nome da lista.';
+  page.append(h('div.set-section', h('h3', 'Listas'), h('p', listHint), cards));
 
   // ---------- categorias ----------
   if (C()) {

@@ -1,7 +1,7 @@
 // Termos de uso: aceite obrigatório na primeira vez (e quando a versão dos termos mudar).
 import { h, ico, modal } from '../core/util.js';
 import { S, setSetting, saveNow } from '../core/store.js';
-import { focusEl, TV } from '../tv/tv.js';
+import { focusEl, normKey, TV } from '../tv/tv.js';
 
 export const TERMS_VERSION = 4;
 
@@ -24,8 +24,21 @@ async function termsText() {
 }
 
 // Títulos ("1. O QUE É...") viram <h4>; o resto, parágrafos.
-function renderTerms(text) {
+// onEnd: chamado com ↓ no fim do texto (leva ao "Li e aceito", não ao "Recusar", que fica mais perto)
+function renderTerms(text, onEnd) {
   const box = h('div.terms', { tabindex: '0', 'data-focus': '' });
+  // Controle da TV (e teclado do PC): com o texto selecionado, ↑/↓ rolam o texto; só na ponta o foco passa para os
+  // botões. Antes o ↓ ia direto para "Recusar" e não dava para ler além do começo. Pulo sem animação (leve na TV).
+  box.addEventListener('keydown', (e) => {
+    const k = normKey(e);
+    if (k !== 'ArrowDown' && k !== 'ArrowUp') return;
+    const room = k === 'ArrowDown' ? box.scrollHeight - box.clientHeight - box.scrollTop : box.scrollTop;
+    if (room <= 2 && !(k === 'ArrowDown' && onEnd)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (room <= 2) return onEnd();
+    box.scrollTop += (k === 'ArrowDown' ? 1 : -1) * Math.min(room, Math.max(40, box.clientHeight * 0.8));
+  });
   const lines = text.split(/\r?\n/);
   box.append(h('h3', lines.shift()));
   for (const line of lines) {
@@ -60,8 +73,9 @@ export async function ensureTerms() {
     }, ico('check'), 'Li e aceito');
     const showTerms = () => {
       body.replaceChildren(
-        h('p.muted', { style: { marginTop: 0 } }, 'Antes de começar, leia e aceite os termos de uso.'),
-        renderTerms(text),
+        h('p.muted', { style: { marginTop: 0 } }, 'Antes de começar, leia e aceite os termos de uso.',
+          TV.on ? ' Para ler, suba até o texto: ↑ e ↓ rolam.' : ''),
+        renderTerms(text, () => focusEl(accept)),
         siteLinks(),
         h('div.form-actions', h('button.btn.ghost', { onclick: refuse }, 'Recusar'), accept));
       if (TV.on) setTimeout(() => focusEl(accept), 50);
