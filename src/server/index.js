@@ -421,7 +421,13 @@ async function handleApi(req, res, url) {
   // medições do carregamento das listas (modo de depuração e testes de desempenho), só no próprio aparelho
   if (p === '/api/diag' && m === 'GET') {
     if (!req.isLocal) return sendJson(res, 403, { error: 'Só no próprio aparelho' });
-    return sendJson(res, 200, { ...require('./diag').last, memMB: Math.round(process.memoryUsage().rss / 1048576), node: process.version });
+    // limite de memória do JavaScript neste aparelho (a TV LG limita o serviço) e os arquivos M3U guardados
+    const heapMB = Math.round(require('v8').getHeapStatistics().heap_size_limit / 1048576);
+    const m3uMB = {};
+    try {
+      for (const f of fs.readdirSync(store.DATA)) if (/^m3u-.*\.m3u$/.test(f)) m3uMB[f] = Math.round(fs.statSync(store.file(f)).size / 1048576);
+    } catch {}
+    return sendJson(res, 200, { ...require('./diag').last, memMB: Math.round(process.memoryUsage().rss / 1048576), heapMB, m3uMB, node: process.version, execArgv: process.execArgv });
   }
   // a lista encolheu muito na última atualização: voltar para a anterior ou ficar com a nova
   if (p === '/api/catalog/shrunk' && m === 'POST') {

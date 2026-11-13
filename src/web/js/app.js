@@ -680,7 +680,9 @@ async function loadActive(force = false) {
       stText.textContent = `Organizando canais, filmes e séries de ${list.name}...`;
       stBar.classList.add('hidden');
     } else if (p.got > 0) {
-      stText.textContent = p.total ? `Baixando ${list.name}: ${mb(p.got)} de ${mb(p.total)} MB` : `Baixando ${list.name}: ${mb(p.got)} MB`;
+      // 'read': lista de arquivo, lida do aparelho; 'download': baixando do provedor
+      const verb = p.phase === 'read' ? 'Lendo' : 'Baixando';
+      stText.textContent = p.total ? `${verb} ${list.name}: ${mb(p.got)} de ${mb(p.total)} MB` : `${verb} ${list.name}: ${mb(p.got)} MB`;
       if (p.total) {
         stBar.classList.remove('hidden');
         stBar.firstChild.style.transform = `scaleX(${Math.min(1, p.got / p.total)})`;

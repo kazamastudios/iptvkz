@@ -1,7 +1,7 @@
 // Baixa listas (M3U ou Xtream) e normaliza tudo num catálogo único:
 // { live, movies, series } cada um com { cats: [{id,name}], items: [...] }.
 const fs = require('fs');
-const { hash, norm, fetchJson, fetchWithTimeout, streamLines, safeHost } = require('./util');
+const { hash, norm, fetchJson, fetchWithTimeout, streamLines, byteLines, safeHost } = require('./util');
 const store = require('./store');
 const diag = require('./diag');
 
@@ -892,12 +892,27 @@ function fullText(catalog) {
   return `{${parts.meta}${SECTIONS.map((k) => `,"${k}":${parts[k]}`).join('')}}`;
 }
 
+// Marca no disco que a lista está sendo montada. Se o app fechar no meio (lista grande demais para a memória do
+// aparelho: o sistema derruba o serviço), a marca fica, e na próxima abertura o app não tenta de novo sozinho, o
+// que derrubaria outra vez, em loop. "Tentar de novo" (refresh=1) tenta mesmo assim.
+const buildingMark = (id) => store.file(`building-${id}.mark`);
+function crashedBuilding(id) {
+  try {
+    // marca de outro processo (de antes desta abertura do app)
+    return fs.statSync(buildingMark(id)).mtimeMs < Date.now() - process.uptime() * 1000;
+  } catch {
+    return false;
+  }
+}
+
 async function build(list, opts = {}) {
   progress.set(list.id, { phase: 'download', got: 0, total: 0, at: Date.now() });
+  try { fs.writeFileSync(buildingMark(list.id), String(Date.now())); } catch {}
   try {
     return await buildNow(list, opts);
   } finally {
     progress.delete(list.id);
+    try { fs.unlinkSync(buildingMark(list.id)); } catch {}
   }
 }
 
@@ -956,14 +971,18 @@ async function buildNow(list, { first, onSection, full = false, stamp = Date.now
     }
     if (!data) { activeBase.delete(list.id); throw firstErr || new Error('Servidor não respondeu'); }
   } else if (list.source === 'file') {
-    let text;
-    try {
-      text = fs.readFileSync(store.file(`m3u-${list.id}.m3u`), 'utf8');
-    } catch {
-      throw new Error('O arquivo desta lista não foi encontrado. Edite a lista e envie o arquivo de novo.');
-    }
+    // Lê o arquivo do disco aos poucos, como no download: ler tudo de uma vez punha a lista inteira na memória
+    // (com acentos, o dobro do tamanho do arquivo), e na TV LG o serviço do app tem só ~320 MB.
+    // andamento: 'read' (lendo o arquivo, com barra), depois 'build' (fechando o catálogo)
+    prog.phase = 'read';
+    const b = m3uBuilder(list);
+    const reader = m3uReader(b.entry);
+    const t1 = Date.now();
+    const { head, bytes } = await fileLines(store.file(`m3u-${list.id}.m3u`), (line) => reader.line(line), (got, total) => Object.assign(prog, { got, total }));
     prog.phase = 'build';
-    data = await buildFromM3U(text, list);
+    await new Promise((r) => setTimeout(r, 50));
+    data = b.finish(reader, head);
+    data.timing = { montar: Date.now() - t1, MB: Math.round(bytes / 1048576) };
   } else {
     // Monta enquanto baixa: cada linha vai para a montagem assim que chega, sem guardar o texto da lista (60 MB a
     // menos na memória), e o download e a montagem acontecem ao mesmo tempo. No fim só falta fechar o catálogo.
@@ -1004,20 +1023,9 @@ async function buildNow(list, { first, onSection, full = false, stamp = Date.now
   mem.read();
   // o Xtream já limpou os nomes das categorias seção por seção (e já mandou para a tela assim)
   const catalog = { v: 1, listId: list.id, updatedAt: stamp, ...data };
+  data = null;
   if (list.type !== 'xtream') tidyCatalog(catalog);
-  // converte uma vez só: o mesmo texto vai para o arquivo e para as respostas à tela (partsOf)
-  const t2 = Date.now();
-  const parts = await prepareParts(catalog);
-  const converter = Date.now() - t2;
-  mem.read();
-  const travado = loop.stop();
-  if (catalog.timing) {
-    // o texto já foi gerado sem estes números: valem para /api/diag e para a tela a partir da próxima abertura
-    Object.assign(catalog.timing, { converter, memMB: mem.peak(), travadoMs: travado });
-  }
-  diag.last.build = { listId: list.id, at: Date.now(), ...(catalog.timing || {}), converter, memMB: mem.peak(), travadoMs: travado };
-  // Depois de convertido, o servidor só entrega o texto das seções: os itens montados saem da memória (numa lista
-  // de 60 MB são centenas de MB, e era o que derrubava o app em aparelho de 2 GB). Fica só o resumo com as partes.
+  // o resumo (sem as seções), com as contagens
   const light = lightOf(catalog);
   // Encolheu muito em relação à versão anterior (menos de 30% dos itens)? Pode ser mudança do provedor (plano,
   // conteúdo) ou um problema dele. A nova vale, mas a anterior fica guardada e a tela oferece voltar a ela.
@@ -1032,12 +1040,24 @@ async function buildNow(list, { first, onSection, full = false, stamp = Date.now
     light.prev = older;
     light.shrunk = { before: total(prev), after: total(light) };
   }
-  // o resumo que vai para a tela leva as medições e o aviso acima
-  parts.meta = JSON.stringify(light).slice(1, -1);
-  partsCache.set(light, parts);
-  memory.set(list.id, light);
-  // grava um arquivo por seção, por trás (a tela não espera o armazenamento)
-  saveFiles(list.id, light, parts).catch((e) => console.error('gravar catálogo', list.id, e.message));
+  // Converte e grava uma seção de cada vez, e cada uma sai da memória antes da próxima (itens e texto): converter
+  // as três juntas e só depois gravar passava do limite de memória da TV LG com uma lista de 69 MB. A tela recebe
+  // as seções do disco, como ao abrir com o app fechado.
+  const t2 = Date.now();
+  const files = `${stamp}-${++saveSeq}`;
+  for (const k of SECTIONS) {
+    let text = await sectionText(catalog[k] || { cats: [], items: [] });
+    catalog[k] = null;
+    mem.read();
+    await fsCall(fs.writeFile, store.file(secName(list.id, files, k)), text);
+    text = null;
+  }
+  const converter = Date.now() - t2;
+  const travado = loop.stop();
+  // light.timing é o mesmo objeto de catalog.timing
+  if (light.timing) Object.assign(light.timing, { converter, memMB: mem.peak(), travadoMs: travado });
+  diag.last.build = { listId: list.id, at: Date.now(), ...(light.timing || {}), converter, memMB: mem.peak(), travadoMs: travado };
+  commitFiles(list.id, light, files);
   return light;
 }
 
@@ -1075,19 +1095,55 @@ let saveSeq = 0;
 async function saveFiles(id, light, parts) {
   const files = `${light.updatedAt}-${++saveSeq}`;
   for (const k of SECTIONS) await fsCall(fs.writeFile, store.file(secName(id, files, k)), parts[k]);
-  const dropOurs = () => SECTIONS.forEach((k) => fs.unlink(store.file(secName(id, files, k)), () => {}));
-  // a lista foi excluída (ou trocada por outra carga) enquanto gravava: não deixa arquivos para trás
-  if (!store.getList(id) || memory.get(id) !== light) return dropOurs();
+  // outra carga já trocou a lista enquanto gravava: esta sai
+  if (memory.get(id) !== light) return SECTIONS.forEach((k) => fs.unlink(store.file(secName(id, files, k)), () => {}));
+  commitFiles(id, light, files);
+}
+
+// As seções já estão no disco com o carimbo files: troca o resumo (atômico) e apaga o que sobrou de antes.
+function commitFiles(id, light, files) {
+  // a lista foi excluída enquanto montava ou gravava: não deixa arquivos para trás
+  if (!store.getList(id)) {
+    SECTIONS.forEach((k) => fs.unlink(store.file(secName(id, files, k)), () => {}));
+    return;
+  }
   store.writeText(metaName(id), JSON.stringify({ ...light, files }));
   light.files = files;
-  // a partir daqui, as seções vêm do disco: o texto sai da memória
+  // as seções vêm do disco quando a tela pede
   partsCache.set(light, diskParts(id, light));
+  memory.set(id, light);
   // conjuntos antigos, temporários e o formato antigo (menos a versão anterior, se a tela vai oferecer voltar)
   const keep = new Set([metaName(id), ...SECTIONS.map((k) => secName(id, files, k))]);
   if (light.prev) SECTIONS.forEach((k) => keep.add(secName(id, light.prev.files, k)));
   for (const f of fs.readdirSync(store.DATA)) {
     if (f.startsWith(`catalog-${id}.`) && !keep.has(f)) fs.unlink(store.file(f), () => {});
   }
+}
+
+// Arquivo M3U guardado, linha a linha, sem ler o arquivo inteiro de uma vez (streams do Node, também no Node 8).
+// onProgress(lido, total) para a barra de andamento.
+function fileLines(file, onLine, onProgress) {
+  return new Promise((resolve, reject) => {
+    let total = 0;
+    try { total = fs.statSync(file).size; } catch (e) {
+      return reject(e.code === 'ENOENT' ? new Error('O arquivo desta lista não foi encontrado. Edite a lista e envie o arquivo de novo.') : e);
+    }
+    const stream = fs.createReadStream(file, { highWaterMark: 64 * 1024 });
+    const lines = byteLines(onLine);
+    let bytes = 0;
+    stream.on('data', (buf) => {
+      bytes += buf.length;
+      try { lines.push(buf); } catch (e) { stream.destroy(); return reject(e); }
+      if (onProgress) onProgress(bytes, total);
+    });
+    stream.on('error', reject);
+    stream.on('end', () => {
+      try {
+        lines.end();
+        resolve({ head: lines.head, bytes });
+      } catch (e) { reject(e); }
+    });
+  });
 }
 
 // Partes lidas do disco quando a tela pede (o texto da seção vai como está, sem interpretar).
@@ -1170,6 +1226,10 @@ const hasCache = (id) => memory.has(id) || fs.existsSync(store.file(metaName(id)
 // (então espera a montagem em andamento, em vez de pegar a versão guardada antiga).
 // full: com force, baixa a lista inteira sem perguntar ao provedor se ela mudou.
 async function getSection(list, sec, { force = false, wait = false, full = false } = {}) {
+  // sem versão guardada e o app caiu montando da última vez: não tenta sozinho (cairia de novo, em loop)
+  if (!force && !inflight.has(list.id) && !hasCache(list.id) && crashedBuilding(list.id)) {
+    throw new Error('O app fechou da última vez enquanto montava esta lista: ela pode ser grande demais para a memória deste aparelho. Toque em "Tentar de novo" para tentar mesmo assim, ou use uma lista menor.');
+  }
   if (force || !hasCache(list.id)) refresh(list, sec, { full });
   if (force || wait || !hasCache(list.id)) {
     let r;

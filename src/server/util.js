@@ -79,7 +79,8 @@ function httpError(url, status) {
 // headers: cabeçalhos a mais no pedido (If-None-Match / If-Modified-Since, para perguntar se a lista mudou).
 // Devolve também o ETag e o Last-Modified da resposta (null quando o provedor não manda). Com 304 (não mudou),
 // não lê nada e devolve notModified: true.
-async function readBody(url, onText, { onProgress, headers, idleMs = 45000, maxMs = 15 * 60000 } = {}) {
+// raw: entrega os bytes (Buffer) em vez de texto, para quem separa as linhas nos bytes (byteLines)
+async function readBody(url, onText, { onProgress, headers, raw = false, idleMs = 45000, maxMs = 15 * 60000 } = {}) {
   const ctrl = new AbortController();
   let idle = setTimeout(() => ctrl.abort(), idleMs);
   const hard = setTimeout(() => ctrl.abort(), maxMs);
@@ -126,11 +127,11 @@ async function readBody(url, onText, { onProgress, headers, idleMs = 45000, maxM
         idle = setTimeout(() => ctrl.abort(), idleMs);
         const buf = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
         got += buf.length;
-        give(decoder.write(buf));
+        give(raw ? buf : decoder.write(buf));
         if (onProgress) onProgress(got, total);
       }
     }
-    give(decoder.end());
+    if (!raw) give(decoder.end());
     // o provedor fechou a conexão antes do fim: a lista chegou pela metade e não pode substituir a anterior
     if (total && got < total) {
       throw Object.assign(new Error(`A lista chegou incompleta (${Math.round(got / 1048576)} de ${Math.round(total / 1048576)} MB). Tente de novo.`), { status: 'incomplete' });
@@ -156,23 +157,42 @@ async function readText(url, opts) {
 
 // Linha a linha, enquanto chega (sem guardar o texto inteiro). head: o começo do texto, para mensagens de erro.
 // Repassa o que readBody devolve (notModified, etag, lastModified).
-async function streamLines(url, onLine, opts) {
-  let carry = '';
+// Separa as linhas direto nos bytes e decodifica cada linha sozinha. Separar depois de decodificar o pedaço inteiro
+// deixava cada nome e cada link guardado preso ao pedaço de 64 KB de onde saiu: no fim, a lista inteira continuava
+// na memória (na TV LG, com limite de ~320 MB, o serviço caía com um arquivo de 69 MB). A quebra de linha é um byte
+// ASCII, então nunca parte um acento ao meio.
+function byteLines(onLine) {
+  let carry = null;
   let head = '';
-  const r = await readBody(url, (t) => {
-    if (head.length < 200) head += t.slice(0, 200 - head.length);
-    let text = carry + t;
-    let pos = 0;
-    for (let nl = text.indexOf('\n'); nl >= 0; nl = text.indexOf('\n', pos)) {
-      onLine(text.slice(pos, nl));
-      pos = nl + 1;
-    }
-    carry = text.slice(pos);
-    text = null;
-  }, opts);
-  if (r.notModified) return { head, notModified: true, etag: r.etag, lastModified: r.lastModified };
-  if (carry) onLine(carry);
-  return { head, etag: r.etag, lastModified: r.lastModified };
+  return {
+    get head() { return head; },
+    push(chunk) {
+      let buf = carry ? Buffer.concat([carry, chunk]) : chunk;
+      carry = null;
+      if (head.length < 200) head += buf.toString('utf8', 0, Math.min(buf.length, 200)).slice(0, 200 - head.length);
+      let start = 0;
+      for (let nl = buf.indexOf(10); nl >= 0; nl = buf.indexOf(10, start)) {
+        onLine(buf.toString('utf8', start, nl));
+        start = nl + 1;
+      }
+      // o resto (linha incompleta) é copiado, para o pedaço inteiro não ficar preso
+      if (start < buf.length) carry = Buffer.from(buf.subarray(start));
+      buf = null;
+    },
+    end() {
+      if (carry) onLine(carry.toString('utf8'));
+      carry = null;
+    },
+  };
+}
+
+// Linha a linha, enquanto chega (sem guardar o texto inteiro). head: o começo do texto, para mensagens de erro.
+async function streamLines(url, onLine, opts) {
+  const lines = byteLines(onLine);
+  const r = await readBody(url, (buf) => lines.push(buf), { ...opts, raw: true });
+  if (r.notModified) return { head: lines.head, notModified: true, etag: r.etag, lastModified: r.lastModified };
+  lines.end();
+  return { head: lines.head, etag: r.etag, lastModified: r.lastModified };
 }
 
 const fetchText = (url, opts) => readText(url, opts);
@@ -186,4 +206,4 @@ async function fetchJson(url, opts) {
   }
 }
 
-module.exports = { UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, safeHost };
+module.exports = { UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, safeHost };

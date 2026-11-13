@@ -58,7 +58,7 @@ function removeListFiles(id) {
   // o catálogo são vários arquivos (catalog-<id>.meta.json e um por seção) ou, no formato antigo, catalog-<id>.json
   let names = [];
   try { names = fs.readdirSync(DATA).filter((f) => f.startsWith(`catalog-${id}.`)); } catch {}
-  for (const name of [...names, `epg-${id}.json`, `m3u-${id}.m3u`]) {
+  for (const name of [...names, `epg-${id}.json`, `m3u-${id}.m3u`, `building-${id}.mark`]) {
     try { fs.unlinkSync(file(name)); } catch {}
   }
 }

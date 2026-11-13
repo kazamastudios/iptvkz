@@ -531,6 +531,21 @@ test('M3U por link monta enquanto baixa: igual a montar com o texto inteiro', as
   assert.ok(!sections.live.items.some((c) => /\r|\ufeff/.test(c.name + c.url)), 'sem quebra do Windows nem BOM nos nomes e links');
 });
 
+test('lista que derrubou o app ao montar não é montada de novo sozinha', async () => {
+  await addLists([{ id: 'caiu', type: 'm3u', name: 'Caiu', url: `${FAKE}/lista.m3u` }]);
+  // marca de uma montagem de antes desta abertura do app (o processo caiu no meio)
+  const mark = path.join(DATA, 'building-caiu.mark');
+  fs.writeFileSync(mark, '1');
+  const old = new Date(Date.now() - 3600 * 1000);
+  fs.utimesSync(mark, old, old);
+  const r = await request('GET', '/api/catalog?list=caiu&section=live');
+  assert.strictEqual(r.status, 500);
+  assert.match(r.json.error, /grande demais/);
+  const again = await request('GET', '/api/catalog?list=caiu&section=live&refresh=1');
+  assert.strictEqual(again.status, 200, '"Tentar de novo" monta mesmo assim');
+  assert.ok(!fs.existsSync(mark), 'a marca sai quando termina');
+});
+
 test('EPG: guia .xml.gz da lista chega para o canal certo', async () => {
   const body = { list: 'm3uurl', chans: [{ k: 'a', e: 'c1', n: 'Canal 1' }] };
   const r = await until(async () => {
