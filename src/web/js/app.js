@@ -648,7 +648,7 @@ let showLoading = null;
 
 let lastLoad = null; // quanto a lista levou para carregar (modo de depuração)
 
-async function loadActive(force = false) {
+async function loadActive(force = false, { newList = false } = {}) {
   const list = activeList();
   checkListStatus();
   if (!list) {
@@ -698,13 +698,17 @@ async function loadActive(force = false) {
     lastLoad = { ms: Math.round(performance.now() - t0), at: Date.now() };
     if (token !== loadToken) return; // trocou ou excluiu a lista enquanto carregava
     appState = 'ready';
+    // lista nova sem canais (só filmes e séries): abre em Filmes (ou Séries), não num Ao vivo vazio
+    if (newList && r.counts && !r.counts.live && parseHash().name === 'live') {
+      history.replaceState(null, '', r.counts.movies ? '#/movies' : r.counts.series ? '#/series' : '#/live');
+    }
     // a busca e as contagens da barra esperam as outras seções, que continuam chegando por trás
     r.rest.then(() => { if (token === loadToken) { warmSearch(); renderNav(); } }, () => {});
     // não deu para atualizar: a versão guardada continua valendo
     if (r.warning) toast(r.warning, 'error', 9000);
     if (r.shrunk) askShrunk(list, r.shrunk);
     renderListSwitch();
-    if (current && current.name === 'settings') renderNav(); // quem está em Configurações não perde o lugar
+    if (current && current.name === 'settings' && parseHash().name === 'settings') renderNav(); // quem está em Configurações não perde o lugar
     else { current = null; route(); }
     if (r.refreshing) watchRefresh(list.id);
   } catch (e) {
@@ -785,8 +789,10 @@ async function onListSaved(list) {
   S.settings.activeList = list.id;
   await saveNow('settings').catch(() => {});
   renderListSwitch();
-  if (isNew && !location.hash.startsWith('#/settings')) history.replaceState(null, '', '#/live');
-  await loadActive(true);
+  // Lista nova (inclusive a que chegou pelo celular): sai de Configurações e vai para o conteúdo, que aparece
+  // assim que carregar. Editar a lista em uso deixa a pessoa onde estava.
+  if (isNew) history.replaceState(null, '', '#/live');
+  await loadActive(true, { newList: isNew });
 }
 
 async function deleteList(id) {

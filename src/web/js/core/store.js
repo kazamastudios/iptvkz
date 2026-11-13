@@ -157,7 +157,7 @@ export async function loadCatalog(listId, { force = false, first = 'live', whole
   current = next;
   epgCache.clear();
   seriesCache.clear();
-  return { refreshing: r.refreshing, rest, warning: r.warning || null, shrunk: c.shrunk || null };
+  return { refreshing: r.refreshing, rest, warning: r.warning || null, shrunk: c.shrunk || null, counts: c.counts || null };
 }
 
 // As seções já chegaram? (as que faltam continuam chegando por trás)

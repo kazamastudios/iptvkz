@@ -185,6 +185,7 @@ input[type=file]{height:auto;padding:14px;border-style:dashed;font-size:15px;col
 textarea{width:100%;padding:10px 12px;margin:0 0 14px;border-radius:10px;border:1px solid #33334a;background:#14141d;color:#fff;font:16px system-ui}
 .more{background:none;border:0;color:#c9c9d8;font:14px system-ui;padding:0 0 14px;text-decoration:underline}
 #err,#berr{color:#ff8a8a;font-size:14px;min-height:20px;margin-bottom:8px}.hidden{display:none}
+#up{height:6px;background:#2a2a38;border-radius:3px;overflow:hidden;margin-top:12px}#up i{display:block;height:100%;background:#ffb547;transform-origin:left;transform:scaleX(0);transition:transform .2s}
 </style></head><body><main>
 <div id="done" class="hidden"><h1>Pronto!</h1><p id="donetext">A lista foi enviada. Continue na TV.</p></div>
 <div id="main">
@@ -198,7 +199,7 @@ textarea{width:100%;padding:10px 12px;margin:0 0 14px;border-radius:10px;border:
 <div id="pm" class="hidden"><label for="l">Link da lista</label><input id="l" autocomplete="off" autocapitalize="none" inputmode="url" placeholder="http://…/lista.m3u"></div>
 <div id="pf" class="hidden"><label for="mf">Arquivo da lista (.m3u)</label><input type="file" id="mf" accept=".m3u,.m3u8,.txt,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain"></div>
 <label for="n">Nome (opcional)</label><input id="n" autocomplete="off" placeholder="Minha lista">
-<div id="err"></div><button class="send" id="b">Enviar para a TV</button>
+<div id="err"></div><button class="send" id="b">Enviar para a TV</button><div id="up" class="hidden"><i></i></div>
 </form>
 <div id="pb" class="hidden">
 <h2>Lista IPTVKZ</h2><p>Escolha o arquivo que você baixou pelo botão “Baixar lista”, em outra TV (começa com “iptvkz-lista”). Ela entra nesta TV com favoritos e histórico; as outras listas continuam.</p>
@@ -223,12 +224,18 @@ function finish(t){$('main').className='hidden';$('donetext').textContent=t;$('d
 $('mb').onclick=function(){$('mb').className='hidden';$('ms').className='';$('ss').focus()};
 $('s').addEventListener('change',function(){try{var u=new URL($('s').value.trim()),a=u.searchParams.get('username'),b=u.searchParams.get('password');if(a&&b&&/get\\.php|player_api\\.php/i.test(u.pathname)){$('s').value=u.protocol+'//'+u.host;$('u').value=a;$('w').value=b}}catch(e){}});
 function answer(r){if(r.ok){finish('A lista foi enviada. Continue na TV.');return}return r.json().catch(function(){return {}}).then(function(j){
-$('err').textContent=r.status===410?'Este código expirou. Escaneie o novo QR Code na TV.':(j.error||'Confira os campos e tente de novo.');$('b').disabled=false;$('b').textContent='Enviar para a TV'})}
-function lost(){$('err').textContent='Não foi possível falar com a TV. Confira se o celular está no mesmo Wi-Fi.';$('b').disabled=false;$('b').textContent='Enviar para a TV'}
+$('up').className='hidden';$('err').textContent=r.status===410?'Este código expirou. Escaneie o novo QR Code na TV.':(j.error||'Confira os campos e tente de novo.');$('b').disabled=false;$('b').textContent='Enviar para a TV'})}
+// envio com andamento (o fetch não informa quanto do arquivo já subiu); devolve algo com a cara da resposta do fetch
+function send(url,body,onp){return new Promise(function(ok,no){var x=new XMLHttpRequest();x.open('POST',url);
+x.upload.onprogress=function(e){if(e.lengthComputable)onp(e.loaded/e.total)};
+x.onload=function(){ok({ok:x.status>=200&&x.status<300,status:x.status,json:function(){return Promise.resolve().then(function(){return JSON.parse(x.responseText)})}})};
+x.onerror=no;x.send(body)})}
+function lost(){$('up').className='hidden';$('err').textContent='Não foi possível falar com a TV. Confira se o celular está no mesmo Wi-Fi.';$('b').disabled=false;$('b').textContent='Enviar para a TV'}
 $('f').addEventListener('submit',function(e){e.preventDefault();$('err').textContent='';
 if(type==='file'){var mf=$('mf').files[0];if(!mf){$('err').textContent='Escolha o arquivo .m3u da lista.';return}
-$('b').disabled=true;$('b').textContent='Enviando...';
-fetch(location.pathname.replace(/\\/$/,'')+'/m3u?nome='+encodeURIComponent($('n').value.trim()||mf.name),{method:'POST',body:mf}).then(answer).catch(lost);return}
+$('b').disabled=true;$('b').textContent='Enviando... 0%';$('up').className='';
+send(location.pathname.replace(/\\/$/,'')+'/m3u?nome='+encodeURIComponent($('n').value.trim()||mf.name),mf,function(p){var n=Math.round(p*100);
+$('b').textContent=n<100?'Enviando para a TV... '+n+'%':'Guardando na TV...';$('up').firstChild.style.transform='scaleX('+p+')'}).then(answer).catch(lost);return}
 $('b').disabled=true;
 fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:type,name:$('n').value,server:$('s').value,servers:$('ss').value,username:$('u').value,password:$('w').value,url:$('l').value})}).then(answer).catch(lost)});
 $('rb').addEventListener('click',function(){$('berr').textContent='';var file=$('a').files[0];
