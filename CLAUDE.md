@@ -8,7 +8,7 @@ Toda pasta tem uma função só. Antes de criar um arquivo ou pasta, encaixe nes
 | `src/web/` | Interface, igual em todas as plataformas | Sim |
 | `platforms/<plataforma>/` | Código e configuração exclusivos de uma plataforma (`desktop`, `webos`, `windows`, `android`) | Sim |
 | `assets/brand/` | Logos e ícones originais | Sim |
-| `scripts/` | Scripts de build e manutenção | Sim |
+| `scripts/` | Scripts de build e manutenção, incluindo os testes (`test-server.js`) | Sim |
 | `docs/` | Documentação | Sim |
 | `public/` | Landing page publicada pelo Cloudflare Pages. Sem build, sem importar nada de `src/`, e nenhum build escreve aqui | Sim |
 | `dist/<plataforma>/` | Tudo o que os builds geram | Não |
@@ -16,12 +16,13 @@ Toda pasta tem uma função só. Antes de criar um arquivo ou pasta, encaixe nes
 
 ## Regras
 
-1. **Saída de build só em `dist/<plataforma>/`.** Hoje são `dist/desktop`, `dist/webos` (com `dist/webos/store` para o IPK da LG Content Store) e `dist/android`. Nunca crie pastas como `dist-tv` ou `build-x` na raiz.
+1. **Saída de build só em `dist/<plataforma>/`.** Hoje são `dist/desktop`, `dist/webos` (com `dist/webos/store` para o IPK da LG Content Store) e `dist/android` (o AAB da Google Play vai em `dist/android/play/`). Nunca crie pastas como `dist-tv` ou `build-x` na raiz.
 2. **Cada build escreve só na própria subpasta**, sem mexer na de outra plataforma.
 3. **Plataforma nova** ganha `platforms/<nome>/`, `dist/<nome>/`, `scripts/build-<nome>.js` e um comando em `package.json`.
 4. **O que serve a mais de uma plataforma fica em `src/`.** Em `platforms/` entra só o que é específico daquela plataforma.
 5. **Mudou um caminho de saída?** Atualize junto `package.json`, `.github/workflows/build.yml`, `README.md` e esta tabela.
-6. **Chaves e senhas nunca entram no repositório.** As de assinatura do Android ficam em `~/.iptvkz-android/` e nos secrets do GitHub. O que está em `update_key.xml` é só a chave pública.
+6. **Chaves e senhas nunca entram no repositório.** As de assinatura do Android ficam em `~/.iptvkz-android/` e nos secrets do GitHub. O que está em `update_key.xml` é só a chave pública. A chave de upload da Google Play segue a mesma regra (secrets `PLAY_UPLOAD_*`).
+7. **Android tem dois canais** (product flavors em `platforms/android/app/`): `developer` (APK do GitHub Releases, se atualiza sozinho) e `play` (AAB da Google Play, só a loja atualiza). O que é só de um canal fica em `app/src/developer/` ou `app/src/play/`; o comum, em `app/src/main/`. Nada que baixe código ou instale APK entra em `main/` ou `play/`.
 
 ## Uma mudança, todas as plataformas
 

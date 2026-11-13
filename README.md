@@ -160,6 +160,8 @@ Também independente: o servidor roda dentro da TV.
 
 O IPTVKZ aparece na tela inicial da TV, com o banner próprio.
 
+Este APK é o **canal Developer**: atualiza sozinho pelo GitHub Releases. Uma versão para a **Google Play** (só Android TV, marca Kazama Studios) está em preparação, com outro identificador, então as duas podem ficar instaladas juntas. Ela é atualizada só pela loja. Veja [`docs/GOOGLE_PLAY_RELEASE.md`](docs/GOOGLE_PLAY_RELEASE.md).
+
 ### Celular
 
 - **Android:** o mesmo `IPTVKZ-android.apk` instala no celular e abre com a tela deitada.
@@ -183,6 +185,7 @@ Tudo sai das [Releases](https://github.com/kazamastudios/iptvkz/releases):
 - **App Android novo:** só quando muda a parte nativa (Java). Aí o app oferece baixar o APK novo e o Android pede a confirmação.
 - **App da LG novo:** mudanças no próprio IPK pedem instalar o `.ipk` novo com `ares-install`.
 - **Computador:** baixe e instale a versão nova da página de Releases.
+- **Versão da Google Play:** só pela própria loja. Ela não baixa nada do GitHub e não instala APK.
 
 <details>
 <summary>Como publicar uma versão (para quem mantém o projeto)</summary>
@@ -215,12 +218,13 @@ Abra http://localhost:8787. Só o servidor não precisa de `npm install`. Suas l
 | `npm run dist:win` / `dist:mac` / `dist:linux` | gera os instaladores do computador | `dist/desktop/` |
 | `npm run ipk` | gera o app da LG, canal Developer (Modo Desenvolvedor, atualiza pelo GitHub) | `dist/webos/` |
 | `npm run ipk:store` | gera o app da LG para a LG Content Store (sem atualização automática) | `dist/webos/store/` |
-| `npm test` | testa o servidor local com listas fictícias | — |
-| `npm run android` | gera o APK (precisa de JDK 17 e Android SDK com NDK) | `dist/android/` |
+| `npm run android` | gera o APK do canal Developer (precisa de JDK 17 e Android SDK com NDK) | `dist/android/` |
+| `npm run android:play` | gera o AAB da Google Play (mesmos requisitos) | `dist/android/play/` |
+| `npm test` | testa o servidor com listas e streams fictícios gerados na hora | — |
 
 Rode `npm install` antes dos comandos que usam ferramentas (Electron, esbuild, webOS CLI). Depois de mexer em `src/web/js`, rode `npm run build` para atualizar a versão das TVs antigas.
 
-No GitHub, cada pull request gera os instaladores como artefatos para teste.
+No GitHub, cada pull request gera os instaladores como artefatos para teste e roda os testes. O AAB da Google Play tem um fluxo separado (`.github/workflows/play.yml`), que nunca envia nada à loja sozinho.
 
 ### Como o projeto é organizado
 
@@ -244,7 +248,19 @@ dist/<plataforma>/   saída dos builds (fora do Git)
 data/                listas e preferências ao rodar pelo código (fora do Git)
 ```
 
-O servidor local faz proxy dos streams (resolve CORS e links `http`), junta as listas num catálogo único e processa o guia. Ele aceita só o próprio aparelho e, se você ligar, aparelhos da sua rede de casa. As regras de organização estão no [`CLAUDE.md`](CLAUDE.md).
+O servidor local faz proxy dos streams (resolve CORS e links `http`), junta as listas num catálogo único e processa o guia. Ele aceita só o próprio aparelho e, se você ligar, aparelhos da sua rede de casa, sempre pelo IP ou pelo nome do aparelho na rede (sites abertos no navegador não conseguem usá-lo). As regras de organização estão no [`CLAUDE.md`](CLAUDE.md).
+
+## Apoie o projeto
+
+O IPTVKZ é gratuito, sem anúncios e feito por uma pessoa só, no tempo livre. Ele não tem servidor: tudo roda no seu
+aparelho, então o único custo fixo é o domínio do site.
+
+Se o app te ajuda, dá para apoiar pelo [GitHub Sponsors](https://github.com/sponsors/kazamastudios), com qualquer valor,
+uma vez ou todo mês. Outras formas de ajudar, que também contam muito:
+
+- dar uma estrela no repositório;
+- avisar quando algo não funcionar, abrindo uma [issue](https://github.com/kazamastudios/iptvkz/issues);
+- indicar o app para quem procura um player de IPTV.
 
 ## Termos e licença
 

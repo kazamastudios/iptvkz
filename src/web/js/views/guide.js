@@ -2,10 +2,15 @@
 import { h, ico, img, incremental, fmtClock } from '../core/util.js';
 import { C, visibleCats, visibleItems, favItems, catItems, fetchEpg, epgFor, epgState, resetEpgCache } from '../core/store.js';
 
-const PX = 4; // pixels por minuto
-const CHW = 210;
+// pixels por minuto e largura da coluna de canais. Celular em pé: guia compacto (só a logo e o nome pequeno,
+// e a hora mais estreita), para sobrar tela para a programação. As medidas batem com o CSS (.g-ch em app.css).
+let PX = 4;
+let CHW = 210;
+const compactGuide = () => !document.documentElement.classList.contains('tv-wide') && window.matchMedia('(max-width: 520px)').matches;
 
 export function guideView(params, ctx) {
+  PX = compactGuide() ? 3 : 4;
+  CHW = compactGuide() ? 76 : 210;
   ctx.setTitle('Guia');
   const cats = visibleCats('live');
   let cat = params.get('cat') || (favItems('live').length ? 'fav' : cats[0]?.id || 'all');

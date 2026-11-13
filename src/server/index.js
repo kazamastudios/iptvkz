@@ -16,6 +16,8 @@ const sessions = require('./sessions');
 const { sendText } = require('./compress');
 const pairing = require('./pairing');
 const backup = require('./backup');
+const ffmpeg = require('./ffmpeg');
+const cast = require('./cast');
 
 let PORT = Number(process.env.PORT) || 8787; // porta real (pode mudar no app de computador)
 const HOST = process.env.HOST || '0.0.0.0';
@@ -123,6 +125,8 @@ function looksLikeManifest(url, ct) {
   try { return new URL(url).pathname.toLowerCase().endsWith('.m3u8'); } catch { return false; }
 }
 
+const PROXY_CONNECT_MS = 20000;
+
 async function handleProxy(req, res, query) {
   let target;
   try {
@@ -138,11 +142,21 @@ async function handleProxy(req, res, query) {
 
   const controller = new AbortController();
   res.on('close', () => controller.abort());
+  // Servidor da lista que aceita a conexão e nunca responde: desiste depois de um tempo, em vez de deixar a
+  // conexão pendurada (ela conta no limite de telas da lista). Só até a resposta começar; o vídeo pode durar horas.
+  let timedOut = false;
+  const connectTimer = setTimeout(() => { timedOut = true; controller.abort(); }, PROXY_CONNECT_MS);
 
   let upstream;
   try {
     upstream = await fetch(target.href, { headers, redirect: 'follow', signal: controller.signal });
+    clearTimeout(connectTimer);
   } catch (err) {
+    clearTimeout(connectTimer);
+    if (timedOut && !res.headersSent) {
+      res.writeHead(504, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('O servidor da lista não respondeu');
+    }
     if (controller.signal.aborted) return;
     res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('Falha ao conectar: ' + (err.cause?.code || err.message));
@@ -189,6 +203,17 @@ async function handleProxy(req, res, query) {
 
 // ---------- API ----------
 
+// Endereço deste aparelho que a TV alcança: o da mesma rede que ela (primeiros 3 números do IP), senão o primeiro.
+function addressFacing(tvIp) {
+  const addrs = net.lanAddresses().filter((a) => !a.virtual);
+  const prefix = String(tvIp).split('.').slice(0, 3).join('.') + '.';
+  const same = addrs.find((a) => a.address.startsWith(prefix));
+  return (same || addrs[0] || { address: '127.0.0.1' }).address;
+}
+
+// O FFmpeg lê o vídeo pelo proxy do próprio servidor (User-Agent da lista, redirecionamentos, HTTPS).
+const localProxy = (u) => `http://127.0.0.1:${PORT}/proxy?url=${encodeURIComponent(u)}`;
+
 const catalogText = new Map(); // listId -> { updatedAt, text }
 
 function serializeCatalog(catalog) {
@@ -219,6 +244,31 @@ async function handleApi(req, res, url) {
 
   if (p === '/api/ping') return sendJson(res, 200, { ok: true });
 
+  // Assistir na TV (Cast e DLNA): procurar TVs, tocar, controlar. O vídeo sai pelo proxy deste servidor.
+  if (p === '/api/cast/devices' && m === 'GET') return sendJson(res, 200, await cast.devices(q.get('fresh') === '1'));
+  if (p === '/api/cast/status' && m === 'GET') return sendJson(res, 200, await cast.status());
+  if (p === '/api/cast/play' && m === 'POST') {
+    const b = JSON.parse((await readBody(req)).toString() || '{}');
+    if (!/^https?:\/\//i.test(b.url || '')) return sendJson(res, 400, { error: 'Vídeo inválido' });
+    return sendJson(res, 200, await cast.play({
+      id: b.id, url: b.url, title: String(b.title || '').slice(0, 200), live: !!b.live, startAt: Number(b.startAt) || 0,
+      // a TV busca o vídeo direto no provedor: continua tocando mesmo com este aparelho desligado
+      mediaUrl: () => b.url,
+    }));
+  }
+  if (p === '/api/cast/control' && m === 'POST') {
+    const b = JSON.parse((await readBody(req)).toString() || '{}');
+    return sendJson(res, 200, await cast.control(String(b.action), Number(b.t) || 0));
+  }
+
+  // Componente opcional de vídeo do PC (FFmpeg reduzido): estado, download e leitura das faixas de um vídeo.
+  if (p === '/api/ffmpeg' && m === 'GET') return sendJson(res, 200, ffmpeg.status());
+  if (p === '/api/ffmpeg/install' && m === 'POST') return sendJson(res, 200, ffmpeg.install());
+  if (p === '/api/ffmpeg/probe' && m === 'GET') {
+    if (!ffmpeg.installed()) return sendJson(res, 409, { error: 'Componente não instalado' });
+    return sendJson(res, 200, await ffmpeg.probe(localProxy(q.get('url'))));
+  }
+
   // Baixar lista / Carregar lista direto no navegador (computador), sem celular.
   if (p === '/api/list-export' && m === 'GET') {
     const data = backup.build(q.get('list'));
@@ -246,7 +296,7 @@ async function handleApi(req, res, url) {
     if (!req.isLocal) return sendJson(res, 403, { error: 'Só na própria TV' });
     if (p === '/api/pair/start' && m === 'POST') {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
-      return sendJson(res, 200, pairing.begin(PORT, body.address, body.list));
+      return sendJson(res, 200, pairing.begin(PORT, body.address, body.list, body.mode));
     }
     if (p === '/api/pair/status' && m === 'GET') return sendJson(res, 200, pairing.status(q.get('token')));
     if (p === '/api/pair/restore' && m === 'POST') {
@@ -333,6 +383,15 @@ async function handleApi(req, res, url) {
 
   if (p === '/api/net' && m === 'GET') return sendJson(res, 200, await net.checkInternet());
 
+  if (p === '/api/list-speed' && m === 'POST') {
+    const b = await readJsonBody(req);
+    // a senha pode não vir (lista já salva): usa a da lista guardada
+    const saved = b.id ? store.getList(b.id) : null;
+    const cfg = { server: b.server, servers: b.servers, username: b.username || (saved && saved.username), password: b.password || (saved && saved.password) };
+    if (!cfg.server || !cfg.username) return sendJson(res, 400, { error: 'Preencha servidor e usuário.' });
+    return sendJson(res, 200, await catalogs.speedTest(cfg));
+  }
+
   if (p === '/api/list-status' && m === 'GET') {
     return sendJson(res, 200, await catalogs.checkStatus(requireList(q.get('list'))));
   }
@@ -392,10 +451,16 @@ async function handleApi(req, res, url) {
 
 const staticGz = new Map();
 
+// App Beta (qualquer build fora da versão publicada, e rodando pelo código): a página nasce com a classe "beta"
+// (tema âmbar, ver app.css) e os logos saem na versão âmbar (img/*-beta.*, de scripts/make-beta-icons.py).
+const isBeta = () => buildInfo().channel !== 'producao';
+const BETA_IMG = /^\/img\/(logo-horizontal|logo-sidebar|icon|icon-192|icon-small|icon-256)\.(png|webp)$/;
+
 function serveStatic(req, res, pathname) {
   let rel;
   try { rel = decodeURIComponent(pathname); } catch { rel = null; }
   if (rel === '/') rel = '/index.html';
+  if (rel && isBeta() && BETA_IMG.test(rel)) rel = rel.replace(/\.(png|webp)$/, '-beta.$1');
   const file = rel && !rel.includes('\0') ? path.normalize(path.join(PUBLIC, rel)) : '';
   // com o separador no fim, "src/web-outra" não passa por "src/web"
   if (!file.startsWith(path.join(PUBLIC, path.sep))) {
@@ -410,13 +475,19 @@ function serveStatic(req, res, pathname) {
     if (statErr || !st.isFile()) return missing();
     // o aparelho pergunta se mudou; sem mudança, não baixa de novo
     const etag = `"${st.mtimeMs.toString(36)}-${st.size.toString(36)}"`;
-    const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: etag };
+    // Cache: tocadores com a versão no endereço (?v=) ficam até a próxima versão; imagens e bibliotecas, um dia.
+    // Página e código do app são sempre conferidos (o ETag evita baixar de novo o que não mudou).
+    const versioned = rel.startsWith('/vendor/') && /[?&]v=[^&]+/.test(req.url);
+    const longLived = rel.startsWith('/vendor/') || rel.startsWith('/img/') || /^\/favicon/.test(rel);
+    const cache = versioned ? 'public, max-age=31536000, immutable' : longLived ? 'public, max-age=86400' : 'no-cache';
+    const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': cache, ETag: etag };
     if (req.headers['if-none-match'] === etag) {
       res.writeHead(304, headers);
       return res.end();
     }
     fs.readFile(file, (err, data) => {
       if (err) return missing();
+      if (rel === '/index.html' && isBeta()) data = Buffer.from(data.toString('utf8').replace('<html lang="pt-BR">', '<html lang="pt-BR" class="beta">'));
       if (/^(text|application\/json)|javascript|svg/.test(headers['Content-Type'])) {
         let memo = staticGz.get(file);
         if (!memo || memo.etag !== etag) staticGz.set(file, (memo = { etag }));
@@ -451,7 +522,9 @@ const server = http.createServer((req, res) => {
   if (pairing.enabled() && net.isPrivate(ip) && req.url.startsWith('/pair/')) {
     return pairing.handle(req, res, new URL(req.url, 'http://localhost'));
   }
-  if (!req.isLocal && !(net.isPrivate(ip) && net.lanEnabled())) {
+  // a TV que está recebendo uma transmissão (Assistir na TV) busca o vídeo, mesmo sem o acesso pela rede ligado
+  const castMedia = cast.allowed(ip) && req.url.startsWith('/proxy?');
+  if (!req.isLocal && !castMedia && !(net.isPrivate(ip) && net.lanEnabled())) {
     res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(BLOCKED_PAGE);
   }
@@ -462,6 +535,15 @@ const server = http.createServer((req, res) => {
       if (!res.headersSent) res.writeHead(500);
       res.end(String(err.message || err));
     });
+    return;
+  }
+  // vídeo com o áudio convertido pelo componente do PC (só para quem usa este servidor)
+  if (url.pathname === '/remux') {
+    if (!ffmpeg.installed() || !/^https?:\/\//i.test(url.searchParams.get('url') || '')) { res.writeHead(404); return res.end(); }
+    openStreams++;
+    res.on('close', () => { openStreams--; });
+    const n = (k) => Math.max(0, Number(url.searchParams.get(k)) || 0);
+    ffmpeg.stream(req, res, localProxy(url.searchParams.get('url')), { start: n('start'), audio: n('audio'), hevc: url.searchParams.get('hevc') === '1', video: String(url.searchParams.get('video') || '').slice(0, 20) });
     return;
   }
   if (url.pathname.startsWith('/api/')) {

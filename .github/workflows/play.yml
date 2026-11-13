@@ -1,0 +1,111 @@
+# Versão da Google Play (Android TV): gera e confere o AAB. Não envia nada à Play.
+# Fica separado do build.yml de propósito: se este falhar, o canal Developer (GitHub Releases) segue normal.
+# - Em pull requests que mexem no app: testa e gera um AAB SEM assinatura, só para conferir.
+# - No botão "Run workflow": gera o AAB assinado com a chave de upload (secrets PLAY_UPLOAD_*),
+#   confere com o bundletool e guarda como artefato para enviar à mão na Play Console.
+name: Google Play
+
+on:
+  pull_request:
+    paths:
+      - 'platforms/android/**'
+      - 'src/**'
+      - 'scripts/build-android.js'
+      - 'scripts/test-server.js'
+      - 'package.json'
+      - '.github/workflows/play.yml'
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: 'versionCode (vazio = playVersionCode de platforms/android/version.properties)'
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: play-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUNDLETOOL_VERSION: '1.17.2'
+
+jobs:
+  aab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - run: npm ci
+
+      - name: Testes do servidor
+        run: npm test
+
+      - name: Gerar versão para TVs antigas e bibliotecas do player
+        run: |
+          npm run build
+          npm run vendor
+
+      - name: Instalar NDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "ndk;27.2.12479018" "cmake;3.22.1" > /dev/null
+
+      - name: Baixar bundletool
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/bundletool.jar" "https://github.com/google/bundletool/releases/download/$BUNDLETOOL_VERSION/bundletool-all-$BUNDLETOOL_VERSION.jar"
+          echo "BUNDLETOOL=$RUNNER_TEMP/bundletool.jar" >> "$GITHUB_ENV"
+
+      - name: Preparar chave de upload
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          KEYSTORE: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.PLAY_UPLOAD_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          # Sem a chave, o build abaixo para com erro (PLAY_REQUIRE_SIGNING): nunca sai AAB com a chave de debug.
+          echo "PLAY_REQUIRE_SIGNING=1" >> "$GITHUB_ENV"
+          if [ -z "$KEYSTORE" ]; then
+            echo "::warning::Secret PLAY_UPLOAD_KEYSTORE_BASE64 não configurado."
+            exit 0
+          fi
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          {
+            echo "PLAY_UPLOAD_KEYSTORE=$RUNNER_TEMP/upload.jks"
+            echo "PLAY_UPLOAD_KEYSTORE_PASSWORD=$PASSWORD"
+            echo "PLAY_UPLOAD_KEY_ALIAS=$ALIAS"
+            echo "PLAY_UPLOAD_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Compilar AAB da Google Play
+        run: npm run android:play
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLAY_VERSION_CODE: ${{ inputs.version_code }}
+
+      - name: Tamanho de download estimado
+        run: |
+          AAB=$(ls dist/android/play/*.aab)
+          java -jar "$BUNDLETOOL" build-apks --bundle="$AAB" --output="$RUNNER_TEMP/play.apks" --overwrite
+          java -jar "$BUNDLETOOL" get-size total --apks="$RUNNER_TEMP/play.apks" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Limpar chave
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IPTVKZ-GooglePlay
+          path: dist/android/play/*
+          if-no-files-found: error
+          retention-days: 30

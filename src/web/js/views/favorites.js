@@ -11,7 +11,11 @@ export function favoritesView(params, ctx) {
   let filter = 'all';
   const chips = h('div.row', { style: { gap: '6px', margin: '6px 0 20px' } });
   const body = h('div');
-  const page = h('div.page', chips, body);
+  // celular: "Salvos" junta as duas telas, com abas para trocar
+  const savedTabs = h('div.tabs.saved-tabs',
+    h('a' + ('favorites' === 'mylist' ? '.on' : ''), { href: '#/mylist' }, 'Minha lista'),
+    h('a' + ('favorites' === 'favorites' ? '.on' : ''), { href: '#/favorites' }, 'Favoritos'));
+  const page = h('div.page', savedTabs, chips, body);
 
   const channelCard = (ch) => h('div.ch-card', {
     title: ch.name,

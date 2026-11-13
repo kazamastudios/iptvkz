@@ -1,5 +1,6 @@
 // IPTVKZ — casca do app: barra lateral, rotas, carregamento da lista ativa e teclado.
-import { $, h, ico, debounce, toast, fmtAgo, isBack, closeTopModal, confirmDialog, skPosters, skChannels } from './core/util.js';
+import { $, h, ico, debounce, toast, fmtAgo, isBack, closeTopModal, confirmDialog, skPosters, skChannels, settleImages } from './core/util.js';
+import { applyDebug, debugSection, tone } from './core/debug.js';
 import { TV, KB, setKbNav, detectTv, applyTv, move, DIRS, focusFirst, focusEl, isNative, normKey, syncFocus, initKeyDebug, exitApp } from './tv/tv.js';
 import { icon } from './core/icons.js';
 import {
@@ -14,7 +15,7 @@ import { startLifeline } from './core/lifeline.js';
 import { guideView } from './views/guide.js';
 import { searchView } from './views/search.js';
 import { settingsView } from './views/settings.js';
-import { openListForm, welcomeView } from './views/lists.js';
+import { openListForm, openListPhone, welcomeView } from './views/lists.js';
 import { overlayKey, isOverlayOpen } from './views/vodplayer.js';
 import { ensureTerms, termsAccepted } from './views/terms.js';
 import { initTvKeyboard } from './tv/tvkeyboard.js';
@@ -60,12 +61,14 @@ const ctx = {
   back(fallback) {
     if (history.length > 1) {
       restoreNext = true;
+      backing = true; // conta como volta, não como tela nova (Voltar do celular)
       history.back();
     } else location.hash = fallback;
   },
   useList,
   refreshList,
   editList: (l) => openListForm(l, onListSaved, deleteList),
+  phoneEdit: (l) => openListPhone(l, { onSaved: onListSaved, onRefresh: refreshList, onDelete: deleteList }),
   addList: () => openListForm(null, onListSaved),
   deleteList,
 };
@@ -95,18 +98,24 @@ function renderNav() {
   // recriar os links não pode tirar o foco do controle remoto
   const focused = document.activeElement;
   const refocus = focused && (focused.closest('#nav, #sideFoot')) ? focused.getAttribute('href') : null;
-  const link = (id, label, ic, n) =>
-    h('a' + (active === id ? '.active' : ''), { href: `#/${id}` }, ico(ic), h('span', label),
+  // short: nome curto da barra de baixo do celular (data-short, mostrado pelo CSS)
+  const link = (id, label, ic, n, short) =>
+    h('a' + (active === id ? '.active' : ''), { href: `#/${id}`, 'data-short': short || label }, ico(ic), h('span', label),
       n ? h('span.count', n.toLocaleString('pt-BR')) : null);
+  // Salvos: Minha lista e Favoritos num item só, em todo aparelho (as duas telas têm abas para trocar entre elas)
+  const savedN = lists(laterItems, ['movies', 'series']) + lists(favItems, ['live', 'movies', 'series']);
+  const saved = h('a' + (active === 'mylist' || active === 'favorites' ? '.active' : ''), { href: '#/mylist', 'data-short': 'Salvos' },
+    ico('heart'), h('span', 'Salvos'), savedN ? h('span.count', savedN.toLocaleString('pt-BR')) : null);
   $('#nav').replaceChildren(
     link('history', 'Histórico', 'history', history.inProgress.length + history.done.length),
-    link('live', 'TV ao Vivo', 'tv', count('live')),
+    link('live', 'TV ao Vivo', 'tv', count('live'), 'Ao vivo'),
     link('movies', 'Filmes', 'film', count('movies')),
     link('series', 'Séries', 'series', count('series')),
     link('guide', 'Guia', 'guide'),
-    link('mylist', 'Minha lista', 'mylist', lists(laterItems, ['movies', 'series'])),
-    link('favorites', 'Favoritos', 'star', lists(favItems, ['live', 'movies', 'series'])),
+    saved,
   );
+  const gear = $('#topSettings');
+  if (gear) gear.classList.toggle('active', active === 'settings');
   const status = h('div.status');
   if (appState === 'loading') status.append(h('div.spinner.small'), h('span', 'Carregando lista...'));
   else if (pollTimer) status.append(h('div.spinner.small'), h('span', 'Atualizando lista...'));
@@ -114,7 +123,7 @@ function renderNav() {
   // versão, build e modo no rodapé (o completo, com commit e data, fica em Configurações → Sobre)
   const b = buildLabel();
   const ver = h('div.build-tag', { title: `${b.mode}${b.detail ? ' · ' + b.detail : ''}` },
-    h('span', b.short), h('span.build-mode' + (b.dev ? '.dev' : ''), b.dev ? 'Dev' : 'Prod'));
+    h('span', b.short), h('span.build-mode' + (b.dev ? '.dev' : ''), b.dev ? 'Beta' : 'Prod'));
   $('#sideFoot').replaceChildren(link('settings', 'Configurações', 'settings'), status, ver);
   if (refocus) {
     const again = document.querySelector(`#nav a[href="${refocus}"], #sideFoot a[href="${refocus}"]`);
@@ -195,6 +204,8 @@ function isPlaying() {
   return isOverlayOpen() || (current && current.name === 'live' && !!parseHash().params.get('ch'));
 }
 
+const SLOW_NET_MS = 1500; // a TV mede mais devagar que o PC; abaixo disso os vídeos rodam normal
+
 function statusModel() {
   const n = {
     checking: { tone: 'idle', label: 'Verificando...', detail: '' },
@@ -202,6 +213,11 @@ function statusModel() {
     offline: { tone: 'bad', label: 'Sem internet', detail: 'Confira o Wi-Fi ou o cabo do computador.' },
     noserver: { tone: 'bad', label: 'Sem conexão', detail: 'Este aparelho não está falando com o computador do IPTVKZ.' },
   }[net.state];
+  // Conectado, mas demorando a responder (o teste é um pedido pequeno: normal fica bem abaixo de 300 ms).
+  // Aí os vídeos demoram e travam por causa da internet, não do app: a bolinha avisa em amarelo.
+  if (net.state === 'online' && net.ms > SLOW_NET_MS) {
+    Object.assign(n, { tone: 'warn', label: 'Internet lenta', detail: `${net.ms} ms para responder. Vídeos podem demorar a abrir ou travar.` });
+  }
   let list = null;
   const al = activeList();
   if (al) {
@@ -218,7 +234,7 @@ function statusModel() {
       cons: d && d.maxCons ? `${d.activeCons || 0} de ${d.maxCons} conexões em uso` : '',
     };
   }
-  const netBad = n.tone === 'bad';
+  const netBad = n.tone === 'bad' || n.tone === 'warn';
   const listLoud = list && (list.tone === 'bad' || list.tone === 'warn');
   const pill = netBad ? n : listLoud ? list : null;
   const allGood = n.tone === 'ok' && (!list || list.tone === 'ok' || list.state === 'local');
@@ -358,6 +374,37 @@ async function checkListStatus() {
   renderListStatus();
   const [tone] = STATUS_INFO[data.state] || ['idle'];
   if (tone === 'bad' && prev !== data.state && isPlaying()) toast(`${list.name}: ${STATUS_DETAIL[data.state]}`, 'error', 9000);
+  if (data.state === 'offline' && net.state === 'online') suggestServer(list);
+}
+
+// Servidor em uso fora do ar, com internet funcionando: testa os outros servidores da mesma conta e sugere
+// trocar para o mais rápido que responder. Sem internet não sugere (o problema é outro). Uma vez por servidor
+// a cada sessão, para não insistir.
+const suggested = new Set();
+async function suggestServer(list) {
+  if (list.type !== 'xtream' || !(list.servers || []).length) return;
+  const key = `${list.id}|${list.server}`;
+  if (suggested.has(key)) return;
+  suggested.add(key);
+  let r;
+  try {
+    r = await api('/api/list-speed', { method: 'POST', body: JSON.stringify({ id: list.id, server: list.server, servers: list.servers, username: list.username }) });
+  } catch { return; }
+  const ok = r.results.filter((x, i) => i > 0 && x.ms != null).sort((a, b) => a.ms - b.ms)[0];
+  if (!ok || r.results[0].ms != null) return; // nenhum outro responde, ou o em uso voltou
+  const short = (s) => String(s).replace(/^https?:\/\//, '');
+  toast(`O servidor ${short(list.server)} não está respondendo. ${short(ok.server)} está funcionando.`, 'error', 15000, {
+    label: 'Usar este',
+    fn: async () => {
+      const i = S.lists.findIndex((l) => l.id === list.id);
+      if (i < 0) return;
+      const old = S.lists[i];
+      S.lists[i] = { ...old, server: ok.server, servers: [old.server, ...(old.servers || []).filter((s) => s !== ok.server)] };
+      await saveNow('lists');
+      toast(`Usando ${short(ok.server)}`, 'ok');
+      refreshList(list.id);
+    },
+  });
 }
 
 // Ao voltar para o app, atualiza na hora (sem repetir se acabou de verificar).
@@ -477,8 +524,11 @@ function route() {
   }
   current = { name, ...res };
   view.classList.toggle('no-scroll', !!res.noScroll);
+  // volta ao topo antes de trocar o conteúdo: depois, ler/mudar a rolagem obrigaria a TV a calcular o layout
+  // da tela nova na hora (era ~80 ms na LG)
+  if (view.scrollTop) view.scrollTop = 0;
+  if (TV.on) settleImages(350);
   view.replaceChildren(res.el);
-  view.scrollTop = 0;
   // voltando: a tela reaparece onde estava, em qualquer plataforma
   const mem = goingBack && focusMemory.get(location.hash);
   if (mem) setTimeout(() => restoreFocus(mem), 30);
@@ -510,6 +560,8 @@ function showError() {
 let loadToken = 0;
 let showLoading = null;
 
+let lastLoad = null; // quanto a lista levou para carregar (modo de depuração)
+
 async function loadActive(force = false) {
   const list = activeList();
   checkListStatus();
@@ -531,7 +583,9 @@ async function loadActive(force = false) {
   if (parseHash().name === 'settings') route();
   else showLoading();
   try {
+    const t0 = performance.now();
     const r = await loadCatalog(list.id, { force });
+    lastLoad = { ms: Math.round(performance.now() - t0), at: Date.now() };
     if (token !== loadToken) return; // trocou ou excluiu a lista enquanto carregava
     appState = 'ready';
     warmSearch();
@@ -627,6 +681,7 @@ async function deleteList(id) {
 
 const search = $('#globalSearch');
 $('.search .ico').innerHTML = icon('search');
+$('#topSettings .ico').innerHTML = icon('settings');
 
 // Seletor de visualização ao lado da busca (Clássica / Streaming). Botões comuns: clique, toque ou OK do controle.
 function renderViewSwitch() {
@@ -680,6 +735,13 @@ function handleBack(e) {
     return true;
   }
   if (closeTopModal()) return true;
+  // canal ao vivo em tela cheia (app Android): Voltar só sai da tela cheia, e o celular volta a ficar em pé
+  // com a lista de canais embaixo
+  const fs = document.querySelector('.player.pseudo-fs');
+  if (fs && fs._player && fs._player.opts.live) {
+    fs._player.toggleFullscreen();
+    return true;
+  }
   if (overlayKey({ key: 'Escape', type: 'back' })) return true;
   if (current && current.key && current.key({ key: 'Escape', type: 'back', keyCode: e.keyCode })) return true;
   if (TV.on && e.key !== 'Escape') {
@@ -699,8 +761,38 @@ function handleBack(e) {
     confirmDialog('Sair do IPTVKZ?', 'O aplicativo será fechado nesta TV.', 'Sair').then((yes) => { if (yes) { flushSaves(); exitApp(); } });
     return true;
   }
+  // App Android no celular: Voltar refaz o caminho de telas; sem nada para voltar, um segundo Voltar fecha o app
+  // (como nos apps Android)
+  if (window.IPTVKZAndroid && e.key !== 'Escape') {
+    if (navDepth > 0) {
+      backing = true;
+      restoreNext = true;
+      history.back();
+      return true;
+    }
+    if (!TOP_LEVEL.has(parseHash().name)) {
+      location.hash = '#/';
+      return true;
+    }
+    if (Date.now() - exitArmed < 2500) {
+      flushSaves();
+      exitApp();
+      return true;
+    }
+    exitArmed = Date.now();
+    toast('Toque em Voltar de novo para sair', 'info', 2500);
+    return true;
+  }
   return false;
 }
+
+// Quantas telas dá para voltar (para o Voltar do celular saber quando não há mais para onde ir)
+let navDepth = 0;
+let backing = false;
+let exitArmed = 0;
+window.addEventListener('hashchange', () => {
+  if (backing) { backing = false; navDepth = Math.max(0, navDepth - 1); } else navDepth++;
+});
 
 document.addEventListener('keydown', (e) => {
   const ev = { key: normKey(e), keyCode: e.keyCode, type: e.type };
@@ -793,6 +885,75 @@ function hideSplash() {
   }, settle);
 }
 
+// Abertura sem internet: tela no estilo da de boas-vindas, que tenta de novo sozinha (a cada 5 s e quando o
+// sistema avisa que a rede voltou). Servidor sem resposta não conta como sem internet: esse erro tem tela própria.
+async function hasInternet() {
+  try {
+    return (await api('/api/net')).online !== false;
+  } catch {
+    return true;
+  }
+}
+
+async function waitForInternet() {
+  if (await hasInternet()) return;
+  await new Promise((resolve) => {
+    let timer = null;
+    let busy = false;
+    const note = h('p.faint', 'Tentando de novo a cada 5 segundos.');
+    const btn = h('button.btn.primary.big', { style: { marginTop: '10px' }, onclick: () => tryAgain() }, ico('refresh'), 'Tentar de novo');
+    const done = () => {
+      clearInterval(timer);
+      window.removeEventListener('online', tryAgain);
+      resolve();
+    };
+    async function tryAgain() {
+      if (busy) return;
+      busy = true;
+      note.textContent = 'Verificando a conexão...';
+      const ok = await hasInternet();
+      busy = false;
+      if (ok) return done();
+      note.textContent = 'Ainda sem internet. Tentando de novo a cada 5 segundos.';
+    }
+    showState(h('div.center-state.welcome.offline',
+      h('img.logo-big', { src: '/img/icon-256.webp', alt: '' }),
+      h('h2', 'Sem internet'),
+      h('p', 'O IPTVKZ precisa de internet para carregar a lista e os vídeos. Confira o Wi-Fi ou o cabo do aparelho; o app continua assim que a conexão voltar.'),
+      btn, note), 'IPTVKZ');
+    hideSplash();
+    if (TV.on || KB.on) setTimeout(() => focusEl(btn), 30);
+    timer = setInterval(tryAgain, 5000);
+    window.addEventListener('online', tryAgain);
+  });
+}
+
+// Modo de depuração: o que importa na tela atual (lista, catálogo, quanto há desenhado)
+debugSection('app', () => {
+  const c = C();
+  const rows = [];
+  const route = parseHash().name;
+  if (c) {
+    const n = (x) => x.toLocaleString('pt-BR');
+    rows.push(['Lista', `${(activeList() || {}).name || '—'} · ${n(c.live.items.length)} canais · ${n(c.movies.items.length)} filmes · ${n(c.series.items.length)} séries`, '',
+      lastLoad ? `carregou em ${n(lastLoad.ms)} ms` : '', tone(lastLoad && lastLoad.ms, 3000, 10000)]);
+    // última vez que a lista veio do provedor: quanto levou o download e qual pedido foi o mais lento
+    const t = c.timing;
+    if (t && t.download != null) {
+      const sec = (ms) => `${(ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`;
+      const slow = Object.entries(t).filter(([k, v]) => typeof v === 'number' && !['total', 'download', 'login'].includes(k)).sort((a, b) => b[1] - a[1])[0];
+      rows.push(['Baixar lista', `${sec(t.download)} do provedor${t.parallel ? '' : ' (pouca memória: em partes)'}`, tone(t.download, 8000, 25000),
+        slow ? `mais lento: ${slow[0].replace(/_/g, ' ')} ${sec(slow[1])}` : '', tone(slow && slow[1], 5000, 15000)]);
+    }
+  } else rows.push(['Lista', appState === 'loading' ? 'carregando...' : appState === 'error' ? 'erro ao carregar' : 'nenhuma', appState === 'error' ? 'bad' : '']);
+  const nodes = document.getElementsByTagName('*').length;
+  const imgs = [...document.images];
+  const pending = imgs.filter((i) => !i.complete).length;
+  rows.push(['Tela', `${route} · ${document.querySelectorAll('#view .poster, #view .ch-card, #view .ep').length} itens`, '',
+    `${nodes.toLocaleString('pt-BR')} elementos · ${imgs.length} imagens${pending ? ` (${pending} carregando)` : ''}`, tone(nodes, 3000, 8000)]);
+  return rows;
+});
+
 (async function boot() {
   setTimeout(hideSplash, 15000);
   detectTv();
@@ -803,6 +964,7 @@ function hideSplash() {
   document.addEventListener('mousemove', (e) => { if (Math.abs(e.movementX) + Math.abs(e.movementY) > 3) setKbNav(false); }, { passive: true });
   initTvKeyboard();
   initSmoothScroll();
+  applyDebug();
   window.addEventListener('resize', applyTv);
   try {
     await loadState();
@@ -813,6 +975,7 @@ function hideSplash() {
   }
   if (!termsAccepted()) hideSplash(); // os termos precisam aparecer
   await ensureTerms();
+  await waitForInternet(); // sem internet nada carrega: avisa na tela e segue sozinho quando ela voltar
   checkNet();
   renderListSwitch();
   if (!S.lists.length) {

@@ -10,7 +10,11 @@ export function myListView(params, ctx) {
   let filter = 'all';
   const chips = h('div.row', { style: { gap: '6px', margin: '6px 0 20px' } });
   const body = h('div');
-  const page = h('div.page', chips, body);
+  // celular: "Salvos" junta as duas telas, com abas para trocar
+  const savedTabs = h('div.tabs.saved-tabs',
+    h('a' + ('mylist' === 'mylist' ? '.on' : ''), { href: '#/mylist' }, 'Minha lista'),
+    h('a' + ('mylist' === 'favorites' ? '.on' : ''), { href: '#/favorites' }, 'Favoritos'));
+  const page = h('div.page', savedTabs, chips, body);
 
   function render() {
     chips.replaceChildren(...FILTERS.map(([v, l]) =>

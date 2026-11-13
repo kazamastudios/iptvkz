@@ -1,6 +1,6 @@
 {
   "name": "iptvkz",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "private": true,
   "description": "IPTVKZ — player IPTV pessoal para computador e TV (M3U e Xtream Codes)",
   "scripts": {
@@ -8,13 +8,14 @@
     "desktop": "electron .",
     "build": "node scripts/build-legacy.js",
     "vendor": "node scripts/vendor.js",
-    "dist:win": "node scripts/build-info.js && electron-builder --win",
-    "dist:mac": "node scripts/build-info.js && electron-builder --mac",
-    "dist:linux": "node scripts/build-info.js && electron-builder --linux",
+    "dist:win": "node scripts/build-desktop.js --win",
+    "dist:mac": "node scripts/build-desktop.js --mac",
+    "dist:linux": "node scripts/build-desktop.js --linux",
     "ipk": "node scripts/build-ipk.js",
     "ipk:store": "node scripts/build-ipk.js --store",
     "ipk:store:fhd": "node scripts/build-ipk.js --store --fhd",
     "android": "node scripts/build-android.js",
+    "android:play": "node scripts/build-android.js --play",
     "test": "node --test scripts/test-server.js"
   },
   "engines": {
@@ -55,11 +56,14 @@
     "files": [
       "platforms/desktop/**",
       "platforms/windows/iptvkz.ico",
+      "platforms/windows/iptvkz-beta.ico",
       "src/server/**",
       "src/web/**",
       "!src/web/**/*.map",
       "assets/brand/icon-1024.png",
       "assets/brand/icon-small-64.png",
+      "assets/brand/icon-beta-1024.png",
+      "assets/brand/icon-small-beta-64.png",
       "package.json"
     ],
     "win": {

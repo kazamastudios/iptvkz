@@ -1,5 +1,6 @@
 // TV ao Vivo: categorias + grade de canais; ao assistir, vídeo grande + lista lateral.
 import { h, ico, img, windowed, matcher, debounce, fmtClock, toast } from '../core/util.js';
+import { isPhone, catSelect } from '../core/catselect.js';
 import { starIcon } from '../core/icons.js';
 import {
   C, S, visibleCats, visibleItems, favItems, recentItems, clearRecents, catItems, adultLocked, isAdultItem, isFav, toggleFav, addRecent,
@@ -41,7 +42,9 @@ export function liveView(params, ctx) {
   const root = h('div.live');
   const catFilter = h('input', { placeholder: 'Filtrar categorias' });
   const catList = h('div.cat-list');
-  const cats = h('div.cats', h('label.filter', ico('search'), catFilter), catList);
+  // celular: seletor nativo de categoria e, ao lado, o Guia (a barra de baixo não tem o Guia)
+  const phoneBar = isPhone() ? h('div.cat-bar', catSelect(catList), h('a.btn.guide-link', { href: '#/guide', title: 'Guia de programação' }, ico('guide'), 'Guia')) : null;
+  const cats = h('div.cats' + (phoneBar ? '.has-select' : ''), phoneBar, h('label.filter', ico('search'), catFilter), catList);
   const channels = h('div.channels');
   root.append(cats, channels);
 
@@ -182,7 +185,8 @@ export function liveView(params, ctx) {
           cat === 'fav' ? 'Nenhum favorito ainda. Clique na ★ de um canal para adicionar.' : cat === 'recent' ? 'Nenhum canal assistido ainda.' : 'Nenhum canal encontrado.'));
         return;
       }
-      inc = windowed(grid, list, (ch) => channelCard(ch, false), { root: scroll, batch: 90, onBatch: loadEpgFor });
+      // na TV, só o que cabe na tela e um pouco mais: montar 90 canais (logo e guia) de uma vez derrubava o FPS na troca de tela
+      inc = windowed(grid, list, (ch) => channelCard(ch, false), { root: scroll, batch: TV.on ? 30 : 90, onBatch: loadEpgFor });
     }
     fillGrid();
     ctx.setTitle('TV ao Vivo');
@@ -246,7 +250,7 @@ export function liveView(params, ctx) {
       sideScroll.replaceChildren();
       list = filtered();
       if (!list.length) sideScroll.append(h('div.empty', 'Nada aqui.'));
-      sideInc = windowed(sideScroll, list, (ch) => channelCard(ch, true), { root: sideScroll, batch: 80, onBatch: loadEpgFor });
+      sideInc = windowed(sideScroll, list, (ch) => channelCard(ch, true), { root: sideScroll, batch: TV.on ? 30 : 80, onBatch: loadEpgFor });
       scrollToPlaying();
     }
     watchEls.fillSide = fillSide;

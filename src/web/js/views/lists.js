@@ -1,7 +1,7 @@
 // Formulário de lista (M3U link / arquivo / Xtream) e tela de boas-vindas.
 import { h, ico, modal, uid, toast, confirmDialog } from '../core/util.js';
 import { S, saveNow, api } from '../core/store.js';
-import { TV } from '../tv/tv.js';
+import { TV, focusEl } from '../tv/tv.js';
 
 const loadQrLib = () => new Promise((resolve, reject) => {
   if (window.qrcode) return resolve();
@@ -39,7 +39,7 @@ function pairingBox(onList, onRestore, onReady) {
     qr.make();
     box.replaceChildren(
       h('img.pair-qr', { src: qr.createDataURL(6, 3), alt: 'QR Code para adicionar a lista pelo celular' }),
-      h('div', h('b', 'Mais rápido pelo celular'), h('p.muted', 'Escaneie com a câmera, no mesmo Wi-Fi da TV, e preencha a lista por lá. Uma lista baixada no celular entra por “Carregar lista”.')));
+      h('div', h('b', TV.on ? 'Mais rápido pelo celular' : 'Ou mande pelo celular'), h('p.muted', `Escaneie com a câmera, no mesmo Wi-Fi ${TV.on ? 'da TV' : 'deste computador'}, e preencha a lista por lá. Uma lista baixada no celular entra por “Carregar lista”.`)));
     box.classList.remove('hidden');
     if (onReady) onReady();
     poll();
@@ -146,7 +146,212 @@ export function openListSave(list) {
   })().catch(() => { status.textContent = 'Não foi possível preparar o QR Code. Tente de novo.'; });
 }
 
+// Editar pelo celular: QR Code que abre no celular a lista com as abas Dados e Servidores, Atualizar, Excluir e
+// Salvar. A TV aplica cada pedido que chega; a janela fica aberta (e a chave valendo) para mais mudanças.
+export function openListPhone(list, { onSaved, onRefresh, onDelete } = {}) {
+  const status = h('p.muted', 'Preparando o QR Code...');
+  const qrBox = h('div.pair-box.hidden');
+  let token = null;
+  let timer = null;
+  let stopped = false;
+  const stop = () => {
+    stopped = true;
+    clearTimeout(timer);
+    if (token) api('/api/pair/end', { method: 'POST', body: JSON.stringify({ token }) }).catch(() => {});
+    token = null;
+  };
+  const m = modal(`Editar “${list.name}” pelo celular`, h('div', qrBox, status), { onClose: stop });
+  const hhmm = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  async function apply(e) {
+    const i = S.lists.findIndex((l) => l.id === e.id);
+    if (i < 0) return;
+    const old = S.lists[i];
+    if (e.action === 'delete') {
+      stop();
+      m.close();
+      toast(`“${old.name}” foi excluída pelo celular`, 'ok');
+      if (onDelete) onDelete(old.id);
+      return;
+    }
+    if (e.action === 'refresh') {
+      status.textContent = 'Atualizando a lista...';
+      if (onRefresh) await onRefresh(old.id);
+      status.textContent = `Lista atualizada às ${hhmm()}. Pode continuar editando pelo celular.`;
+      return;
+    }
+    const f = e.fields || {};
+    const next = { ...old, name: f.name || old.name, epgUrl: f.epgUrl || '' };
+    if (old.type === 'xtream') {
+      const all = parseServers([f.server, ...(f.servers || [])].join('\n'));
+      Object.assign(next, { server: all[0] || old.server, servers: all.slice(1), username: f.username || old.username, password: f.password || old.password });
+    } else if (old.source !== 'file' && /^https?:\/\//i.test(f.url || '')) next.url = f.url;
+    // mudou a conexão (servidor, usuário, senha, link): recarrega a lista; só nome ou guia: só redesenha
+    const conn = ['server', 'username', 'password', 'url'].some((k) => next[k] !== old[k]);
+    S.lists[i] = next;
+    await saveNow('lists');
+    toast('Lista salva pelo celular', 'ok');
+    status.textContent = `Salvo às ${hhmm()}. Pode continuar editando pelo celular.`;
+    if (conn && onSaved) onSaved(next);
+    else window.dispatchEvent(new HashChangeEvent('hashchange'));
+  }
+  const poll = async () => {
+    if (stopped) return;
+    const r = await api(`/api/pair/status?token=${token}`).catch(() => null);
+    if (stopped) return;
+    if (r && r.edit) {
+      await apply(r.edit).catch(() => toast('Não foi possível aplicar a mudança do celular', 'error'));
+      if (stopped || r.edit.action === 'delete') return;
+    }
+    timer = setTimeout(poll, 2000);
+  };
+  (async () => {
+    const native = window.IPTVKZAndroid;
+    const address = native && native.lanAddress ? native.lanAddress() : undefined;
+    const r = await api('/api/pair/start', { method: 'POST', body: JSON.stringify({ address, list: list.id, mode: 'edit' }) }).catch(() => null);
+    if (stopped) return;
+    if (!r || !r.available) {
+      status.textContent = `Não foi possível mostrar o QR Code. Confira se ${TV.on ? 'a TV' : 'este computador'} está conectado à rede de casa e tente de novo.`;
+      return;
+    }
+    token = r.token;
+    await loadQrLib();
+    if (stopped) return;
+    const qr = window.qrcode(0, 'M');
+    qr.addData(r.url);
+    qr.make();
+    qrBox.replaceChildren(
+      h('img.pair-qr', { src: qr.createDataURL(6, 3), alt: 'QR Code para editar a lista pelo celular' }),
+      h('div', h('b', 'Pelo celular'), h('p.muted', `Escaneie com a câmera, no mesmo Wi-Fi ${TV.on ? 'da TV' : 'deste computador'}. No celular dá para mudar os dados e os servidores, atualizar ou excluir a lista; cada “Salvar” chega aqui na hora.`)));
+    qrBox.classList.remove('hidden');
+    status.textContent = 'Aguardando o celular...';
+    poll();
+  })().catch(() => { status.textContent = 'Não foi possível preparar o QR Code. Tente de novo.'; });
+}
+
+// O QR só faz sentido fora do celular (no celular, edita direto pela tela)
+export const canPhoneEdit = () => TV.on || !window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
 // Links tipo http://host:porta/get.php?username=X&password=Y&type=m3u_plus viram Xtream.
+// Texto colado com um ou vários endereços (um por linha, ou separados por espaço, vírgula...). Conserta o que dá:
+// http faltando ou digitado errado (htp://, http:/, http;//), barra no fim, link get.php inteiro, maiúsculas.
+// Sem http ou https, fica http (o mais comum nos painéis); o teste de servidores tenta o outro se não responder.
+export function parseServers(text) {
+  const out = [];
+  for (const raw of String(text || '').split(/[\s,;|]+/)) {
+    let t = raw.replace(/^[<("'[]+/, '').replace(/[>)"'\].,;:]+$/, '');
+    if (!t) continue;
+    let https = false;
+    const sch = t.match(/^h?t{1,2}p{1,2}(s?)(?:[:;.]+\/*|\/+)/i);
+    if (sch) { https = !!sch[1]; t = t.slice(sch[0].length); }
+    t = t.replace(/^\/+/, '');
+    const m = t.match(/^([^/?#]+)([^?#]*)/);
+    if (!m) continue;
+    const hostPort = m[1].toLowerCase().replace(/\.+$/, '');
+    const path = m[2].replace(/\/(get|player_api|xmltv)\.php.*$/i, '').replace(/\/+$/, '');
+    const [host, port, more] = hostPort.split(':');
+    if (more !== undefined || !/^(localhost|\d{1,3}(\.\d{1,3}){3}|[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,})$/.test(host)) continue;
+    if (port !== undefined && !/^\d{1,5}$/.test(port)) continue;
+    const s = `${https ? 'https' : 'http'}://${hostPort}${path}`;
+    if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
+// Servidores de uma lista Xtream (mesmo usuário e senha): o em uso primeiro, depois os outros, do mais rápido ao
+// mais lento depois do teste. "Usar este" troca o servidor em uso e recarrega a lista; dá para tirar e adicionar.
+// O campo de digitar só abre com "Adicionar servidor" (na TV, focar um campo abre o teclado).
+export function openServers(list, onChanged, onClose) {
+  let main = parseServers(list.server)[0] || list.server;
+  let others = parseServers((list.servers || []).join('\n')).filter((s) => s !== main);
+  const results = new Map(); // servidor -> { ms, state }
+  const short = (s) => String(s).replace(/^https?:\/\//, '');
+  const err = h('div.error-box.hidden');
+  const showErr = (msg) => { err.textContent = msg; err.classList.toggle('hidden', !msg); };
+  const rowsBox = h('div.speed-box');
+  const addInput = h('input.input', { placeholder: 'http://servidor.com:8080 (pode colar vários)', autocomplete: 'off' });
+  const addBox = h('div.row.hidden', { style: { gap: '8px', marginBottom: '10px' } }, addInput,
+    h('button.btn.small', { type: 'button', onclick: () => addFromInput() }, 'Adicionar'));
+  const addBtn = h('button.btn.small.ghost', { type: 'button', onclick: () => { addBox.classList.remove('hidden'); addInput.focus(); } }, ico('plus'), 'Adicionar servidor');
+
+  async function save(newMain) {
+    const changed = newMain && newMain !== main;
+    if (changed) { others = [main, ...others.filter((x) => x !== newMain)]; main = newMain; }
+    const i = S.lists.findIndex((l) => l.id === list.id);
+    if (i < 0) return;
+    S.lists[i] = { ...S.lists[i], server: main, servers: others.slice() };
+    list = S.lists[i];
+    await saveNow('lists');
+    render();
+    if (changed) { toast(`Usando ${short(main)}`, 'ok'); onChanged && onChanged(list); }
+  }
+  function addFromInput() {
+    const got = parseServers(addInput.value).filter((s) => s !== main && !others.includes(s));
+    if (!got.length) return showErr(addInput.value.trim() ? 'Endereço não reconhecido. Ex.: http://servidor.com:8080' : '');
+    showErr('');
+    others.push(...got);
+    addInput.value = '';
+    addBox.classList.add('hidden');
+    save().then(() => focusEl(addBtn));
+  }
+  addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addFromInput(); } });
+
+  function render() {
+    // depois do teste: do mais rápido ao mais lento, fora do ar no fim
+    const rank = (s) => { const r = results.get(s); return !r ? 1e9 : r.ms == null ? 2e9 : r.ms; };
+    const sorted = results.size ? [...others].sort((a, b) => rank(a) - rank(b)) : others;
+    const best = results.size ? [main, ...others].filter((s) => results.get(s) && results.get(s).ms != null).sort((a, b) => rank(a) - rank(b))[0] : null;
+    rowsBox.replaceChildren(...[main, ...sorted].map((s, i) => {
+      const r = results.get(s);
+      return h('div.speed-row' + (i === 0 ? '.best' : ''),
+        h('span.speed-host', short(s)),
+        i === 0 ? h('span.badge.onair', 'EM USO') : null,
+        s === best ? h('span.badge.gold', 'mais rápido') : null,
+        r ? h('span.' + (r.ms == null ? 'bad' : r.ms < 800 ? 'good' : r.ms < 2000 ? 'warn' : 'bad'), r.ms == null ? (r.state === 'offline' ? 'fora do ar' : 'recusou') : `${r.ms} ms`) : null,
+        i > 0 && !(r && r.ms == null) ? h('button.btn.small', { type: 'button', onclick: () => save(s) }, 'Usar este') : null,
+        i > 0 ? h('button.icon-btn', {
+          type: 'button',
+          title: 'Tirar este servidor',
+          onclick: () => { others = others.filter((x) => x !== s); results.delete(s); save(); },
+        }, ico('trash')) : null);
+    }));
+  }
+
+  const testBtn = h('button.btn.small.primary', {
+    type: 'button',
+    onclick: async () => {
+      showErr('');
+      testBtn.disabled = true;
+      testBtn.replaceChildren(h('div.spinner.small'), 'Testando...');
+      try {
+        const r = await api('/api/list-speed', { method: 'POST', body: JSON.stringify({ id: list.id, server: main, servers: others, username: list.username }) });
+        results.clear();
+        for (const x of r.results) results.set(x.server, x);
+        // endereço que só respondeu no outro protocolo (http <-> https): guarda o que funcionou
+        const fixed = r.results.map((x) => x.server);
+        if (fixed.length && (fixed[0] !== main || fixed.slice(1).join() !== others.join())) {
+          main = fixed[0];
+          others = fixed.slice(1);
+          await save();
+        } else render();
+        const best = r.fastest >= 0 ? r.results[r.fastest] : null;
+        if (best && r.fastest > 0) toast(`${short(best.server)} está mais rápido que o em uso`, 'info');
+      } catch (e2) {
+        showErr(e2.message || String(e2));
+      } finally {
+        testBtn.disabled = false;
+        testBtn.replaceChildren(ico('refresh'), 'Testar servidores');
+      }
+    },
+  }, ico('refresh'), 'Testar servidores');
+
+  render();
+  modal(`Servidores · ${list.name}`, h('div',
+    h('p.muted', { style: { margin: '0 0 12px' } }, 'Endereços da mesma conta (mesmo usuário e senha). O primeiro é o que está em uso; se ele cair, o app usa o próximo.'),
+    err, rowsBox, addBox,
+    h('div.row', { style: { gap: '8px', marginTop: '4px' } }, testBtn, addBtn)), { wide: true, onClose });
+  setTimeout(() => focusEl(testBtn), 50);
+}
+
 function xtreamFromUrl(url) {
   try {
     const u = new URL(url.trim());
@@ -190,6 +395,11 @@ export function openListForm(existing, onSaved, onDelete) {
   const name = h('input.input', { value: ex.name || '', placeholder: 'Ex.: Minha lista' });
   const url = h('input.input', { value: ex.url || '', placeholder: 'http://.../lista.m3u' });
   const server = h('input.input', { value: ex.server || '', placeholder: 'http://servidor.com:8080' });
+  // Reservas da mesma conta: a tela fica em Configurações > Servidores. Aqui só guarda o que veio junto
+  // (vários endereços colados no Servidor, ou o campo do celular), e mantém os que a lista já tinha.
+  const reserves = parseServers((ex.servers || []).join('\n'));
+  const mainServer = () => parseServers(server.value)[0] || server.value.trim();
+  const serverLines = () => reserves.filter((s) => s !== mainServer());
   const user = h('input.input', { value: ex.username || '', autocomplete: 'off' });
   const pass = h('input.input', { value: ex.password || '', type: 'password', autocomplete: 'new-password' });
   const showPass = h('button.icon-btn', { type: 'button', title: 'Mostrar senha', onclick: () => { pass.type = pass.type === 'password' ? 'text' : 'password'; } }, ico('eye'));
@@ -234,18 +444,55 @@ export function openListForm(existing, onSaved, onDelete) {
     }
   });
   server.addEventListener('change', () => {
-    const x = xtreamFromUrl(server.value);
+    const many = parseServers(server.value);
+    const x = many.length > 1 ? null : xtreamFromUrl(server.value);
     if (x) {
       server.value = x.server;
       user.value = x.username;
       pass.value = x.password;
-    }
+    } else if (many.length) setServers(many[0], many.slice(1));
   });
 
   const field = (label, input, hint) => h('div.field', h('label', label), input, hint ? h('div.hint', hint) : null);
+
+  const setServers = (main, extra) => {
+    if (main) server.value = main;
+    for (const x of extra || []) if (x !== mainServer() && !reserves.includes(x)) reserves.push(x);
+  };
+  // Editar uma lista Xtream: o servidor vira um seletor com os da conta (o em uso marcado), e a última opção,
+  // "Adicionar servidor", abre a tela de Servidores
+  const serverSel = existing && ex.type === 'xtream' ? h('select.input') : null;
+  const fillSel = () => {
+    const main = mainServer();
+    serverSel.replaceChildren(...[main, ...serverLines()].map((s) => h('option', { value: s, selected: s === main }, s.replace(/^https?:\/\//, ''))),
+      h('option', { value: '__add' }, '+ Adicionar servidor…'));
+  };
+  if (serverSel) {
+    fillSel();
+    serverSel.addEventListener('change', () => {
+      const old = mainServer();
+      if (serverSel.value === '__add') {
+        fillSel(); // volta a mostrar o em uso
+        const live = S.lists.find((l) => l.id === ex.id) || ex;
+        openServers({ ...live, server: old, servers: serverLines() }, null, () => {
+          const now = S.lists.find((l) => l.id === ex.id);
+          if (now) {
+            server.value = now.server;
+            reserves.splice(0, reserves.length, ...parseServers((now.servers || []).join('\n')));
+          }
+          fillSel();
+          setTimeout(() => focusEl(serverSel), 50);
+        });
+        return;
+      }
+      if (!reserves.includes(old)) reserves.push(old);
+      server.value = serverSel.value;
+    });
+  }
   const panes = {
     xtream: h('div',
-      field('Servidor', server, 'Endereço com porta, como o provedor informou. Pode colar o link get.php inteiro.'),
+      serverSel ? field('Servidor', serverSel, 'O que está em uso. Escolha outro para trocar, ou “Adicionar servidor” para incluir mais.')
+        : field('Servidor', server, 'Endereço com porta, como o provedor informou. Pode colar o link get.php inteiro.'),
       h('div.row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass)))),
     url: h('div', field('Link da lista (M3U/M3U8)', url), xtHint),
     file: h('div', h('div.field', h('label', 'Arquivo da lista'),
@@ -273,12 +520,15 @@ export function openListForm(existing, onSaved, onDelete) {
   }
   const saveBtn = h('button.btn.primary', { type: 'submit' }, existing ? 'Salvar e recarregar' : 'Adicionar lista');
   setTab(tab);
-  const pairing = TV.on && !existing ? pairingBox((list) => {
+  // TV e PC: QR para mandar a lista pelo celular (no PC é opcional, dá para digitar). No celular não faz sentido.
+  const touchOnly = !TV.on && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  const pairing = !touchOnly && !existing ? pairingBox((list) => {
     // o que veio do celular entra no mesmo caminho do formulário (validação e lista repetida)
     const x = list.type === 'm3u' ? xtreamFromUrl(list.url) : xtreamFromUrl(list.server);
     name.value = list.name;
-    if (x) { server.value = x.server; user.value = x.username; pass.value = x.password; setTab('xtream'); }
-    else if (list.type === 'xtream') { server.value = list.server; user.value = list.username; pass.value = list.password; setTab('xtream'); }
+    const fromPhone = list.type === 'xtream' ? parseServers(`${list.server}\n${list.servers || ''}`) : [];
+    if (x) { server.value = x.server; user.value = x.username; pass.value = x.password; setTab('xtream'); setServers(null, fromPhone); }
+    else if (list.type === 'xtream') { setServers(fromPhone[0] || list.server, fromPhone.slice(1)); user.value = list.username; pass.value = list.password; setTab('xtream'); }
     else { url.value = list.url; setTab('url'); }
     form.dispatchEvent(new Event('submit', { cancelable: true }));
   }, (summary, token) => confirmRestore(summary, token, () => m.close()), () => phoneHint.classList.remove('hidden')) : null;
@@ -338,7 +588,7 @@ export function openListForm(existing, onSaved, onDelete) {
       createdAt: ex.createdAt || Date.now(),
     };
     if (tab === 'xtream') {
-      Object.assign(list, { server: server.value.trim(), username: user.value.trim(), password: pass.value });
+      Object.assign(list, { server: server.value.trim(), servers: serverLines(), username: user.value.trim(), password: pass.value });
       if (!list.server || !list.username || !list.password) return showErr('Preencha servidor, usuário e senha.');
       if (!list.name) list.name = list.server.replace(/^https?:\/\//, '').split(/[:/]/)[0];
     } else if (tab === 'url') {
@@ -382,7 +632,7 @@ export function openListForm(existing, onSaved, onDelete) {
 
 export function welcomeView(onAdd) {
   return h('div.center-state.welcome',
-    h('img.logo-big', { src: '/img/icon.png', alt: '' }),
+    h('img.logo-big', { src: '/img/icon-256.webp', alt: '' }),
     h('h2', 'Bem-vindo ao IPTVKZ'),
     h('p', 'Adicione a sua lista para começar. Funciona com links M3U, arquivos .m3u e contas Xtream Codes.'),
     h('button.btn.primary.big', { style: { marginTop: '10px' }, onclick: onAdd }, ico('plus'), 'Adicionar minha lista'));

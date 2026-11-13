@@ -1,0 +1,86 @@
+#EXTM3U
+# Lista de teste de formatos do IPTVKZ: a mesma em todo aparelho (Android, LG, PC, celular), para ver o que
+# cada um toca. O que esperar de cada item está em docs/TESTE-FORMATOS.md.
+# Arquivos "Sintel ...": 30 s do trailer de Sintel, (c) Blender Foundation, www.sintel.org, CC BY 3.0,
+# convertidos por scripts/build-test-media.sh e publicados na release "teste-formatos" do repositório.
+# Streams: exemplos públicos de teste da Apple, Mux, Unified Streaming e Akamai.
+
+#EXTINF:-1 group-title="Teste | Contêiner",Sintel · MP4 · H.264 · AAC
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/01-mp4-h264-aac.mp4
+#EXTINF:-1 group-title="Teste | Contêiner",Sintel · MKV · H.264 · AAC
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/02-mkv-h264-aac.mkv
+#EXTINF:-1 group-title="Teste | Contêiner",Sintel · MOV · H.264 · AAC
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/03-mov-h264-aac.mov
+#EXTINF:-1 group-title="Teste | Contêiner",Sintel · TS · H.264 · AAC
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/04-ts-h264-aac.ts
+#EXTINF:-1 group-title="Teste | Contêiner",Sintel · FLV · H.264 · AAC
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/05-flv-h264-aac.flv
+#EXTINF:-1 group-title="Teste | Contêiner",Sintel · AVI · MPEG-4 (Xvid) · MP3
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/06-avi-mpeg4-mp3.avi
+#EXTINF:-1 group-title="Teste | Contêiner",Sintel · MPG · MPEG-2 · MP2
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/07-mpg-mpeg2-mp2.mpg
+#EXTINF:-1 group-title="Teste | Contêiner",Sintel · WebM · VP9 · Opus
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/08-webm-vp9-opus.webm
+
+#EXTINF:-1 group-title="Teste | Vídeo",Sintel · MP4 · H.265 · AAC
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/10-mp4-h265-aac.mp4
+#EXTINF:-1 group-title="Teste | Vídeo",Sintel · MKV · H.265 10-bit 4K · AAC
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/11-mkv-h265-10bit-4k-aac.mkv
+#EXTINF:-1 group-title="Teste | Vídeo",Sintel · MP4 · AV1 · AAC
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/12-mp4-av1-aac.mp4
+#EXTINF:-1 group-title="Teste | Vídeo",Sintel · MP4 · H.264 4K · AAC
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/13-mp4-h264-4k-aac.mp4
+
+#EXTINF:-1 group-title="Teste | Áudio",Sintel · MKV · AC3 5.1
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/20-mkv-h264-ac3-5.1.mkv
+#EXTINF:-1 group-title="Teste | Áudio",Sintel · MKV · E-AC3 5.1
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/21-mkv-h264-eac3-5.1.mkv
+#EXTINF:-1 group-title="Teste | Áudio",Sintel · MKV · DTS 5.1
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/22-mkv-h264-dts-5.1.mkv
+#EXTINF:-1 group-title="Teste | Áudio",Sintel · MKV · TrueHD
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/23-mkv-h264-truehd.mkv
+#EXTINF:-1 group-title="Teste | Áudio",Sintel · MKV · FLAC
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/24-mkv-h264-flac.mkv
+#EXTINF:-1 group-title="Teste | Áudio",Sintel · MKV · Opus
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/25-mkv-h264-opus.mkv
+#EXTINF:-1 group-title="Teste | Áudio",Sintel · MP4 · E-AC3 5.1
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/26-mp4-h264-eac3.mp4
+#EXTINF:-1 group-title="Teste | Áudio",Sintel · TS · AC3 5.1
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/27-ts-h264-ac3.ts
+
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 23,976 fps · 1080p · H.264
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/40-fps-23.976-1080p-h264.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 25 fps · 1080p · H.264
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/41-fps-25-1080p-h264.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 29,97 fps · 1080p · H.264
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/42-fps-29.97-1080p-h264.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 50 fps · 1080p · H.264
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/43-fps-50-1080p-h264.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 59,94 fps · 1080p · H.264
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/44-fps-59.94-1080p-h264.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 60 fps · 1080p · H.265
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/45-fps-60-1080p-h265.mp4
+#EXTINF:-1 group-title="Teste | FPS",Sintel · 60 fps · 4K · H.265 (o mais pesado)
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/46-fps-60-4k-h265.mkv
+
+#EXTINF:-1 group-title="Teste | Faixas e legendas",Sintel · MKV · 2 áudios (pt AAC, en AC3) e 2 legendas
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/30-mkv-dois-audios-legendas.mkv
+#EXTINF:-1 group-title="Teste | Faixas e legendas",Sintel · MP4 · legenda embutida (mov_text)
+https://github.com/kazamastudios/iptvkz/releases/download/teste-formatos/31-mp4-legenda-mov_text.mp4
+#EXTINF:-1 group-title="Teste | Faixas e legendas",Sintel completo · MKV · AC3 5.1 e 10 legendas (1,1 GB)
+https://download.blender.org/durian/movies/Sintel.2010.1080p.mkv
+
+#EXTINF:-1 group-title="Teste | Streaming HLS",HLS · H.264 · áudios AAC/AC3/E-AC3 e legendas (Apple, fMP4)
+https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8
+#EXTINF:-1 group-title="Teste | Streaming HLS",HLS · H.264 · áudios AAC/AC3/E-AC3 e legendas (Apple, TS)
+https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8
+#EXTINF:-1 group-title="Teste | Streaming HLS",HLS · H.265 e H.264 (Apple)
+https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_adv_example_hevc/master.m3u8
+#EXTINF:-1 group-title="Teste | Streaming HLS",HLS · Dolby Vision e Atmos (Apple)
+https://devstreaming-cdn.apple.com/videos/streaming/examples/adv_dv_atmos/main.m3u8
+#EXTINF:-1 group-title="Teste | Streaming HLS",HLS · várias qualidades (Mux, Big Buck Bunny)
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1 group-title="Teste | Ao vivo",Ao vivo HLS (Unified Streaming)
+https://demo.unified-streaming.com/k8s/live/stable/live.isml/.m3u8
+#EXTINF:-1 group-title="Teste | Ao vivo",Ao vivo HLS (Akamai)
+https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8

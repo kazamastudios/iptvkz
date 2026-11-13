@@ -1,4 +1,5 @@
-# Gera os instaladores do IPTVKZ para Windows, macOS e Linux.
+# Gera os instaladores do IPTVKZ para Windows, macOS e Linux, o IPK da LG e o APK Android do canal Developer.
+# A versão da Google Play (AAB) tem um fluxo separado: play.yml.
 # - Em pull requests e no botão "Run workflow": compila e guarda os arquivos como artefatos.
 # - Ao enviar uma tag "v*" (ex.: v1.0.0): compila e anexa tudo a um rascunho de Release.
 name: Build
@@ -13,7 +14,92 @@ permissions:
   contents: write
 
 jobs:
+  # O que este PR mudou: cada job roda só quando os arquivos dele mudam (um PR só da landing page, em public/,
+  # não roda nada). Tag v* e o botão "Run workflow" rodam tudo. src/ é o app de todas as plataformas.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      test: ${{ steps.o.outputs.test }}
+      desktop: ${{ steps.o.outputs.desktop }}
+      webos: ${{ steps.o.outputs.webos }}
+      android: ${{ steps.o.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+      - uses: dorny/paths-filter@v3
+        id: f
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            app: ['src/**', 'package.json', 'package-lock.json', 'scripts/build-legacy.js', 'scripts/make-*', 'scripts/build-info.js', 'scripts/vendor.js', '.github/workflows/build.yml']
+            server: ['src/server/**', 'scripts/test-server.js', 'package.json', 'package-lock.json']
+            desktop: ['platforms/desktop/**', 'scripts/build-desktop.js', 'scripts/build-ffmpeg.sh', 'assets/brand/**']
+            webos: ['platforms/webos/**', 'scripts/build-ipk.js', 'scripts/check-webos.js', 'assets/brand/**', 'platforms/android/app/src/developer/res/values/update_key.xml']
+            android: ['platforms/android/**', 'scripts/build-android.js', 'assets/brand/**']
+      - id: o
+        run: |
+          all=${{ github.event_name != 'pull_request' }}
+          on() { if [ "$all" = true ] || [ "$1" = true ] || [ "$2" = true ]; then echo true; else echo false; fi; }
+          echo "test=$(on '${{ steps.f.outputs.server }}')" >> "$GITHUB_OUTPUT"
+          echo "desktop=$(on '${{ steps.f.outputs.app }}' '${{ steps.f.outputs.desktop }}')" >> "$GITHUB_OUTPUT"
+          echo "webos=$(on '${{ steps.f.outputs.app }}' '${{ steps.f.outputs.webos }}')" >> "$GITHUB_OUTPUT"
+          echo "android=$(on '${{ steps.f.outputs.app }}' '${{ steps.f.outputs.android }}')" >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  # FFmpeg reduzido que vai dentro do app de PC (scripts/build-ffmpeg.sh): lê MKV/TS/AVI, copia o vídeo e converte
+  # só o áudio (AC3, DTS...) para AAC. Licença LGPL, sem partes GPL. O Windows é compilado no Linux.
+  ffmpeg:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: win-x64, os: ubuntu-latest }
+          - { target: linux-x64, os: ubuntu-latest }
+          - { target: mac-arm64, os: macos-latest }
+          - { target: mac-x64, os: macos-latest } # compilado para Intel no Mac M1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: dist/desktop/componentes
+          key: ffmpeg-${{ matrix.target }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+      - name: Ferramentas
+        if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nasm mingw-w64 zip > /dev/null
+      - name: Ferramentas (Mac)
+        if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'macOS'
+        run: brew install nasm > /dev/null
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-ffmpeg.sh ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: dist/desktop/componentes/*.zip
+
+  # Testes do servidor. Nenhum job depende deste: se falhar, avisa sem travar os instaladores.
+  test:
+    needs: changes
+    if: needs.changes.outputs.test == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
   build:
+    needs: [changes, ffmpeg]
+    if: needs.changes.outputs.desktop == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -40,10 +126,16 @@ jobs:
           npm run build
           npm run vendor
 
+      - name: FFmpeg para o app
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ffmpeg-*
+          path: dist/desktop/componentes
+          merge-multiple: true
+
       - name: Compilar instaladores
         run: |
-          node scripts/build-info.js
-          npx electron-builder ${{ matrix.target }} --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+          node scripts/build-desktop.js ${{ matrix.target }} --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -65,7 +157,9 @@ jobs:
     # - Developer (dist/webos): BUNDLE_VERSION cresce a cada build, como no Android; vai para a Release.
     # - Store (dist/webos/store): IPK da LG Content Store, sem atualização automática. Só artefato:
     #   o envio ao LG Seller Lounge é manual, e nada aqui publica na loja.
-    needs: build
+    # Espera os instaladores do PC (mesmo rascunho de Release), mas roda também quando eles não rodaram.
+    needs: [changes, build]
+    if: ${{ !cancelled() && needs.changes.outputs.webos == 'true' && needs.build.result != 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -124,8 +218,9 @@ jobs:
           retention-days: 30
 
   android:
-    # Depois dos instaladores, para anexar ao mesmo rascunho de Release.
-    needs: build
+    # Depois dos instaladores, para anexar ao mesmo rascunho de Release (roda também quando eles não rodaram).
+    needs: [changes, build]
+    if: ${{ !cancelled() && needs.changes.outputs.android == 'true' && needs.build.result != 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -148,7 +243,7 @@ jobs:
           npm run vendor
 
       - name: Instalar NDK
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;26.3.11579264" "cmake;3.22.1" > /dev/null
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "ndk;27.2.12479018" "cmake;3.22.1" > /dev/null
 
       # Chave do APK também nos PRs deste repositório (de forks não, que nem recebem secrets): o APK de teste
       # instala por cima do oficial e de outros testes, sem desinstalar e perder as listas.
@@ -181,13 +276,16 @@ jobs:
 
       - name: Anexar à Release
         if: startsWith(github.ref, 'refs/tags/v')
-        run: gh release upload "$GITHUB_REF_NAME" dist/android/* --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/android/IPTVKZ-android.apk dist/android/IPTVKZ-android-bundle.zip dist/android/android-update.json dist/android/android-update.json.sig --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: IPTVKZ-Android
-          path: dist/android/*
+          path: |
+            dist/android/*.apk
+            dist/android/*.zip
+            dist/android/android-update.json*
           if-no-files-found: error
           retention-days: 14

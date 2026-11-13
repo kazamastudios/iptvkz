@@ -68,6 +68,7 @@ export function applyTv() {
   const fit = window.innerWidth / 1420;
   const zoom = TV.on ? Math.min(2, touch ? Math.max(1, fit) : Math.max(0.5, fit)) : 1;
   html.style.zoom = TV.on ? zoom.toFixed(2) : '';
+  html.style.setProperty('--tvz', TV.on ? zoom.toFixed(2) : '1'); // a abertura usa para medir em fração da tela
   // as regras de tela estreita do CSS (@media max-width) olham a largura real, não a com zoom: na TV
   // sem toque o layout já é o largo, então elas ficam desligadas (html.tv-wide no app.css)
   html.classList.toggle('tv-wide', TV.on && !touch);
@@ -253,6 +254,9 @@ export function nativeKeyboardOpen() {
   return v === undefined ? kbOpen : !!v;
 }
 
+// Blocos que aparecem inteiros quando o foco entra neles (ver revealSmooth).
+const REVEAL_UNIT = '.shelf, .list-card, [data-reveal-unit]';
+
 // Leva o item para dentro da área visível deslizando, em vez do pulo do scrollIntoView.
 // Sobe pelas áreas com rolagem (a fileira anda para o lado, a página desce) e respeita o scroll-padding.
 function revealSmooth(el, center) {
@@ -283,7 +287,16 @@ function revealSmooth(el, center) {
     };
     const x = canX ? axis((r.left - br.left) / z - box.clientLeft + box.scrollLeft, r.width / z, box.clientWidth, at.x,
       parseFloat(cs.scrollPaddingLeft) || 0, parseFloat(cs.scrollPaddingRight) || 0) : null;
-    const y = canY ? axis((r.top - br.top) / z - box.clientTop + box.scrollTop, r.height / z, box.clientHeight, at.y,
+    // Na vertical, o item leva junto o bloco dele (a fileira com o título, o cartão da lista em Configurações):
+    // subindo, aparece o bloco desde o topo, e não só o botão ou a capa sem o título de cima. Só se o bloco couber.
+    let top = r.top;
+    const unit = canY && !start && el.closest(REVEAL_UNIT);
+    if (unit && box.contains(unit) && unit !== box) {
+      const u = unit.getBoundingClientRect();
+      const pads = (parseFloat(cs.scrollPaddingTop) || 0) + (parseFloat(cs.scrollPaddingBottom) || 0);
+      if ((r.bottom - u.top) / z <= box.clientHeight - pads) top = u.top;
+    }
+    const y = canY ? axis((top - br.top) / z - box.clientTop + box.scrollTop, (r.bottom - top) / z, box.clientHeight, at.y,
       parseFloat(cs.scrollPaddingTop) || 0, parseFloat(cs.scrollPaddingBottom) || 0, start) : null;
     if (x != null || y != null) glideTo(box, x, y, holding);
   }
@@ -327,7 +340,16 @@ export function focusFirst(root) {
     const r = el.getBoundingClientRect();
     return r.top >= 0 && r.bottom <= window.innerHeight;
   });
-  focusEl(inView('.ch-card, .poster, .ep, .g-prog') || inView('.cat-item.on, .btn.primary', true) || inView('*') || els[0]);
+  // na tela de um filme ou série, o Assistir (o botão principal) vem antes do Voltar, mesmo mais abaixo:
+  // ela monta em partes, e quando o foco era escolhido o Assistir ainda podia estar fora da metade de cima
+  const detailMain = () => {
+    const b = scope.querySelector('#view .detail .btn.primary');
+    return b && visible(b) ? b : null;
+  };
+  // Streaming, "Ver tudo": o destaque ocupa o alto da tela e a grade começa mais abaixo, fora da conta do inView;
+  // o foco vai para o primeiro card dela (antes caía no seletor de lista da barra lateral)
+  const streamGrid = () => scope.querySelector('#view .stream-cat .poster-grid .poster');
+  focusEl(inView('.ch-card, .poster, .ep, .g-prog') || detailMain() || streamGrid() || inView('.cat-item.on, .btn.primary, .saved-tabs a.on', true) || inView('*') || els[0]);
 }
 
 // Botões dentro de um cartão (ex.: ★) só são alcançáveis a partir do próprio cartão.
@@ -480,8 +502,11 @@ export function move(dir) {
     const cy = r.top + r.height / 2;
     let primary;
     let overlap;
-    if (dir === 'right') { if (r.left < a.right - 4 && cx <= ax + 2) continue; primary = Math.max(0, r.left - a.right); overlap = Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top); }
-    else if (dir === 'left') { if (r.right > a.left + 4 && cx >= ax - 2) continue; primary = Math.max(0, a.left - r.right); overlap = Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top); }
+    // ←/→: quem começa antes da borda do atual só conta se estiver na mesma linha (botões que quebraram em duas
+    // linhas: o da linha de cima, um pouco mais à direita, não é "à direita")
+    const rowOverlap = Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top);
+    if (dir === 'right') { if (r.left < a.right - 4 && (cx <= ax + 2 || rowOverlap <= 0)) continue; primary = Math.max(0, r.left - a.right); overlap = rowOverlap; }
+    else if (dir === 'left') { if (r.right > a.left + 4 && (cx >= ax - 2 || rowOverlap <= 0)) continue; primary = Math.max(0, a.left - r.right); overlap = rowOverlap; }
     else if (dir === 'down') { if (r.top < a.bottom - 4 && cy <= ay + 2) continue; primary = Math.max(0, r.top - a.bottom); overlap = Math.min(a.right, r.right) - Math.max(a.left, r.left); }
     else { if (r.bottom > a.top + 4 && cy >= ay - 2) continue; primary = Math.max(0, a.top - r.bottom); overlap = Math.min(a.right, r.right) - Math.max(a.left, r.left); }
     // ↑/↓ não escolhem quem está ao lado, na mesma altura (ex.: o cartão vizinho)
@@ -502,6 +527,9 @@ export function move(dir) {
     if (toTop) { topScore = score; bestTop = el; continue; }
     // ↑/↓ não saltam entre a barra lateral e o conteúdo (da barra do topo, ↓ desce para o conteúdo)
     const elRegion = region(el);
+    // ←/→ não atravessam entre a barra do topo e o conteúdo: do seletor de visualização, → vai ao "Conectado",
+    // não a um campo da página; de um campo da página, → não sobe para a busca. O menu lateral continua alcançável.
+    if (across && elRegion !== 'side' && curRegion !== 'side' && (elRegion === 'top') !== (curRegion === 'top')) continue;
     if ((dir === 'up' || dir === 'down') && elRegion !== curRegion && !(curRegion === 'top' && elRegion === 'main')) continue;
     bestScore = score;
     best = el;

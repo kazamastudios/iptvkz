@@ -21,31 +21,82 @@ function versionLabel(tag) {
   return 'Original';
 }
 
-function splitVersion(name) {
+// Qualidade no nome ("Filme 4K", "Filme [1080p]"): sai do título, para juntar com as outras versões, e entra no rótulo.
+const QUALITY_BRACKET = /\s*[\[\(]\s*(4k|uhd|2160p|fhd|full\s*hd|1080p|720p|hdr)\s*[\]\)]\s*/i;
+const QUALITY_TRAILING = /[\s\-_|]+(4k|uhd|2160p|fhd|full\s*hd|1080p|720p|hdr)\s*$/i;
+
+function qualityLabel(tag) {
+  const t = tag.toLowerCase().replace(/\s+/g, '');
+  if (t === '4k' || t === 'uhd' || t === '2160p') return '4K';
+  if (t === 'fhd' || t === 'fullhd' || t === '1080p') return 'Full HD';
+  if (t === '720p') return 'HD';
+  return 'HDR';
+}
+
+function cut(base, m) {
+  return (base.slice(0, m.index) + ' ' + base.slice(m.index + m[0].length))
+    .replace(/[\s\-_|.]+$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// Sem marcação no nome, a categoria da lista costuma dizer ("Filmes Dublados", "Lançamentos 4K").
+function groupLang(group) {
+  const g = String(group || '').toLowerCase();
+  if (/dublad|\bdub\b/.test(g)) return 'Dublado';
+  if (/legendad|\bleg\b/.test(g)) return 'Legendado';
+  if (/nacionai?s?\b/.test(g)) return 'Nacional';
+  if (/\bdual\b/.test(g)) return 'Dual áudio';
+  return null;
+}
+
+// Versão sem idioma conhecido: "Versão" (numerada depois, se houver mais de uma). O app troca pelo idioma
+// do áudio depois que alguém assiste.
+function splitVersion(name, group) {
   let base = String(name || '').trim();
-  let label = 'Original';
+  let lang = null;
+  let quality = null;
   const m = base.match(TAG_BRACKET) || base.match(TAG_TRAILING);
   if (m) {
-    label = versionLabel(m[1]);
-    base = (base.slice(0, m.index) + ' ' + base.slice(m.index + m[0].length))
-      .replace(/[\s\-_|.]+$/, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
+    lang = versionLabel(m[1]);
+    base = cut(base, m);
   }
+  const q = base.match(QUALITY_BRACKET) || base.match(QUALITY_TRAILING);
+  if (q) {
+    quality = qualityLabel(q[1]);
+    base = cut(base, q);
+    if (!lang) { // a marcação de idioma pode vir antes da qualidade: "Filme [L] 4K"
+      const m2 = base.match(TAG_BRACKET) || base.match(TAG_TRAILING);
+      if (m2) { lang = versionLabel(m2[1]); base = cut(base, m2); }
+    }
+  }
+  if (!lang) lang = groupLang(group);
+  if (!quality && /\b(4k|uhd)\b/i.test(String(group || ''))) quality = '4K';
+  const label = [lang || 'Versão', quality].filter(Boolean).join(' ');
   return { base: base || String(name || '').trim(), label };
 }
 
-const VERSION_ORDER = ['Dublado', 'Dual áudio', 'Nacional', 'Legendado', 'Original'];
+const VERSION_ORDER = ['Dublado', 'Dual áudio', 'Nacional', 'Legendado', 'Versão'];
+const kindOf = (label) => VERSION_ORDER.find((k) => label.startsWith(k)) || 'Versão';
 function sortVersions(vs) {
-  vs.sort((a, b) => VERSION_ORDER.indexOf(a.label.replace(/ \d+$/, '')) - VERSION_ORDER.indexOf(b.label.replace(/ \d+$/, '')));
+  vs.sort((a, b) => VERSION_ORDER.indexOf(kindOf(a.label)) - VERSION_ORDER.indexOf(kindOf(b.label)));
+  // várias sem idioma: Versão 1, Versão 2... (o número segue a ordem da lista)
+  const unknown = vs.filter((v) => v.label === 'Versão');
+  if (unknown.length > 1) unknown.forEach((v, i) => { v.label = `Versão ${i + 1}`; });
   return vs;
 }
 
+// Mesmo rótulo de novo: o nome da categoria diferencia ("Dublado · Lançamentos"); sem isso, um número.
 function addVersion(list, v) {
   let label = v.label;
+  if (label !== 'Versão' && list.some((x) => x.label === label) && v.group) {
+    const withGroup = `${v.label} · ${v.group}`;
+    if (!list.some((x) => x.label === withGroup)) label = withGroup;
+  }
   let n = 2;
-  while (list.some((x) => x.label === label)) label = `${v.label} ${n++}`;
-  list.push({ ...v, label });
+  while (label !== 'Versão' && list.some((x) => x.label === label)) label = `${v.label} ${n++}`;
+  const { group, ...rest } = v;
+  list.push({ ...rest, label });
 }
 
 function yearOf(name) {
@@ -57,7 +108,7 @@ function yearOf(name) {
 function mergeMovies(raw) {
   const groups = new Map();
   for (const r of raw) {
-    const { base, label } = splitVersion(r.name);
+    const { base, label } = splitVersion(r.name, r.group);
     const key = norm(base);
     let g = groups.get(key);
     if (!g) {
@@ -76,7 +127,7 @@ function mergeMovies(raw) {
     if (!g.poster && r.poster) g.poster = r.poster;
     if (!g.rating && r.rating) g.rating = r.rating;
     if (r.added > g.added) g.added = r.added;
-    addVersion(g.versions, { label, url: r.url, xid: r.xid });
+    addVersion(g.versions, { label, url: r.url, xid: r.xid, group: r.group });
   }
   const items = [...groups.values()];
   for (const it of items) sortVersions(it.versions);
@@ -200,7 +251,7 @@ function buildFromM3U(text, list) {
     else if (lower.includes('/movie/')) kind = 'movie';
     else if (VOD_EXT.has(ext)) kind = 'vod';
 
-    const { base, label } = splitVersion(e.name);
+    const { base, label } = splitVersion(e.name, e.group);
     const epInfo = kind === 'live' || kind === 'movie' ? null : parseEpisode(base);
     if (kind === 'vod') kind = epInfo ? 'series' : 'movie';
 
@@ -217,7 +268,7 @@ function buildFromM3U(text, list) {
         url,
       });
     } else if (kind === 'movie') {
-      movieRaw.push({ name: e.name, poster: logo, cat: movieCats.add(e.group), url });
+      movieRaw.push({ name: e.name, poster: logo, cat: movieCats.add(e.group), group: e.group, url });
     } else {
       const info = epInfo || { show: base, season: 1, ep: 0, rest: '' };
       const key = norm(info.show);
@@ -251,7 +302,7 @@ function buildFromM3U(text, list) {
         };
         season.set(epNum, ep);
       }
-      addVersion(ep.versions, { label, url });
+      addVersion(ep.versions, { label, url, group: e.group });
     }
   }
 
@@ -283,8 +334,44 @@ function xtreamBase(server) {
   return s;
 }
 
+// Mesma conta em vários endereços: o principal primeiro, depois os reservas (list.servers), sem repetir.
+function serversOf(list) {
+  const all = [list.server, ...(Array.isArray(list.servers) ? list.servers : [])].map((s) => String(s || '').trim()).filter(Boolean);
+  // cada endereço passa pelo conserto (http errado, get.php, texto em volta); o que não der para ler fica como veio
+  return [...new Set(all.flatMap((s) => { const p = fixServers(s); return p.length ? p : [xtreamBase(s)]; }))];
+}
+
+// O mesmo conserto da tela (parseServers em views/lists.js): vários endereços num texto, http faltando ou
+// digitado errado (htp://, http:/, https//), barra no fim, link get.php inteiro.
+function fixServers(text) {
+  const out = [];
+  for (const raw of String(text || '').split(/[\s,;|]+/)) {
+    let t = raw.replace(/^[<("'[]+/, '').replace(/[>)"'\].,;:]+$/, '');
+    if (!t) continue;
+    let https = false;
+    const sch = t.match(/^h?t{1,2}p{1,2}(s?)(?:[:;.]+\/*|\/+)/i);
+    if (sch) { https = !!sch[1]; t = t.slice(sch[0].length); }
+    t = t.replace(/^\/+/, '');
+    const m = t.match(/^([^/?#]+)([^?#]*)/);
+    if (!m) continue;
+    const hostPort = m[1].toLowerCase().replace(/\.+$/, '');
+    const path = m[2].replace(/\/(get|player_api|xmltv)\.php.*$/i, '').replace(/\/+$/, '');
+    const [host, port, more] = hostPort.split(':');
+    if (more !== undefined || !/^(localhost|\d{1,3}(\.\d{1,3}){3}|[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,})$/.test(host)) continue;
+    if (port !== undefined && !/^\d{1,5}$/.test(port)) continue;
+    const s = `${https ? 'https' : 'http'}://${hostPort}${path}`;
+    if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
+// Endereço que respondeu na última carga da lista (o principal ou um reserva); as consultas seguintes usam ele.
+const activeBase = new Map(); // id da lista -> base
+
 function xtream(list) {
-  const base = xtreamBase(list.server);
+  const act = list.id && activeBase.get(list.id);
+  const all = serversOf(list);
+  const base = act && all.includes(act) ? act : all[0] || xtreamBase(list.server);
   const u = encodeURIComponent(list.username || '');
   const p = encodeURIComponent(list.password || '');
   const pathU = encodeURIComponent(list.username || '');
@@ -300,6 +387,61 @@ function xtream(list) {
   };
 }
 
+// Nomes de categoria mais curtos: muitas listas repetem a seção em todas as categorias, cada uma do seu jeito
+// ("FILMES | DC", "SERIES - DC", "CANAIS: ESPORTES", "[VOD] Ação", "DC | FILMES"). Em cada seção o app procura o
+// trecho que a maioria das categorias repete (no começo ou no fim, com separador ou entre colchetes) e só tira esse.
+// Lista sem padrão fica como está; nunca deixa nome vazio ou repetido. Vale para Xtream e M3U, em todo aparelho, e
+// também para listas já baixadas (é aplicado ao abrir o catálogo).
+const CAT_FORMS = [
+  ['pre', /^\s*([^|:\-–•»\/[\]()]{1,24}?)\s*[|:\-–•»\/]+\s*(\S.*)$/], // FILMES | DC
+  ['pre', /^\s*[[(]([^|:\-–•»\/[\]()]{1,24}?)[\])]\s*[|:\-–•»\/]*\s*(\S.*)$/], // [FILMES] DC
+  ['suf', /^(.*?\S)\s*[|:\-–•»\/]+\s*([^|:\-–•»\/[\]()]{1,24}?)\s*$/], // DC | FILMES
+  ['suf', /^(.*?\S)\s*[[(]([^|:\-–•»\/[\]()]{1,24}?)[\])]\s*$/], // DC (FILMES)
+];
+const foldName = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+// cada forma que o nome casa: [chave do padrão, nome sem o trecho]
+function catParts(name) {
+  const out = [];
+  for (const [kind, re] of CAT_FORMS) {
+    const m = re.exec(name || '');
+    if (!m) continue;
+    const tag = kind === 'pre' ? m[1] : m[2];
+    const rest = (kind === 'pre' ? m[2] : m[1]).trim();
+    if (rest) out.push([`${kind}:${foldName(tag)}`, rest]);
+  }
+  return out;
+}
+// O nome da própria seção repetido na categoria não diz nada: sai mesmo quando não é a maioria
+const SECTION_WORDS = {
+  live: ['canais', 'canal', 'tv', 'live', 'ao vivo', 'tv ao vivo'],
+  movies: ['filmes', 'filme', 'movies', 'movie', 'vod'],
+  series: ['series', 'serie', 'tv shows', 'shows'],
+};
+function tidyCats(list, section) {
+  if (!Array.isArray(list) || !list.length) return list;
+  const own = new Set((SECTION_WORDS[section] || []).flatMap((w) => [`pre:${w}`, `suf:${w}`]));
+  const count = new Map();
+  for (const c of list) for (const key of new Set(catParts(c.name).map((p) => p[0]))) count.set(key, (count.get(key) || 0) + 1);
+  let best = null;
+  for (const [k, n] of count) if (!best || n > best[1]) best = [k, n];
+  const keys = new Set([...count.keys()].filter((k) => own.has(k)));
+  if (best && best[1] >= 3 && best[1] >= list.length * 0.5) keys.add(best[0]);
+  if (!keys.size) return list;
+  const cut = (name) => { const p = catParts(name).find((x) => keys.has(x[0])); return p ? p[1] : null; };
+  const seen = new Map();
+  for (const c of list) { const n = cut(c.name); if (n) seen.set(foldName(n), (seen.get(foldName(n)) || 0) + 1); }
+  // também não pode virar o nome de outra categoria que já existe sem o trecho
+  for (const c of list) if (!cut(c.name)) seen.set(foldName(c.name), (seen.get(foldName(c.name)) || 0) + 1);
+  return list.map((c) => {
+    const n = cut(c.name);
+    return n && seen.get(foldName(n)) === 1 ? { ...c, name: n } : c;
+  });
+}
+function tidyCatalog(c) {
+  for (const k of ['live', 'movies', 'series']) if (c && c[k] && c[k].cats) c[k].cats = tidyCats(c[k].cats, k);
+  return c;
+}
+
 function cats(arr) {
   return (Array.isArray(arr) ? arr : []).map((c) => ({ id: String(c.category_id), name: c.category_name || 'Sem nome' }));
 }
@@ -311,26 +453,42 @@ function num(v) {
 
 async function buildFromXtream(list) {
   const x = xtream(list);
+  const t0 = Date.now();
+  const timing = {}; // quanto levou cada pedido (aparece no modo de depuração)
   const auth = await x.api('');
+  timing.login = Date.now() - t0;
   if (!auth || !auth.user_info || Number(auth.user_info.auth) === 0) {
     throw new Error('Usuário ou senha inválidos (o servidor recusou o login).');
   }
   // Uma de cada vez: alivia aparelhos fracos e provedores que limitam conexões.
   // Seção indisponível fica vazia, mas prazo esgotado interrompe e mostra o erro.
   const get = async (action) => {
+    const t = Date.now();
     try {
       return await x.api(action);
     } catch (err) {
       if (err.timeout) throw err;
       return [];
+    } finally {
+      timing[action.replace(/^get_/, '')] = Date.now() - t;
     }
   };
-  const liveCats = await get('get_live_categories');
-  const liveStreams = await get('get_live_streams');
-  const vodCats = await get('get_vod_categories');
-  const vodStreams = await get('get_vod_streams');
-  const serCats = await get('get_series_categories');
-  const serList = await get('get_series');
+  // Os 6 pedidos são independentes. No PC saem em paralelo (a lista carrega no tempo do mais lento). Em aparelho
+  // com pouca memória (TV LG, TV Box) saem um de cada vez: as respostas grandes chegando juntas travavam a TV.
+  const actions = ['get_live_categories', 'get_live_streams', 'get_vod_categories', 'get_vod_streams', 'get_series_categories', 'get_series'];
+  let results;
+  if (require('os').totalmem() > 3 * 1024 ** 3) results = await Promise.all(actions.map(get));
+  else {
+    // pouca memória: as 3 listas de categorias (pequenas) juntas, e as 3 grandes uma de cada vez
+    const small = actions.filter((a) => a.endsWith('categories'));
+    const smallRes = await Promise.all(small.map(get));
+    const got = new Map(small.map((a, i) => [a, smallRes[i]]));
+    for (const a of actions) if (!got.has(a)) got.set(a, await get(a));
+    results = actions.map((a) => got.get(a));
+  }
+  timing.download = Date.now() - t0;
+  timing.parallel = require('os').totalmem() > 3 * 1024 ** 3;
+  const [liveCats, liveStreams, vodCats, vodStreams, serCats, serList] = results;
 
   const live = (Array.isArray(liveStreams) ? liveStreams : []).map((s) => ({
     id: 'l' + s.stream_id,
@@ -342,8 +500,12 @@ async function buildFromXtream(list) {
     alt: x.live(s.stream_id, 'ts'),
   }));
 
+  const catName = (arr) => new Map((Array.isArray(arr) ? arr : []).map((c) => [String(c.category_id), c.category_name || '']));
+  const vodCatName = catName(vodCats);
+  const serCatName = catName(serCats);
   const movieRaw = (Array.isArray(vodStreams) ? vodStreams : []).map((s) => ({
     name: s.name || 'Filme',
+    group: vodCatName.get(String(s.category_id)) || '',
     poster: s.stream_icon || '',
     cat: String(s.category_id),
     url: x.movie(s.stream_id, s.container_extension),
@@ -356,7 +518,8 @@ async function buildFromXtream(list) {
   // Séries: versões (DUB/LEG) do mesmo título viram um item só; episódios carregam sob demanda.
   const seriesMap = new Map();
   for (const s of Array.isArray(serList) ? serList : []) {
-    const { base, label } = splitVersion(s.name || 'Série');
+    const group = serCatName.get(String(s.category_id)) || '';
+    const { base, label } = splitVersion(s.name || 'Série', group);
     const key = norm(base);
     let g = seriesMap.get(key);
     if (!g) {
@@ -374,7 +537,7 @@ async function buildFromXtream(list) {
       seriesMap.set(key, g);
     }
     if (!g.poster && s.cover) g.poster = s.cover;
-    addVersion(g.versions, { label, xid: s.series_id });
+    addVersion(g.versions, { label, xid: s.series_id, group });
   }
   if (!live.length && !movieRaw.length && !seriesMap.size) {
     throw new Error('O servidor não enviou nenhum canal, filme ou série. Tente de novo.');
@@ -382,7 +545,9 @@ async function buildFromXtream(list) {
   const series = [...seriesMap.values()];
   for (const s of series) sortVersions(s.versions);
 
+  timing.total = Date.now() - t0;
   return {
+    timing,
     epgUrl: x.epg,
     live: { cats: cats(liveCats), items: live },
     movies: { cats: cats(vodCats), items: mergeMovies(movieRaw) },
@@ -424,7 +589,7 @@ async function xtreamSeriesInfo(list, xid) {
           img: e.info?.movie_image || '',
           dur: durToSec(e.info?.duration_secs) || durToSec(e.info?.duration),
           plot: e.info?.plot || '',
-          versions: [{ label: 'Original', url: x.episode(e.id, e.container_extension) }],
+          versions: [{ label: 'Versão', url: x.episode(e.id, e.container_extension) }],
         }))
         .sort((a, b) => a.num - b.num),
     }))
@@ -476,12 +641,12 @@ function xtreamFromLink(url) {
   return null;
 }
 
-async function checkXtream(cfg) {
+async function checkXtream(cfg, timeout = STATUS_TIMEOUT) {
   const x = xtream(cfg);
   const q = `username=${encodeURIComponent(cfg.username || '')}&password=${encodeURIComponent(cfg.password || '')}`;
   let res;
   try {
-    res = await fetchWithTimeout(`${x.base}/player_api.php?${q}`, {}, STATUS_TIMEOUT);
+    res = await fetchWithTimeout(`${x.base}/player_api.php?${q}`, {}, timeout);
   } catch {
     return { state: 'offline' };
   }
@@ -538,9 +703,31 @@ async function checkM3uLink(url) {
   return /^\uFEFF?\s*#EXTM3U/i.test(head) ? { state: 'active' } : { state: 'refused' };
 }
 
+// Teste de velocidade dos servidores da mesma conta: um de cada vez (leve para a TV e para o provedor),
+// mede quanto cada um leva para responder ao login. Devolve na ordem da lista; "fastest" é o índice do melhor.
+async function speedTest(cfg) {
+  const out = [];
+  for (let server of serversOf(cfg)) {
+    let t0 = Date.now();
+    let r = await checkXtream({ server, username: cfg.username, password: cfg.password }, 8000);
+    if (r.state === 'offline') {
+      // talvez o endereço seja https (ou http) e foi digitado do outro jeito
+      const other = server.startsWith('https://') ? server.replace(/^https/, 'http') : server.replace(/^http/, 'https');
+      t0 = Date.now();
+      const r2 = await checkXtream({ server: other, username: cfg.username, password: cfg.password }, 8000);
+      if (r2.state !== 'offline') { server = other; r = r2; }
+    }
+    const ok = ['active', 'expiring'].includes(r.state);
+    if (!out.some((x) => x.server === server)) out.push({ server, state: r.state, ms: ok ? Date.now() - t0 : null });
+  }
+  let fastest = -1;
+  out.forEach((r, i) => { if (r.ms != null && (fastest < 0 || r.ms < out[fastest].ms)) fastest = i; });
+  return { results: out, fastest };
+}
+
 async function checkStatus(list) {
   let result;
-  if (list.type === 'xtream') result = await checkXtream(list);
+  if (list.type === 'xtream') result = await checkXtream({ server: list.server, username: list.username, password: list.password });
   else if (list.source === 'file') result = { state: 'local' };
   else {
     const cfg = xtreamFromLink(list.url);
@@ -557,7 +744,18 @@ const inflight = new Map(); // id -> Promise
 async function build(list) {
   let data;
   if (list.type === 'xtream') {
-    data = await buildFromXtream(list);
+    // Fora do ar? tenta os servidores reservas da mesma conta, na ordem
+    let firstErr = null;
+    for (const s of serversOf(list)) {
+      activeBase.set(list.id, s);
+      try {
+        data = { ...(await buildFromXtream(list)), base: s };
+        break;
+      } catch (e) {
+        if (!firstErr) firstErr = e;
+      }
+    }
+    if (!data) { activeBase.delete(list.id); throw firstErr || new Error('Servidor não respondeu'); }
   } else if (list.source === 'file') {
     let text;
     try {
@@ -569,7 +767,7 @@ async function build(list) {
   } else {
     data = buildFromM3U(await fetchText(list.url), list);
   }
-  const catalog = { v: 1, listId: list.id, updatedAt: Date.now(), ...data };
+  const catalog = tidyCatalog({ v: 1, listId: list.id, updatedAt: Date.now(), ...data });
   store.writeJson(`catalog-${list.id}.json`, catalog);
   memory.set(list.id, catalog);
   return catalog;
@@ -587,7 +785,9 @@ async function getCatalog(list, { force = false } = {}) {
   if (force) return { catalog: await refresh(list), refreshing: false };
   let cached = memory.get(list.id) || store.readJson(`catalog-${list.id}.json`, null);
   if (cached) {
+    tidyCatalog(cached); // listas baixadas antes da limpeza dos nomes
     memory.set(list.id, cached);
+    if (cached.base && !activeBase.has(list.id)) activeBase.set(list.id, cached.base);
     const stale = Date.now() - cached.updatedAt > STALE_MS;
     if (stale) refresh(list).catch(() => {});
     return { catalog: cached, refreshing: stale || inflight.has(list.id) };
@@ -605,6 +805,7 @@ function forget(id) {
 
 module.exports = {
   getCatalog,
+  speedTest,
   isRefreshing,
   forget,
   xtreamSeriesInfo,

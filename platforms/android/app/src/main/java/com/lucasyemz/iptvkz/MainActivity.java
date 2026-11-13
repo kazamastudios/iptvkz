@@ -5,6 +5,8 @@ import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -17,6 +19,7 @@ import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -26,7 +29,9 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
@@ -62,9 +67,11 @@ public class MainActivity extends Activity {
     private static native int startNode(String[] args);
 
     private final Handler main = new Handler(Looper.getMainLooper());
+    private boolean isTv;
     private FrameLayout root;
     private WebView web;
     private View fullscreen;
+    private NativeVideo video;
     private Updater updater;
     private boolean ready;
     private View splash;
@@ -76,8 +83,17 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        // Sem isto, antes do Android 11 o app não fica sabendo que o teclado abriu.
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        // Celular: a página encolhe para o campo não ficar atrás do teclado (e, antes do Android 11, é assim que o app
+        // fica sabendo que o teclado abriu). TV: o teclado fica por cima e a página mantém o tamanho; encolhida, a
+        // barra lateral não cabia, ganhava barra de rolagem e a tela inteira se mexia.
+        boolean tv = getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK);
+        isTv = tv;
+        // Como os apps de streaming: na TV, sempre deitado; no celular, as telas em pé e o vídeo deitado
+        // (setVideoLandscape, chamado pelo player); no tablet, gira à vontade.
+        setRequestedOrientation(baseOrientation());
+        getWindow().setSoftInputMode(tv && Build.VERSION.SDK_INT >= 30
+                ? WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                : WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
         setContentView(root);
@@ -92,12 +108,15 @@ public class MainActivity extends Activity {
     private Drawable splashBackground(int width) {
         GradientDrawable top = new GradientDrawable();
         top.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        top.setColors(new int[] {Color.rgb(77, 13, 18), Color.argb(0, 77, 13, 18)});
+        // Beta: âmbar no lugar do vermelho, igual ao tema do app (html.beta em app.css)
+        int[] c1 = BuildConfig.IS_BETA ? new int[] {77, 50, 8} : new int[] {77, 13, 18};
+        int[] c2 = BuildConfig.IS_BETA ? new int[] {58, 36, 6} : new int[] {58, 7, 22};
+        top.setColors(new int[] {Color.rgb(c1[0], c1[1], c1[2]), Color.argb(0, c1[0], c1[1], c1[2])});
         top.setGradientCenter(0.2f, 0f);
         top.setGradientRadius(width * 0.55f);
         GradientDrawable bottom = new GradientDrawable();
         bottom.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        bottom.setColors(new int[] {Color.rgb(58, 7, 22), Color.argb(0, 58, 7, 22)});
+        bottom.setColors(new int[] {Color.rgb(c2[0], c2[1], c2[2]), Color.argb(0, c2[0], c2[1], c2[2])});
         bottom.setGradientCenter(0.9f, 1f);
         bottom.setGradientRadius(width * 0.5f);
         return new LayerDrawable(new Drawable[] {new ColorDrawable(Color.rgb(6, 6, 9)), top, bottom});
@@ -114,11 +133,12 @@ public class MainActivity extends Activity {
         float dp = getResources().getDisplayMetrics().density;
         int width = getResources().getDisplayMetrics().widthPixels;
         box.setBackground(splashBackground(width));
-        // o texto fica abaixo da barra; este espaço equivalente mantém logo e barra no centro exato
-        int textHeight = (int) (56 * dp);
+        // Mesmas medidas da abertura da LG e da interface (em fração da largura, referência 1920px): logo 39,4%,
+        // barra 25%. O texto fica abaixo da barra; o espaço igual em cima mantém logo e barra no centro exato.
+        int textHeight = Math.round(width * 0.03229f);
         box.addView(new View(this), new LinearLayout.LayoutParams(1, textHeight));
         ImageView logo = new ImageView(this);
-        int logoWidth = Math.max(Math.min(width * 34 / 100, (int) (560 * dp)), (int) (260 * dp));
+        int logoWidth = Math.round(width * 0.39375f);
         int logoHeight = logoWidth / 3;
         try (InputStream in = getAssets().open("logo-horizontal.webp")) {
             Bitmap image = BitmapFactory.decodeStream(in);
@@ -128,21 +148,22 @@ public class MainActivity extends Activity {
             Log.w(TAG, "Logo da abertura indisponível", e);
         }
         box.addView(logo, new LinearLayout.LayoutParams(logoWidth, logoHeight));
-        ColorStateList red = ColorStateList.valueOf(Color.rgb(255, 42, 42));
+        ColorStateList red = ColorStateList.valueOf(BuildConfig.IS_BETA ? Color.rgb(255, 181, 71) : Color.rgb(255, 42, 42));
         bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         bar.setMax(100);
         bar.setIndeterminate(true);
         bar.setProgressTintList(red);
         bar.setIndeterminateTintList(red);
         bar.setProgressBackgroundTintList(ColorStateList.valueOf(Color.argb(31, 255, 255, 255)));
-        LinearLayout.LayoutParams barSize = new LinearLayout.LayoutParams((int) (180 * dp), Math.max(2, (int) (3 * dp)));
-        barSize.topMargin = (int) (44 * dp);
+        LinearLayout.LayoutParams barSize = new LinearLayout.LayoutParams(Math.round(width * 0.25f), Math.max(2, Math.round(width * 0.003125f)));
+        barSize.topMargin = Math.round(width * 0.025f);
         box.addView(bar, barSize);
         message = new TextView(this);
         message.setTextColor(Color.rgb(201, 201, 216));
-        message.setTextSize(16);
+        message.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, width * 0.01458f);
+        message.setPadding(0, Math.round(width * 0.01146f), 0, 0);
         message.setGravity(Gravity.CENTER);
-        message.setText("Verificando se há atualizações");
+        message.setText(Updater.ENABLED ? "Verificando se há atualizações" : "Abrindo");
         box.addView(message, new LinearLayout.LayoutParams(-1, textHeight));
         splash = box;
         root.addView(splash, new ViewGroup.LayoutParams(-1, -1));
@@ -164,6 +185,7 @@ public class MainActivity extends Activity {
 
     /** Sem internet ou com o GitHub fora, desiste logo e abre com a versão que já tem. */
     private void updateAtBoot() throws InterruptedException {
+        if (!Updater.ENABLED) return;
         AtomicLong limit = new AtomicLong(System.currentTimeMillis() + CHECK_LIMIT_MS);
         Thread t = new Thread(() -> {
             try {
@@ -213,6 +235,7 @@ public class MainActivity extends Activity {
     private void watchKeyboard() {
         View decor = getWindow().getDecorView();
         decor.setOnApplyWindowInsetsListener((v, insets) -> {
+            fitSystemBars(insets);
             boolean visible;
             if (Build.VERSION.SDK_INT >= 30) {
                 visible = insets.isVisible(WindowInsets.Type.ime());
@@ -232,21 +255,82 @@ public class MainActivity extends Activity {
 
     /** Abre o teclado do sistema no campo que a interface acabou de focar. */
     private void showKeyboard() {
-        web.requestFocus();
+        // Só pede o foco se o WebView ainda não tem: com ele já focado, o pedido faz a página "entrar de novo" e o
+        // foco pula para o primeiro item (o logo do menu); o campo perde o foco e o teclado, recém-aberto, fecha.
+        if (!web.hasFocus()) web.requestFocus();
         InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
         if (imm != null) imm.showSoftInput(web, 0);
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    /**
+     * Vídeo deitado no celular: usa a tela inteira, sem a barra de navegação e também na área do recorte da câmera,
+     * para o vídeo ficar o maior possível sem cortar nada (ele continua inteiro, só ganha o espaço das barras).
+     * As barras voltam deslizando da borda. Ao sair, a barra de navegação volta.
+     */
+    @SuppressWarnings("deprecation")
+    private void immersive(boolean on) {
+        Window w = getWindow();
+        if (Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams lp = w.getAttributes();
+            lp.layoutInDisplayCutoutMode = on ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+            w.setAttributes(lp);
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController c = w.getInsetsController();
+            if (c == null) return;
+            if (on) {
+                c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                c.hide(WindowInsets.Type.navigationBars() | WindowInsets.Type.statusBars());
+            } else c.show(WindowInsets.Type.navigationBars());
+        } else {
+            w.getDecorView().setSystemUiVisibility(on
+                    ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    : View.SYSTEM_UI_FLAG_VISIBLE);
+        }
+    }
+
+    /**
+     * Android 15+ (targetSdk 35 ou mais): o app desenha por baixo das barras do sistema e o teclado não encolhe
+     * mais a janela sozinho. O app reserva esse espaço: as barras e o recorte da câmera nas bordas, e embaixo
+     * o maior entre a barra de navegação e o teclado (no celular; na TV o teclado fica por cima, como antes).
+     * No vídeo em tela cheia as barras somem e o espaço volta para o vídeo.
+     */
+    private void fitSystemBars(WindowInsets insets) {
+        if (Build.VERSION.SDK_INT < 35 || root == null) return;
+        android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+        int bottom = bars.bottom;
+        if (!isTv) bottom = Math.max(bottom, insets.getInsets(WindowInsets.Type.ime()).bottom);
+        root.setPadding(bars.left, bars.top, bars.right, bottom);
+    }
+
+    private int baseOrientation() {
+        if (isTv) return ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
+        return getResources().getConfiguration().smallestScreenWidthDp >= 600
+                ? ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+                : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+    }
+
     private void createWebView() {
+        // app Beta (build no PC): a página pode ser inspecionada pelo PC (chrome://inspect), para testar no aparelho
+        if (getPackageName().endsWith(".beta")) WebView.setWebContentsDebuggingEnabled(true);
         web = new WebView(this);
         web.setBackgroundColor(Color.BLACK);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
+        // sem zoom de pinça nem de toque duplo: um zoom sem querer bagunçava a tela
+        s.setSupportZoom(false);
+        s.setBuiltInZoomControls(false);
+        s.setDisplayZoomControls(false);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SmartTV IPTVKZ-Android");
+        // A interface vem toda do servidor local; o WebView não precisa ler arquivos do aparelho.
+        s.setAllowFileAccess(false);
+        s.setAllowContentAccess(false);
+        // só a TV se apresenta como TV: no celular a página usa o modo de toque
+        s.setUserAgentString(s.getUserAgentString() + (isTv ? " SmartTV" : "") + " IPTVKZ-Android");
         web.addJavascriptInterface(new Object() {
             @JavascriptInterface
             public void exit() { main.post(MainActivity.this::quit); }
@@ -260,10 +344,26 @@ public class MainActivity extends Activity {
 
             @JavascriptInterface
             public boolean isKeyboardVisible() { return keyboardVisible; }
+
+            // vídeo em tela cheia (filme, série, canal ampliado): deita a tela; ao sair, volta ao normal do aparelho
+            @JavascriptInterface
+            public void setVideoLandscape(boolean on) {
+                main.post(() -> {
+                    if (isTv) return;
+                    setRequestedOrientation(on ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : baseOrientation());
+                    immersive(on);
+                });
+            }
         }, "IPTVKZAndroid");
+        video = new NativeVideo(this, root, web);
+        web.addJavascriptInterface(video, "IPTVKZVideo");
         web.setWebViewClient(new WebViewClient() {
             @Override
-            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return false; }
+            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                // A tela principal fica no servidor local, que é quem tem acesso à ponte IPTVKZAndroid.
+                // Quadros internos (trailer do YouTube) seguem livres.
+                return r.isForMainFrame() && !isLocalPage(r.getUrl());
+            }
 
             @Override
             public void onPageFinished(WebView v, String url) {
@@ -286,6 +386,11 @@ public class MainActivity extends Activity {
         });
         root.addView(web, new ViewGroup.LayoutParams(-1, -1));
         web.requestFocus();
+    }
+
+    /** Endereço do próprio servidor embutido (http://127.0.0.1:porta). */
+    private static boolean isLocalPage(Uri u) {
+        return "http".equals(u.getScheme()) && "127.0.0.1".equals(u.getHost());
     }
 
     private void boot() {
@@ -378,6 +483,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        video.release();
         root.removeView(web);
         web.destroy();
         super.onDestroy();

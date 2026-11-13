@@ -3,20 +3,23 @@ plugins { id 'com.android.application' }
 def v = new Properties()
 file('../version.properties').withInputStream { v.load(it) }
 def bundleVersion = (System.getenv('BUNDLE_VERSION') ?: v.bundleVersion).toInteger()
+// Na Play não há atualização de pacote fora da loja: o pacote embutido acompanha o versionCode.
+def playVersionCode = (System.getenv('PLAY_VERSION_CODE') ?: v.playVersionCode).toInteger()
+def env = { String name -> System.getenv(name) ?: '' }
+// Canal Developer: só a versão publicada (tag v*) é o app oficial; o resto é o Beta (nome, ícone e banner próprios).
+// O canal Play é sempre o "IPTVKZ" (o que vai para a loja nunca sai como Beta).
+def isBeta = !env('GITHUB_REF').startsWith('refs/tags/v')
+def hasKey = env('ANDROID_KEYSTORE') != ''
 
 android {
     namespace 'com.lucasyemz.iptvkz'
-    compileSdk 34
-    ndkVersion '26.3.11579264'
+    compileSdk 36
+    ndkVersion '27.2.12479018' // r27c: libc++_shared em 16 KB (Google Play); o mesmo da libnode (.github/workflows/libnode.yml)
 
     defaultConfig {
-        applicationId 'com.lucasyemz.iptvkz'
         minSdk 24
-        targetSdk 34
-        versionCode v.nativeVersion.toInteger()
+        targetSdk 36 // Play: celular exige o Android 16 (API 36) desde 31/08/2026
         versionName v.nativeName
-        buildConfigField 'int', 'BUNDLE_VERSION', "${bundleVersion}"
-        buildConfigField 'String', 'UPDATE_BASE', "\"${System.getenv('UPDATE_BASE') ?: 'https://github.com/kazamastudios/iptvkz/releases/latest/download/'}\""
         ndk { abiFilters 'armeabi-v7a', 'arm64-v8a' }
         externalNativeBuild {
             cmake {
@@ -26,30 +29,95 @@ android {
         }
     }
 
-    buildFeatures { buildConfig true }
-    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
-    sourceSets { main { jniLibs.srcDirs = ['libnode/bin'] } }
-    packaging { jniLibs { useLegacyPackaging = true } }
-    aaptOptions { noCompress 'zip' }
-
     signingConfigs {
+        // Canal Developer (GitHub Releases): a mesma chave de sempre, para os APKs instalados continuarem atualizando.
         release {
-            def ks = System.getenv('ANDROID_KEYSTORE')
-            if (ks) {
-                storeFile file(ks)
-                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            if (hasKey) {
+                storeFile file(env('ANDROID_KEYSTORE'))
+                storePassword env('ANDROID_KEYSTORE_PASSWORD')
                 keyAlias 'iptvkz'
-                keyPassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyPassword env('ANDROID_KEYSTORE_PASSWORD')
+            }
+        }
+        // Canal Play: chave de upload. A chave do app fica com a Play (Play App Signing).
+        playUpload {
+            if (env('PLAY_UPLOAD_KEYSTORE')) {
+                storeFile file(env('PLAY_UPLOAD_KEYSTORE'))
+                storePassword env('PLAY_UPLOAD_KEYSTORE_PASSWORD')
+                keyAlias env('PLAY_UPLOAD_KEY_ALIAS') ?: 'upload'
+                keyPassword env('PLAY_UPLOAD_KEY_PASSWORD') ?: env('PLAY_UPLOAD_KEYSTORE_PASSWORD')
             }
         }
     }
+
+    flavorDimensions 'channel'
+    productFlavors {
+        // APK independente: atualiza pelo GitHub Releases (pacote assinado + APK com confirmação).
+        developer {
+            dimension 'channel'
+            applicationId 'com.lucasyemz.iptvkz'
+            versionCode v.nativeVersion.toInteger()
+            buildConfigField 'int', 'BUNDLE_VERSION', "${bundleVersion}"
+            buildConfigField 'boolean', 'IS_BETA', "${isBeta}"
+            buildConfigField 'String', 'UPDATE_BASE', "\"${env('UPDATE_BASE') ?: 'https://github.com/kazamastudios/iptvkz/releases/latest/download/'}\""
+            if (hasKey) {
+                signingConfig signingConfigs.release
+                // build de PR (teste) também aparece como Beta; só a versão publicada (tag v*) é "IPTVKZ"
+                manifestPlaceholders = [appLabel: isBeta ? 'IPTVKZ Beta' : 'IPTVKZ']
+            } else {
+                // build no PC, sem a chave oficial: outro app, instalado ao lado do oficial
+                signingConfig signingConfigs.debug
+                applicationIdSuffix '.beta'
+                versionNameSuffix '-beta'
+                manifestPlaceholders = [appLabel: 'IPTVKZ Beta']
+            }
+        }
+        // Google Play: só a loja atualiza. Sem baixar código, sem instalar APK.
+        play {
+            dimension 'channel'
+            applicationId(project.findProperty('playApplicationId') ?: env('PLAY_APPLICATION_ID') ?: 'com.kazamastudios.iptvkz')
+            versionCode playVersionCode
+            buildConfigField 'int', 'BUNDLE_VERSION', "${playVersionCode}"
+            buildConfigField 'boolean', 'IS_BETA', 'false'
+            manifestPlaceholders = [appLabel: 'IPTVKZ']
+            // Sem chave de upload sai um AAB sem assinatura (só para conferir o build). Nunca a chave de debug.
+            if (env('PLAY_UPLOAD_KEYSTORE')) signingConfig signingConfigs.playUpload
+        }
+    }
+
+    buildFeatures { buildConfig true }
+    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
+    sourceSets {
+        main { jniLibs.srcDirs = ['libnode/bin'] }
+        // Beta (só no canal Developer): ícone e banner âmbar com o selo BETA (scripts/make-beta-icons.py)
+        if (isBeta || !hasKey) developerRelease { res.srcDirs = ['src/beta/res'] }
+    }
+    packaging { jniLibs { useLegacyPackaging = true } }
+    aaptOptions { noCompress 'zip' }
+
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig System.getenv('ANDROID_KEYSTORE') ? signingConfigs.release : signingConfigs.debug
         }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 
-dependencies { implementation 'androidx.core:core:1.13.1' }
+// Build de publicação na Play (PLAY_REQUIRE_SIGNING=1) não sai sem a chave de upload.
+gradle.taskGraph.whenReady { graph ->
+    def playRelease = graph.allTasks.any { it.name ==~ /(bundle|assemble|package)PlayRelease.*/ }
+    if (playRelease && env('PLAY_REQUIRE_SIGNING') == '1' && !env('PLAY_UPLOAD_KEYSTORE')) {
+        throw new GradleException('PLAY_UPLOAD_KEYSTORE não definida: o AAB da Play precisa da chave de upload.')
+    }
+}
+
+dependencies {
+    // FileProvider: só o canal Developer entrega o APK baixado ao instalador do sistema.
+    developerImplementation 'androidx.core:core:1.13.1'
+    // player nativo para o que o WebView não toca (MKV, H.265, áudio AC3/E-AC3/DTS)
+    def media3 = '1.6.1'
+    implementation "androidx.media3:media3-exoplayer:$media3"
+    implementation "androidx.media3:media3-exoplayer-hls:$media3"
+    // decodificador de áudio FFmpeg reduzido (AC3, E-AC3, DTS, TrueHD), só quando o aparelho não abre o áudio
+    implementation "org.jellyfin.media3:media3-ffmpeg-decoder:$media3+2"
+}

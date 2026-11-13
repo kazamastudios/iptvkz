@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>IPTVKZ</title>
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png?v=7" />
   <link rel="icon" type="image/png" sizes="24x24" href="/favicon-24.png?v=7" />
@@ -18,27 +18,31 @@
         var q = /[?&]tv=([^&]*)/.exec(location.search);
         var s = q ? (q[1] === '0' ? '0' : '1') : localStorage.getItem('iptvkz.tv') || localStorage.getItem('minhatv.tv');
         var tv = s != null ? s === '1' : /web0s|webos|smart-?tv|netcast|tizen|hbbtv|appletv|crkey|aft[a-z]/i.test(navigator.userAgent);
+        // app Android no celular: a abertura usa as mesmas medidas da abertura nativa (como na TV)
+        if (/IPTVKZ-Android/.test(navigator.userAgent)) document.documentElement.className += ' app-android';
         if (tv) {
           document.documentElement.className += ' tv';
-          // mesmo zoom de js/tv.js: sem isso a logo nasce pequena e cresce quando o app carrega
-          document.documentElement.style.zoom = Math.max(1, Math.min(2, window.innerWidth / 1420)).toFixed(2);
+          // mesmo zoom de js/tv.js (applyTv): sem isso a abertura mudava de tamanho quando o app carregava
+          var fit = window.innerWidth / 1420;
+          var z = Math.min(2, navigator.maxTouchPoints > 0 ? Math.max(1, fit) : Math.max(0.5, fit)).toFixed(2);
+          document.documentElement.style.zoom = z;
+          document.documentElement.style.setProperty('--tvz', z);
         }
       } catch (e) {}
     })();
   </script>
-  <script src="/vendor/hls.min.js"></script>
-  <script src="/vendor/mpegts.js"></script>
 </head>
 <body>
   <div id="splash" role="status" aria-label="Carregando IPTVKZ">
     <div class="sp-glow a"></div><div class="sp-glow b"></div><div class="sp-glow c"></div><div class="sp-sweep"></div>
     <img class="sp-logo" src="/img/logo-horizontal.webp" alt="IPTVKZ" />
     <div class="sp-bar"><i></i></div>
+    <div class="sp-msg">Abrindo</div>
   </div>
   <div id="app">
     <aside class="sidebar">
       <a class="brand" href="#/">
-        <img class="logo-h" src="/img/logo-sidebar.png" alt="IPTVKZ" />
+        <img class="logo-h" src="/img/logo-sidebar.webp" alt="IPTVKZ" />
         <img class="logo-mark" src="/img/icon-small.png" alt="IPTVKZ" />
       </a>
       <div class="list-switch" id="listSwitch"></div>
@@ -47,6 +51,7 @@
     </aside>
     <main class="main">
       <header class="topbar">
+        <a class="top-logo" href="#/" aria-label="IPTVKZ"><img src="/img/icon-small.png" alt="" /></a>
         <h1 id="pageTitle"></h1>
         <label class="search">
           <span class="ico" data-icon="search"></span>
@@ -54,6 +59,7 @@
         </label>
         <div class="view-switch" id="viewSwitch" role="radiogroup" aria-label="Visualização"></div>
         <div class="status-area" id="listStatus"></div>
+        <a class="top-settings icon-btn" id="topSettings" href="#/settings" title="Configurações" aria-label="Configurações"><span class="ico" data-icon="settings"></span></a>
       </header>
       <div id="statusBanner"></div>
       <section class="view" id="view"></section>

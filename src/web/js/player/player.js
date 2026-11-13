@@ -2,11 +2,14 @@
 // controla áudio, legenda (renderizada pelo app), qualidade e versão.
 import { h, ico, fmtTime, toast } from '../core/util.js';
 import { icon } from '../core/icons.js';
-import { flushSaves, S, C, setSetting, api } from '../core/store.js';
-import { SeekPreview } from './seekpreview.js';
+import { flushSaves, S, C, setSetting, api, learnAudio, versionNames } from '../core/store.js';
 import { claimScreen, heartbeat, endScreen } from './sessions.js';
 import { readSubFile, cuesAt, subHtml } from './subs.js';
 import { TV, focusEl, syncFocus } from '../tv/tv.js';
+import { NativeVideo, nativeVideoAvailable } from './nativevideo.js';
+import { CAST_ENABLED } from './castpick.js';
+import { debugSection, tone } from '../core/debug.js';
+import { remuxStatus, remuxReady, remuxOffered, remuxSize, installRemux, probeMedia, browserAudio, RemuxVideo } from './remux.js';
 
 const LANGS = {
   pt: 'Português', por: 'Português', pob: 'Português (BR)', 'pt-br': 'Português (BR)', en: 'Inglês', eng: 'Inglês',
@@ -23,6 +26,31 @@ function trackLabel(t, i) {
   if (name && nice && !name.toLowerCase().includes(nice.toLowerCase().slice(0, 4))) return `${name} (${nice})`;
   return name || nice || `Faixa ${i + 1}`;
 }
+
+// Os tocadores de HLS e de TS (uns 630 KB) só carregam quando um vídeo vai tocar: ler os dois a cada abertura do
+// app pesava, principalmente na TV. O ?v= da build deixa o aparelho guardar em cache até a próxima versão.
+let libsPromise = null;
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => { s.remove(); reject(new Error(src)); };
+    document.head.append(s);
+  });
+}
+export function playerLibs() {
+  if (window.Hls && window.mpegts) return Promise.resolve();
+  if (!libsPromise) {
+    const v = encodeURIComponent((S.build && (S.build.build || S.build.commit || S.build.version)) || '');
+    libsPromise = Promise.all([loadScript(`/vendor/hls.min.js?v=${v}`), loadScript(`/vendor/mpegts.js?v=${v}`)])
+      .catch((e) => { libsPromise = null; throw e; });
+  }
+  return libsPromise;
+}
+
+// É a própria TV (sem tela de toque)? O app no celular também liga o modo TV, mas lá mandar para a TV faz sentido.
+const onRealTv = () => TV.on && !(navigator.maxTouchPoints > 0);
 
 // Celular/tablet: sem mouse; o toque mostra ou esconde os controles.
 const isTouch = () => !TV.on && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
@@ -52,6 +80,18 @@ export function proxyUrl(url) {
   return '/proxy?url=' + encodeURIComponent(url);
 }
 
+// No Android, estes vão direto ao player nativo: o WebView não abre o contêiner ou costuma tocar sem som.
+const NATIVE_FIRST = /\.(mkv|avi|wmv|flv)$/;
+
+// Nomes curtos dos formatos para a linha "Reprodução" do menu.
+const CODECS = {
+  'video/avc': 'H.264', 'video/hevc': 'H.265', 'video/dolby-vision': 'Dolby Vision', 'video/av01': 'AV1', 'video/x-vnd.on2.vp9': 'VP9',
+  'video/mpeg2': 'MPEG-2', 'video/mp4v-es': 'MPEG-4',
+  'audio/mp4a-latm': 'AAC', 'audio/ac3': 'AC3', 'audio/eac3': 'E-AC3', 'audio/eac3-joc': 'E-AC3 Atmos', 'audio/vnd.dts': 'DTS',
+  'audio/vnd.dts.hd': 'DTS-HD', 'audio/true-hd': 'TrueHD', 'audio/mpeg': 'MP3', 'audio/opus': 'Opus', 'audio/vorbis': 'Vorbis', 'audio/flac': 'FLAC',
+};
+const channels = (n) => (n > 2 ? `${n - 1}.1` : n === 2 ? 'estéreo' : n === 1 ? 'mono' : '');
+
 function detectEngine(url, live) {
   const path = String(url).split(/[?#]/)[0].toLowerCase();
   if (path.endsWith('.m3u8') || path.endsWith('.m3u')) return 'hls';
@@ -60,6 +100,12 @@ function detectEngine(url, live) {
   if (live && /\.(mp4|webm|mkv|mov)$/.test(path)) return 'native';
   if (live) return 'hls';
   return 'native';
+}
+
+// App Android no celular: as telas ficam em pé e o vídeo em tela cheia deita, como nos apps de streaming.
+// Na TV e fora do app Android não faz nada.
+function videoLandscape(on) {
+  try { if (window.IPTVKZAndroid && window.IPTVKZAndroid.setVideoLandscape) window.IPTVKZAndroid.setVideoLandscape(!!on); } catch {}
 }
 
 export class Player {
@@ -79,6 +125,7 @@ export class Player {
     this.subDelay = 0;
     this.lastSubText = '';
     this.destroyed = false;
+    if (!nativeVideoAvailable()) remuxStatus(); // PC: o componente de vídeo já está instalado? (pergunta uma vez)
     this._build();
     this._bind();
   }
@@ -103,11 +150,21 @@ export class Player {
       this.video.muted = this.video.volume === 0;
     });
     this.btnFs = this._btn('fullscreen', 'Tela cheia (F)', () => this.toggleFullscreen());
-    this.btnGear = this._btn('settings', 'Áudio, legenda e qualidade', (e) => {
+    this.btnGear = this._btn('audioLang', 'Versão, áudio e qualidade', (e) => {
       e.stopPropagation();
-      this.toggleMenu();
+      this.toggleMenu('settings');
+    });
+    // como nos streamings: legenda num botão próprio, ao lado da engrenagem (versão e áudio), perto do volume
+    this.btnAV = this._btn('cc', 'Legendas', (e) => {
+      e.stopPropagation();
+      this.toggleMenu('av');
     });
     this.btnPip = this._btn('pip', 'Picture-in-picture', () => this.togglePip());
+    // PC e celular: mandar o vídeo para uma TV da rede (Chromecast/Android TV pelo Cast, LG e outras pelo DLNA)
+    this.btnCast = this._btn('cast', 'Assistir na TV', (e) => {
+      e.stopPropagation();
+      this.toggleMenu('cast');
+    });
     this.timeEl = h('span.ptime');
     this.btnNext = o.next ? h('button.btn.small', { onclick: () => this._goNext(), title: 'Próximo episódio' }, ico('next'), 'Próximo') : null;
 
@@ -118,12 +175,9 @@ export class Player {
       this.seekKnob = h('div.knob');
       this.seekTip = h('div.tip');
       seek = h('div.seek', { 'data-focus': '' }, h('div.track', this.seekBuf, this.seekFill), this.seekKnob, this.seekTip);
-      this.preview = new SeekPreview({
-        video: this.video,
-        getUrl: () => (this.src ? proxyUrl(this.currentUrl()) : null),
-        canLoad: () => this._previewAllowed(),
-        onVisible: (on) => this.root && this.root.classList.toggle('has-strip', on),
-      });
+      // Sem miniaturas na barra de tempo (pedido do Lucas, 12/11/2026): ao passar ou arrastar aparece só o tempo do
+      // ponto. A barra de miniaturas fica guardada em seekpreview.js; este objeto vazio ocupa o lugar dela.
+      this.preview = { el: h('div.seek-preview-off'), show() {}, hide() {}, capture() {}, reset() {}, destroy() {} };
       seek.append(this.preview.el);
       this._seekEl = seek;
       this._bindSeek(seek);
@@ -134,12 +188,14 @@ export class Player {
       left.push(this._holdBtn('back10', 'Voltar 10 segundos (segure para ir mais rápido)', -1));
       left.push(this._holdBtn('fwd10', 'Avançar 10 segundos (segure para ir mais rápido)', 1));
     }
-    left.push(h('div.vol', this.btnMute, this.volRange));
-    left.push(o.live ? h('span.badge.onair.live-badge', 'AO VIVO') : this.timeEl);
-
     // ao vivo na TV já é tela cheia, e o menu seria quase só legenda, que canais não têm
     const liveTv = TV.on && o.live;
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, liveTv ? null : this.btnGear, TV.on || isTouch() ? null : this.btnPip, liveTv ? null : this.btnFs);
+    left.push(h('div.vol', this.btnMute, this.volRange));
+    if (!liveTv) left.push(this.btnAV, this.btnGear);
+    left.push(o.live ? h('span.badge.onair.live-badge', 'AO VIVO') : this.timeEl);
+
+    // filmes e séries já abrem ocupando a tela: tela cheia só no ao vivo, que no PC toca numa janela ao lado da lista
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, !CAST_ENABLED || onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
@@ -149,7 +205,7 @@ export class Player {
 
     // Antes do primeiro quadro: fundo escuro com a logo pequena do menu e o anel girando (diferente da splash,
     // para não parecer que o app reabriu). Some com um fade quando o vídeo começa. Depois, nas travadinhas, só o anel.
-    this.cover = h('div.pl-cover', h('img', { src: '/img/logo-sidebar.png', alt: '' }), h('div.spinner'));
+    this.cover = h('div.pl-cover', h('img', { src: '/img/logo-sidebar.webp', alt: '' }), h('div.spinner'));
     this.center = h('div.center', h('div.spinner'));
     this.errorEl = h('div.perror.hidden');
     this.menu = h('div.pmenu.hidden');
@@ -157,8 +213,12 @@ export class Player {
 
     this.flashEl = h('div.seek-flash');
     this.ppEl = h('div.pp-flash'); // ícone de play/pause no centro, só ao apertar
+    // Internet lenta: aviso discreto no canto, para não parecer defeito do player. Some quando o vídeo volta a fluir.
+    this.netTag = h('div.net-tag.hidden', h('i'), h('span', 'Internet lenta'));
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
-    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
+    this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
+    this.root._player = this; // o Voltar do app acha o player em tela cheia por aqui
+    if (!this.opts.live) videoLandscape(true); // filme e série: o player já abre deitado no celular
     this.host.append(this.root);
   }
 
@@ -205,14 +265,17 @@ export class Player {
     const on = (ev, fn) => v.addEventListener(ev, fn);
     on('play', () => this._setIcon(this.btnPlay, 'pause'));
     on('pause', () => { this._setIcon(this.btnPlay, 'play'); this._showCtrl(); this._report(); });
-    on('waiting', () => this._spin(true));
+    on('waiting', () => { this._spin(true); this._netStall(true); if (this.hadFrame) this.stalls = (this.stalls || 0) + 1; });
     on('playing', () => {
       this._spin(false);
+      this._netStall(false);
       this.root.classList.remove('awaiting');
       this._clearStartTimer();
       if (this.playFrom == null) this.playFrom = v.currentTime;
       this.hadFrame = true;
+      if (this.openMs == null && this.loadAt) this.openMs = Math.round(performance.now() - this.loadAt);
       this._hideError();
+      setTimeout(() => !this.destroyed && this._learnAudio(), 1500);
     });
     on('canplay', () => this._spin(false));
     on('volumechange', () => {
@@ -229,6 +292,7 @@ export class Player {
     });
     on('ended', () => this._onEnded());
     on('error', () => {
+      if (this.engine === 'remux' && this.remux) return this._fail('network', this.gen);
       if (this.engine !== 'native') return;
       const code = v.error && v.error.code;
       const gen = this.gen;
@@ -254,7 +318,7 @@ export class Player {
     this._onFs = () => this._setIcon(this.btnFs, document.fullscreenElement ? 'exitFs' : 'fullscreen');
     document.addEventListener('fullscreenchange', this._onFs);
     this._onDocClick = (e) => {
-      if (!this.menu.contains(e.target) && e.target !== this.btnGear) this.closeMenu();
+      if (!this.menu.contains(e.target) && !this.btnGear.contains(e.target) && !this.btnAV.contains(e.target) && !this.btnCast.contains(e.target)) this.closeMenu();
     };
     document.addEventListener('mousedown', this._onDocClick);
     this._onKeyUp = (e) => {
@@ -269,13 +333,19 @@ export class Player {
     document.addEventListener('visibilitychange', this._onHide);
 
     this._subTimer = setInterval(() => this._renderSubs(), 100);
-    this._watchdog = setInterval(() => { this._checkStall(); this._checkImage(); }, 5000);
+    this._perfTimer = setInterval(() => this._samplePerf(), 1000);
+    this._watchdog = setInterval(() => { this._checkStall(); this._checkImage(); this._checkSound(); }, 5000);
     this._showCtrl();
+    debugSection('player', () => this._debugRows());
   }
 
   // ---------- carregamento ----------
   load(src) {
     this.src = src;
+    this.loadAt = performance.now(); // para o "abriu em N ms" do menu
+    this.stalls = 0;
+    this.openMs = null;
+    this.perf = null;
     this.hadFrame = false;
     this.attempts = 0;
     this.usingAlt = false;
@@ -283,6 +353,10 @@ export class Player {
     this.subSource = null;
     this.subDelay = 0;
     this.autoPicked = false;
+    this.useNative = false;
+    this.useRemux = false;
+    this.remuxChecked = false;
+    this.remuxDeclined = false;
     this.titleEl.textContent = src.title || this.opts.title || '';
     if (this.preview) this.preview.reset();
     this._hideError();
@@ -318,6 +392,21 @@ export class Player {
     if (this.noImgTicks >= 2) this._nextImageRoute();
   }
 
+  // No Android, vídeo andando sem nenhum áudio decodificado é áudio que o WebView não abre (AC3, DTS):
+  // passa para o player nativo, que tem o decodificador.
+  _checkSound() {
+    const v = this.video;
+    const fix = nativeVideoAvailable() ? 'native' : remuxOffered() && !this.remuxDeclined ? 'remux' : null;
+    if (!fix || this.engine === 'exo' || this.engine === 'remux' || this.destroyed || v.paused || typeof v.webkitAudioDecodedByteCount !== 'number') return;
+    const silent = v.currentTime > 2 && v.webkitAudioDecodedByteCount === 0 && v.webkitVideoDecodedByteCount > 0;
+    this.silentTicks = silent ? (this.silentTicks || 0) + 1 : 0;
+    if (this.silentTicks >= 2) {
+      this.silentTicks = 0;
+      if (fix === 'native') this._toNative();
+      else this._toRemux();
+    }
+  }
+
   // Link alternativo, depois o decodificador da TV; sem imagem em nenhum, volta ao áudio com aviso.
   _nextImageRoute() {
     if (this.imgFromAlt === null) this.imgFromAlt = this.usingAlt;
@@ -327,8 +416,12 @@ export class Player {
       this.usingAlt = true;
       return this._start(this.src.alt);
     }
-    if (TV.on && !this.imgNativeTried) {
+    if ((TV.on || nativeVideoAvailable()) && !this.imgNativeTried) {
       this.imgNativeTried = true;
+      if (nativeVideoAvailable()) {
+        this.useNative = true;
+        return this._start(this.currentUrl());
+      }
       this.forceNative = true;
       // o player da TV lida melhor com HLS do que com .ts puro
       const hlsUrl = [this.src.url, this.src.alt].find((u) => u && /\.m3u8(\?|$)/i.test(u));
@@ -338,6 +431,7 @@ export class Player {
     this.imgTrying = false;
     this.imgDone = true;
     this.forceNative = false;
+    this.useNative = false;
     this.usingAlt = this.imgFromAlt;
     this._start(this.currentUrl());
     this.noImageEl.classList.remove('hidden');
@@ -348,7 +442,10 @@ export class Player {
     const token = (this._loadToken = (this._loadToken || 0) + 1);
     this.root.classList.add('awaiting'); // a logo só aparece até o primeiro quadro, não nas travadinhas
     this._spin(true);
-    const ok = await claimScreen();
+    this.netTag.classList.add('hidden');
+    this._netStall(true); // demorando muito para abrir também mostra o aviso
+    // o limite de telas e os tocadores ao mesmo tempo; sem os tocadores, o vídeo vai pelo player do navegador
+    const [ok] = await Promise.all([claimScreen(), playerLibs().catch(() => {})]);
     if (this.destroyed || token !== this._loadToken) return;
     if (!ok) {
       this._spin(false);
@@ -392,6 +489,8 @@ export class Player {
   }
 
   _teardown() {
+    if (this.exo) { this.exo.close(); this.exo = null; }
+    if (this.remux) { this.remux.close(); this.remux = null; }
     if (this.hls) { try { this.hls.destroy(); } catch {} this.hls = null; }
     if (this.mts) {
       try { this.mts.pause(); this.mts.unload(); this.mts.detachMediaElement(); this.mts.destroy(); } catch {}
@@ -403,6 +502,8 @@ export class Player {
 
   _start(url) {
     this._teardown();
+    this._perfPrev = null;
+    this.perf = null;
     const gen = (this.gen = (this.gen || 0) + 1);
     this._spin(true);
     this.lastProgressAt = Date.now();
@@ -416,6 +517,14 @@ export class Player {
     if (engine === 'hls' && !(window.Hls && Hls.isSupported())) engine = 'native';
     if (engine === 'mpegts' && !(window.mpegts && mpegts.getFeatureList().mseLivePlayback)) engine = 'native';
     if (this.forceNative) engine = 'native';
+    const kind = engine;
+    // No Android, filme e série vão sempre ao player nativo: ele desenha o vídeo direto na camada de vídeo do aparelho.
+    // Pelo WebView, cada quadro (4K principalmente) é reduzido pela GPU para caber na página, e a imagem trava.
+    if (nativeVideoAvailable() && (this.useNative || !live || NATIVE_FIRST.test(String(url).split(/[?#]/)[0].toLowerCase()))) engine = 'exo';
+    // PC com o componente de vídeo: MKV/AVI etc. passam por ele (o navegador abre o MKV, mas sem som se o áudio
+    // for AC3/DTS); antes, lê as faixas, e se o navegador tocar tudo, segue pelo caminho normal.
+    const ext = NATIVE_FIRST.test(String(url).split(/[?#]/)[0].toLowerCase());
+    if (engine !== 'exo' && remuxReady() && (this.useRemux || (ext && !this.remuxChecked))) engine = 'remux';
     this.engine = engine;
     const purl = proxyUrl(url);
     const v = this.video;
@@ -433,6 +542,7 @@ export class Player {
         levelLoadingMaxRetry: 3,
         fragLoadingMaxRetry: 4,
         subtitleDisplay: false,
+        capLevelToPlayerSize: true, // no automático, não baixa resolução maior do que a tela consegue mostrar
       });
       this.hls = hls;
       hls.subtitleDisplay = false;
@@ -476,10 +586,103 @@ export class Player {
       p.load();
       const pr = p.play();
       if (pr && pr.catch) pr.catch(() => {});
+    } else if (engine === 'remux') {
+      this._startRemux(url, gen);
+    } else if (engine === 'exo') {
+      // a "tela cheia" do navegador cobriria o vídeo nativo: o player só passa a ocupar a tela toda
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+        this.root.classList.add('pseudo-fs');
+      }
+      const exo = new NativeVideo(v, this.root, {
+        onError: (k) => this._fail(k, gen),
+        onTracks: () => this._syncNativeTracks(),
+        onCue: () => { this.lastSubText = null; this._renderSubs(); },
+      });
+      this.exo = exo;
+      exo.open(purl, kind === 'hls' ? 'hls' : 'auto', this.resumeAt > 1 ? this.resumeAt : 0, S.settings.audioLang);
     } else {
       v.src = purl;
       v.play().catch(() => {});
     }
+  }
+
+  async _startRemux(url, gen) {
+    let info;
+    try {
+      info = await probeMedia(url);
+    } catch {
+      return this._fail('network', gen);
+    }
+    if (this.destroyed || gen !== this.gen) return;
+    if (!this.useRemux && info.audio.every((a) => browserAudio(a.codec))) {
+      this.remuxChecked = true; // o navegador toca este arquivo sozinho
+      return this._start(url);
+    }
+    this.useRemux = true;
+    this.remux = new RemuxVideo(this.video, info);
+    this.remux.open(url, this.resumeAt > 1 ? this.resumeAt : 0);
+  }
+
+  // PC: o navegador não toca o áudio (ou o arquivo). Com o componente de vídeo, continua do mesmo ponto;
+  // sem ele, oferece baixar (uma vez só, alguns MB).
+  _toRemux() {
+    const t = this.video.currentTime;
+    if (!this.opts.live && t > 1) this.resumeAt = t;
+    if (remuxReady()) {
+      this.useRemux = true;
+      this.attempts = 0;
+      return this._start(this.currentUrl());
+    }
+    this._offerRemux();
+  }
+
+  _offerRemux() {
+    this._teardown();
+    this._clearStartTimer();
+    this._spin(false);
+    const mb = Math.round(remuxSize() / 1048576);
+    const bar = h('div.dl-bar', h('i'));
+    const msg = h('p', `O áudio deste vídeo (AC3, DTS ou parecido) não toca no navegador. O IPTVKZ pode baixar um componente de vídeo${mb > 1 ? ` de ${mb} MB` : ''}, uma vez só, e vídeos assim passam a tocar aqui mesmo.`);
+    const go = h('button.btn.primary', {
+      onclick: async () => {
+        go.disabled = true;
+        later.disabled = true;
+        msg.textContent = 'Baixando o componente de vídeo...';
+        bar.classList.add('on');
+        try {
+          await installRemux((st) => { bar.firstChild.style.transform = `scaleX(${st.progress || 0})`; });
+          if (this.destroyed) return;
+          this._hideError();
+          this.useRemux = true;
+          this.attempts = 0;
+          this._start(this.currentUrl());
+        } catch (err) {
+          msg.textContent = `Não deu para baixar o componente: ${err.message}`;
+          go.disabled = false;
+          later.disabled = false;
+        }
+      },
+    }, ico('download'), 'Baixar e tocar');
+    const later = h('button.btn', {
+      onclick: () => {
+        this.remuxDeclined = true;
+        this._hideError();
+        this._start(this.currentUrl()); // segue sem som / mostra o erro de formato
+      },
+    }, 'Agora não');
+    this.errorEl.replaceChildren(ico('download'), h('h3', 'Falta um componente para este vídeo'), msg, bar, h('div.acts', later, go));
+    this.errorEl.classList.remove('hidden');
+    if (TV.on) focusEl(go);
+  }
+
+  // O WebView recusou o formato (ou toca sem som): continua do mesmo ponto no player nativo do Android.
+  _toNative() {
+    const t = this.video.currentTime;
+    if (!this.opts.live && t > 1) this.resumeAt = t;
+    this.useNative = true;
+    this.attempts = 0;
+    this._start(this.currentUrl());
   }
 
   // O servidor da lista pode aceitar a conexão e nunca mandar o vídeo (sobrecarga, link travado).
@@ -507,6 +710,8 @@ export class Player {
     this.failedGen = gen;
     this._clearStartTimer();
     if (this.imgTrying) return this._nextImageRoute(); // a tentativa de recuperar a imagem falhou: próxima
+    if (kind === 'format' && this.engine !== 'exo' && nativeVideoAvailable()) return this._toNative();
+    if (kind === 'format' && this.engine !== 'remux' && !this.remuxDeclined && remuxOffered()) return this._toRemux();
     const t = this.video.currentTime;
     if (!this.opts.live && t > 1) this.resumeAt = t;
 
@@ -562,6 +767,8 @@ export class Player {
         h('button.btn', { onclick: () => this.retry() }, ico('refresh'), 'Tentar de novo')),
     );
     this.errorEl.classList.remove('hidden');
+    clearTimeout(this._netT);
+    this.netTag.classList.add('hidden');
     if (TV.on) focusEl(this.errorEl.querySelector('.btn')); // senão o controle fica preso atrás do player
   }
 
@@ -580,6 +787,24 @@ export class Player {
 
   _spin(on) {
     this.center.classList.toggle('hidden', !on);
+  }
+
+  // O vídeo parou esperando dados (ou demora a abrir): depois de um tempo, mostra "Internet lenta" no canto.
+  // Sem internet nenhuma, o texto diz isso. Ao voltar a tocar, o aviso fica mais uns segundos e some.
+  _netStall(waiting) {
+    clearTimeout(this._netT);
+    if (waiting) {
+      this._netT = setTimeout(async () => {
+        if (this.destroyed || !this.errorEl.classList.contains('hidden')) return;
+        let offline = navigator.onLine === false;
+        try { offline = offline || (await api('/api/net')).online === false; } catch {}
+        if (this.destroyed) return;
+        this.netTag.lastChild.textContent = offline ? 'Sem internet' : 'Internet lenta';
+        this.netTag.classList.remove('hidden');
+      }, this.hadFrame ? 4000 : 12000); // folga: travadinhas curtas e servidores lentos para abrir não são internet ruim
+    } else if (!this.netTag.classList.contains('hidden')) {
+      this._netT = setTimeout(() => this.netTag.classList.add('hidden'), 3000);
+    }
   }
 
   // ---------- controles ----------
@@ -632,8 +857,13 @@ export class Player {
   seekBy(s) {
     const v = this.video;
     if (this.opts.live || !Number.isFinite(v.duration)) return;
-    const target = Math.max(0, Math.min(v.duration - 1, v.currentTime + s));
+    // a partir do que está na tela (vários toques seguidos somam, mesmo antes do vídeo chegar no anterior)
+    const target = Math.max(0, Math.min(v.duration - 1, this._shownTime() + s));
+    this.resumeAt = 0;
+    this._seekTo = { t: target, at: Date.now() };
     v.currentTime = target;
+    this._updateSeek();
+    this.timeEl.textContent = `${fmtTime(target)} / ${fmtTime(v.duration)}`;
     this._flashSeek(s);
     if (this.preview) {
       this.preview.show(target, target / v.duration, this._seekEl.offsetWidth);
@@ -643,6 +873,12 @@ export class Player {
   }
 
   toggleFullscreen() {
+    // app Android: a tela cheia é da própria página (a do WebView não é confiável), e no celular ela deita a tela
+    if (this.exo || window.IPTVKZAndroid) {
+      const on = this.root.classList.toggle('pseudo-fs');
+      if (this.opts.live) videoLandscape(on);
+      return this._setIcon(this.btnFs, on ? 'exitFs' : 'fullscreen');
+    }
     if (document.fullscreenElement) return document.exitFullscreen().catch(() => {});
     // iPhone: só o próprio vídeo entra em tela cheia
     if (!this.root.requestFullscreen) return this.video.webkitEnterFullscreen && this.video.webkitEnterFullscreen();
@@ -696,27 +932,51 @@ export class Player {
       return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
     };
     let dragging = false;
+    // Arrastar: a bolinha e o tempo seguem o dedo/mouse na hora; o vídeo só busca ao soltar, e até ele chegar lá
+    // a tela fica no ponto escolhido (_seekTo), sem voltar para a posição antiga enquanto carrega.
+    const show = (ratio) => {
+      const d = this.video.duration;
+      this._paintSeek(ratio);
+      if (Number.isFinite(d)) this.timeEl.textContent = `${fmtTime(ratio * d)} / ${fmtTime(d)}`;
+      clearTimeout(this._hideT); // controles não somem no meio do arraste
+    };
+    // última posição do arraste: o "cancelar" do toque (o Android assumiu o gesto) chega sem coordenadas, e ler a
+    // posição dele mandava o vídeo para o começo
+    let lastRatio = 0;
+    const finish = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      const d = this.video.duration;
+      if (!Number.isFinite(d) || d <= 0) return;
+      const ratio = e.type === 'pointercancel' ? lastRatio : ratioAt(e);
+      const t = ratio * d;
+      this.resumeAt = 0; // a escolha da pessoa vale mais que o "continuar de onde parou" que ainda não foi aplicado
+      this._seekTo = { t, at: Date.now() };
+      show(t / d);
+      this._scheduleHide(3000);
+      setTimeout(() => { this.video.currentTime = t; }, 0); // o pedido segue depois do desenho
+    };
     seek.addEventListener('pointermove', (e) => {
       const d = this.video.duration;
       if (!Number.isFinite(d)) return;
       const ratio = ratioAt(e);
       this.seekTip.style.left = ratio * 100 + '%';
       this.seekTip.textContent = fmtTime(ratio * d);
-      this.preview.show(ratio * d, ratio, seek.getBoundingClientRect().width / (parseFloat(document.documentElement.style.zoom) || 1));
-      if (dragging) this._paintSeek(ratio);
+      // arrastando: nenhuma busca de miniatura (só a bolinha e o tempo); o vídeo busca uma vez, ao soltar
+      this.preview.show(ratio * d, ratio, seek.getBoundingClientRect().width / (parseFloat(document.documentElement.style.zoom) || 1), !dragging);
+      if (dragging) { lastRatio = ratio; show(ratio); }
     });
     seek.addEventListener('pointerleave', () => this.preview.hide(150));
     seek.addEventListener('pointerdown', (e) => {
+      // sem a duração (o vídeo ainda abrindo), não há para onde ir: a bolinha não se mexe à toa
+      if (!Number.isFinite(this.video.duration) || this.video.duration <= 0) return;
       dragging = true;
       seek.setPointerCapture(e.pointerId);
-      this._paintSeek(ratioAt(e));
+      lastRatio = ratioAt(e);
+      show(lastRatio);
     });
-    seek.addEventListener('pointerup', (e) => {
-      if (!dragging) return;
-      dragging = false;
-      const d = this.video.duration;
-      if (Number.isFinite(d)) this.video.currentTime = ratioAt(e) * d;
-    });
+    seek.addEventListener('pointerup', finish);
+    seek.addEventListener('pointercancel', finish);
     this._isDragging = () => dragging;
   }
 
@@ -725,12 +985,23 @@ export class Player {
     this.seekKnob.style.left = ratio * 100 + '%';
   }
 
+  // Tempo mostrado na tela: logo depois de soltar a barra, o ponto escolhido, até o vídeo chegar lá (ou 8 s)
+  // Logo depois de soltar a barra, o player nativo ainda informa a posição antiga por um instante: durante 1,5 s a
+  // tela mostra o ponto escolhido. Mais que isso prendia a tela num ponto enquanto a pessoa já tinha ido para outro.
+  _shownTime() {
+    const v = this.video;
+    const s = this._seekTo;
+    if (s && Date.now() - s.at < 1500) return s.t;
+    this._seekTo = null;
+    return v.currentTime;
+  }
+
   _updateSeek() {
     if (this.opts.live || !this.seekFill) return;
     const v = this.video;
     const d = v.duration;
     if (!Number.isFinite(d) || d <= 0) return;
-    if (!this._isDragging() && !this.scrub) this._paintSeek(v.currentTime / d);
+    if (!this._isDragging() && !this.scrub) this._paintSeek(this._shownTime() / d);
     try {
       const b = v.buffered;
       for (let i = 0; i < b.length; i++) {
@@ -748,7 +1019,7 @@ export class Player {
     if (this.attempts && this.playFrom != null && v.currentTime - this.playFrom > 10) this.attempts = 0;
     if (!this.opts.live) {
       this.preview.capture();
-      if (!this.scrub) this.timeEl.textContent = `${fmtTime(v.currentTime)} / ${fmtTime(v.duration)}`;
+      if (!this.scrub && !this._isDragging()) this.timeEl.textContent = `${fmtTime(this._shownTime())} / ${fmtTime(v.duration)}`;
       this._updateSeek();
       const now = Date.now();
       if (!this._lastReport || now - this._lastReport > 10000) this._report();
@@ -775,11 +1046,10 @@ export class Player {
 
   // Prévia busca quadros com uma conexão a mais: só quando o formato e a conta permitem,
   // para não derrubar o vídeo principal em contas de conexão única.
+  // Miniatura do ponto da barra: desligada. Cada miniatura abria uma segunda conexão com o provedor, que em listas
+  // IPTV disputava com o vídeo (ou derrubava ele, no limite de telas) e travava o arraste. Fica só o tempo do ponto.
   async _previewAllowed() {
-    // TVs têm um só decodificador: um segundo vídeo derruba o principal e ele volta ao ponto anterior.
-    if (TV.on || this.engine !== 'native') return false;
-    const r = await api(`/api/list-status?list=${encodeURIComponent(C().listId)}`);
-    return r.maxCons == null || r.maxCons - (r.activeCons || 0) >= 1;
+    return false;
   }
 
   // ---------- próximo episódio ----------
@@ -830,6 +1100,7 @@ export class Player {
   }
 
   subTracks() {
+    if (this.exo) return this.exo.text.map((t, i) => ({ i, label: trackLabel(t, i), raw: t }));
     if (!this.hls) return [];
     return this.hls.subtitleTracks.map((t, i) => ({ i, label: trackLabel(t, i), raw: t }));
   }
@@ -837,6 +1108,10 @@ export class Player {
   setSub(src) {
     this.subSource = src;
     if (this.hls) this.hls.subtitleTrack = src && src.type === 'hls' ? src.index : -1;
+    if (this.exo) {
+      const t = src && src.type === 'hls' ? this.exo.text[src.index] : null;
+      this.exo.setText(t ? t.id : null);
+    }
     this.lastSubText = null;
     this._renderSubs();
   }
@@ -861,6 +1136,40 @@ export class Player {
     this.setSub(pick >= 0 ? { type: 'hls', index: pick } : null);
   }
 
+  // Faixas do player nativo: na primeira vez segue a preferência de legenda; numa nova tentativa, repete a escolha.
+  _syncNativeTracks() {
+    this._learnAudio();
+    const exo = this.exo;
+    if (!exo || exo.synced || (!exo.audio.length && !exo.text.length)) return;
+    exo.synced = true;
+    if (this.autoPicked) {
+      if (this.subSource && this.subSource.type === 'hls') this.setSub(this.subSource);
+      return;
+    }
+    this.autoPicked = true;
+    const cur = exo.audio.find((a) => a.on);
+    const audioIsPt = cur && (cur.lang || cur.name) ? isPt(cur) : null;
+    const ptSub = exo.text.findIndex(isPt);
+    const mode = S.settings.subMode;
+    let pick = -1;
+    if (mode === 'always' && ptSub >= 0) pick = ptSub;
+    if (mode === 'auto' && audioIsPt === false && ptSub >= 0) pick = ptSub;
+    if (pick >= 0) this.setSub({ type: 'hls', index: pick });
+  }
+
+  // Guarda os idiomas de áudio desta versão: nos próximos acessos, "Versão 2" aparece como "Português".
+  _learnAudio() {
+    if (!this.src || this.learnedGen === this.gen) return;
+    let langs = [];
+    if (this.exo) langs = this.exo.audio.map((a) => a.lang);
+    else if (this.hls) langs = this.hls.audioTracks.map((t) => t.lang);
+    else if (this.video.audioTracks) langs = [...this.video.audioTracks].map((t) => t.language);
+    langs = langs.filter((l) => l && !/^und/i.test(l));
+    if (!langs.length) return;
+    this.learnedGen = this.gen;
+    learnAudio(this.currentUrl(), langs);
+  }
+
   _activeTextTrack() {
     const tt = this.video.textTracks;
     for (let i = 0; i < tt.length; i++) {
@@ -880,6 +1189,8 @@ export class Player {
       const t = this.video.currentTime - this.subDelay;
       if (src.type === 'ext') {
         text = cuesAt(src.cues, t).map((c) => c.text).join('\n');
+      } else if (this.exo) {
+        text = this.exo.cue;
       } else {
         const track = this._activeTextTrack();
         if (track && track.cues) text = cuesAt(track.cues, t, (c) => c.startTime, (c) => c.endTime).map((c) => c.text).join('\n');
@@ -914,8 +1225,11 @@ export class Player {
   }
 
   // ---------- menu ⚙️ ----------
-  toggleMenu() {
-    if (this.menu.classList.contains('hidden')) {
+  toggleMenu(mode = 'av') {
+    const open = !this.menu.classList.contains('hidden');
+    if (!open || this.menuMode !== mode) {
+      this.menuMode = mode;
+      this.menu.classList.toggle('left', mode !== 'cast'); // legenda e áudio ficam perto do volume; a TV, à direita
       this._renderMenu();
       this.menu.classList.remove('hidden');
       this._showCtrl();
@@ -926,7 +1240,7 @@ export class Player {
   closeMenu() {
     const wasOpen = !this.menu.classList.contains('hidden');
     this.menu.classList.add('hidden');
-    if (wasOpen && TV.on && this.menu.contains(document.activeElement)) focusEl(this.btnGear);
+    if (wasOpen && TV.on && this.menu.contains(document.activeElement)) focusEl(this.menuMode === 'av' ? this.btnAV : this.btnGear);
   }
 
   _ctrlFocused() {
@@ -944,12 +1258,80 @@ export class Player {
     const seg = (values, cur, fn) =>
       h('div.seg', values.map(([v, l]) => h('button' + (v === cur ? '.on' : ''), { onclick: () => { fn(v); this._renderMenu(); } }, l)));
 
-    // Versão (Dublado/Legendado)
+    if (this.menuMode === 'settings') return this._renderSettings(m, seg, opt);
+    if (this.menuMode === 'cast') return this._renderCast(m, opt);
+
+    // Botão de legenda: só a legenda
+    m.append(h('h4', 'Legenda'));
+    const cur = this.subSource;
+    m.append(opt('Desligada', !cur, () => { this.setSub(null); this._renderMenu(); }));
+    for (const s of this.subTracks()) {
+      m.append(opt(s.label, cur && cur.type === 'hls' && cur.index === s.i, () => { this.setSub({ type: 'hls', index: s.i }); this._renderMenu(); }));
+    }
+    if (cur && cur.type === 'ext') m.append(opt(cur.name, true, () => {}));
+    m.append(h('button.opt', { onclick: () => this._pickSubFile() }, h('span.ck', ico('upload')), h('span', 'Carregar arquivo .srt / .vtt...')));
+    if (!this.hls && !this.exo && this.engine !== 'mpegts') {
+      m.append(h('div.note', 'Legendas embutidas em MP4/MKV não aparecem aqui; use um arquivo .srt ou .vtt.'));
+    }
+
+    if (cur) {
+      m.append(h('h4', 'Atraso da legenda'));
+      const val = h('span', `${this.subDelay > 0 ? '+' : ''}${this.subDelay.toFixed(1)}s`);
+      const step = (d) => { this.subDelay = Math.round((this.subDelay + d) * 10) / 10; this.lastSubText = null; this._renderMenu(); };
+      m.append(h('div.delay', h('button', { onclick: () => step(-0.5), title: 'Legenda mais cedo' }, '−'), val, h('button', { onclick: () => step(0.5), title: 'Legenda mais tarde' }, '+')));
+    }
+    m.append(h('div.sep'), h('h4', 'Tamanho'));
+    m.append(seg([['P', 'P'], ['M', 'M'], ['G', 'G'], ['GG', 'GG']], S.settings.subSize, (v) => { setSetting('subSize', v); this._applySubStyle(); }));
+    m.append(h('h4', 'Fundo'));
+    m.append(seg([['none', 'Nenhum'], ['shadow', 'Sombra'], ['box', 'Caixa']], S.settings.subBg, (v) => { setSetting('subBg', v); this._applySubStyle(); }));
+  }
+
+  // ---------- Assistir na TV ----------
+  async _renderCast(m, opt) {
+    m.append(h('h4', 'Assistir na TV'));
+    const box = h('div', h('div.note', 'Procurando TVs na rede...'));
+    m.append(box);
+    const fresh = this._castFresh;
+    this._castFresh = false;
+    let list = [];
+    try { list = await api(`/api/cast/devices${fresh ? '?fresh=1' : ''}`); } catch {}
+    if (this.menuMode !== 'cast' || !m.contains(box)) return;
+    const again = h('button.opt', { onclick: () => { this._castFresh = true; this._renderMenu(); } }, h('span.ck', ico('refresh')), h('span', 'Procurar de novo'));
+    if (!list.length) {
+      box.replaceChildren(h('div.note', 'Nenhuma TV encontrada. Ela precisa estar ligada e no mesmo Wi-Fi. Funciona com Android TV, Google TV, Chromecast e TVs com DLNA (LG, Samsung e outras).'), again);
+      return;
+    }
+    box.replaceChildren(...list.map((d) => opt(d.name + (d.model && d.model !== d.name ? ` (${d.model})` : ''), false, () => this._castTo(d))), again);
+  }
+
+  // Assistir na TV: manda o endereço do vídeo direto para a TV e pronto. A TV busca e toca sozinha, sem depender
+  // deste aparelho (pode fechar o app). Aqui o vídeo para, e o filme/série fecha o player.
+  async _castTo(dev) {
+    this.closeMenu();
+    const v = this.video;
+    const at = this.opts.live ? 0 : v.currentTime;
+    toast(`Abrindo na TV ${dev.name}...`, 'info', 2500);
+    try {
+      await api('/api/cast/play', { method: 'POST', body: JSON.stringify({ id: dev.id, url: this.currentUrl(), title: this.titleEl.textContent, live: !!this.opts.live, startAt: at }) });
+    } catch (err) {
+      toast(`Não deu para tocar na TV: ${err.message}`, 'error');
+      return;
+    }
+    v.pause();
+    toast(`Tocando na TV ${dev.name}. Pode fechar o app.`, 'ok', 5000);
+    if (!this.opts.live && this.opts.onBack) this.opts.onBack();
+  }
+
+
+  // Botão de áudio (onda sonora): versão, faixa de áudio, qualidade e o que está tocando.
+  _renderSettings(m, seg, opt) {
+    // Versão (Dublado/Legendado): nomes com o idioma que o app já viu tocando
     const vs = this.opts.versions;
     if (vs && vs.length > 1) {
+      const names = versionNames(vs);
       m.append(h('h4', 'Versão'));
       for (const v of vs) {
-        m.append(opt(v.label, v.label === this.opts.version, () => {
+        m.append(opt(names[v.label], v.label === this.opts.version, () => {
           if (v.label === this.opts.version) return;
           this.closeMenu();
           this.opts.onVersion && this.opts.onVersion(v.label, this.video.currentTime);
@@ -966,32 +1348,10 @@ export class Player {
     } else if (this.engine === 'hls') {
       m.append(h('div.note', 'Este stream tem uma faixa de áudio só.'));
     } else {
-      m.append(h('div.note', 'Este formato não deixa escolher o áudio. Se o título tiver outra versão (Dublado, Legendado), troque por ela.'));
+      m.append(h('div.note', vs && vs.length > 1 ? 'Este vídeo tem um áudio só. Para outro idioma, troque a versão acima.' : 'Este vídeo tem um áudio só.'));
     }
 
-    // Legenda
-    m.append(h('div.sep'), h('h4', 'Legenda'));
-    const cur = this.subSource;
-    m.append(opt('Desligada', !cur, () => { this.setSub(null); this._renderMenu(); }));
-    for (const s of this.subTracks()) {
-      m.append(opt(s.label, cur && cur.type === 'hls' && cur.index === s.i, () => { this.setSub({ type: 'hls', index: s.i }); this._renderMenu(); }));
-    }
-    if (cur && cur.type === 'ext') m.append(opt(cur.name, true, () => {}));
-    m.append(h('button.opt', { onclick: () => this._pickSubFile() }, h('span.ck', ico('upload')), h('span', 'Carregar arquivo .srt / .vtt...')));
-    if (!this.hls && this.engine !== 'mpegts') {
-      m.append(h('div.note', 'Legendas embutidas em MP4/MKV não aparecem aqui; use um arquivo .srt ou .vtt.'));
-    }
 
-    if (cur) {
-      m.append(h('h4', 'Atraso da legenda'));
-      const val = h('span', `${this.subDelay > 0 ? '+' : ''}${this.subDelay.toFixed(1)}s`);
-      const step = (d) => { this.subDelay = Math.round((this.subDelay + d) * 10) / 10; this.lastSubText = null; this._renderMenu(); };
-      m.append(h('div.delay', h('button', { onclick: () => step(-0.5), title: 'Legenda mais cedo' }, '−'), val, h('button', { onclick: () => step(0.5), title: 'Legenda mais tarde' }, '+')));
-    }
-    m.append(h('h4', 'Tamanho'));
-    m.append(seg([['P', 'P'], ['M', 'M'], ['G', 'G'], ['GG', 'GG']], S.settings.subSize, (v) => { setSetting('subSize', v); this._applySubStyle(); }));
-    m.append(h('h4', 'Fundo'));
-    m.append(seg([['none', 'Nenhum'], ['shadow', 'Sombra'], ['box', 'Caixa']], S.settings.subBg, (v) => { setSetting('subBg', v); this._applySubStyle(); }));
 
     // Qualidade
     if (this.hls && this.hls.levels.length > 1) {
@@ -1007,6 +1367,85 @@ export class Player {
         m.append(opt(label, !auto && this.hls.currentLevel === i, () => { this.hls.currentLevel = i; this._renderMenu(); }));
       }
     }
+
+  }
+
+  // FPS real e quadros perdidos, medidos a cada segundo enquanto o vídeo anda. Funciona igual no navegador e no
+  // player do Android (que manda os contadores no mesmo formato). Na LG o player da TV costuma não informar.
+  _samplePerf() {
+    const v = this.video;
+    const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+    if (!q || v.paused || !q.totalVideoFrames) return;
+    const now = performance.now();
+    const prev = this._perfPrev;
+    this._perfPrev = { at: now, total: q.totalVideoFrames, dropped: q.droppedVideoFrames };
+    if (!prev || q.totalVideoFrames < prev.total) return;
+    const dt = (now - prev.at) / 1000;
+    const shown = (q.totalVideoFrames - q.droppedVideoFrames) - (prev.total - prev.dropped);
+    const fps = dt > 0 ? shown / dt : 0;
+    // média curta: um segundo isolado oscila
+    this.perf = { fps: this.perf ? this.perf.fps * 0.6 + fps * 0.4 : fps, total: q.totalVideoFrames, dropped: q.droppedVideoFrames };
+  }
+
+  // Modo de depuração (Configurações, no Beta): o que importa do vídeo, com cor no que pode estar ruim.
+  _debugRows() {
+    const v = this.video;
+    const nf = (n, d = 0) => (Number.isFinite(n) ? n.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }) : '—');
+    let ahead = 0;
+    try {
+      const b = v.buffered;
+      for (let k = 0; k < b.length; k++) if (b.start(k) <= v.currentTime + 0.5 && b.end(k) > v.currentTime) ahead = b.end(k) - v.currentTime;
+    } catch {}
+    const state = this.castEl && !this.castEl.classList.contains('hidden') ? 'tocando na TV'
+      : !this.errorEl.classList.contains('hidden') ? 'erro na tela'
+        : v.paused ? 'pausado' : !this.center.classList.contains('hidden') ? 'carregando' : 'tocando';
+    const p = this.perf;
+    const lost = p && p.total ? (p.dropped / p.total) * 100 : NaN;
+    const rows = [
+      ['Reprodução', this._playingInfo()],
+      ['Vídeo', p && p.fps > 0.5 ? `${nf(p.fps, 1)} fps · ${nf(1000 / p.fps, 1)} ms/quadro` : 'FPS não informado', '',
+        p && p.total ? `${nf(p.dropped)} de ${nf(p.total)} perdidos (${nf(lost, 1)}%)` : '', tone(lost, 1, 5)],
+      ['Abriu em', this.openMs != null ? `${nf(this.openMs)} ms` : '—', tone(this.openMs, 1500, 4000), state, state === 'erro na tela' ? 'bad' : ''],
+      ['Tempo', `${fmtTime(v.currentTime || 0)}${Number.isFinite(v.duration) ? ' / ' + fmtTime(v.duration) : this.opts.live ? ' (ao vivo)' : ''}`, '',
+        `reserva ${nf(ahead, 1)} s`, tone(ahead, 10, 3, true)],
+    ];
+    const lvl = this.hls && this.hls.levels && this.hls.levels[this.hls.currentLevel];
+    const lvlTxt = lvl && (lvl.height || lvl.bitrate) ? `${lvl.height ? lvl.height + 'p ' : ''}${lvl.bitrate ? nf(lvl.bitrate / 1e6, 1) + ' Mbps' : ''}${this.hls.autoLevelEnabled ? ' auto' : ''} · ` : '';
+    rows.push(['Rede', this.hls ? `${lvlTxt}banda ${nf(this.hls.bandwidthEstimate / 1e6, 1)} Mbps` : `tentativas ${this.attempts || 0}${this.usingAlt ? ' · link alternativo' : ''}`, '',
+      `travadas ${this.stalls || 0}`, tone(this.stalls || 0, 0, 2)]);
+    // só o servidor e o tipo do arquivo: o endereço das listas leva usuário e senha
+    try {
+      const u = new URL(this.currentUrl());
+      rows.push(['Fonte', `${u.hostname} · ${(u.pathname.match(/[.]([a-z0-9]{2,5})$/i) || [])[1] || 'sem extensão'} · ${this.engine || '—'}`]);
+    } catch {}
+    return rows;
+  }
+
+  _perfInfo() {
+    const nf = (n, d = 0) => n.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const parts = [];
+    const p = this.perf;
+    if (p && p.fps > 0.5) {
+      parts.push(`${nf(p.fps, 1)} fps`, `${nf(1000 / p.fps, 1)} ms por quadro`);
+      const pct = p.total ? (p.dropped / p.total) * 100 : 0;
+      parts.push(`${nf(p.dropped)} de ${nf(p.total)} quadros perdidos${p.dropped ? ` (${nf(pct, 1)}%)` : ''}`);
+    } else parts.push('FPS não informado por este player');
+    if (this.openMs != null) parts.push(`abriu em ${nf(this.openMs)} ms`);
+    return `Desempenho: ${parts.join(' · ')}`;
+  }
+
+  // Quem está tocando (navegador ou player do Android) e, quando se sabe, os formatos de vídeo e áudio.
+  _playingInfo() {
+    const v = this.video;
+    if (this.exo) {
+      const p = this.exo.playing || {};
+      const name = (mime) => CODECS[mime] || (mime && mime !== 'null' ? mime.split('/').pop().toUpperCase() : '');
+      const audio = [name(p.audio), channels(p.ch)].filter(Boolean).join(' ');
+      return ['player do Android', name(p.video), p.height > 0 ? `${p.height}p` : '', audio].filter(Boolean).join(' · ');
+    }
+    if (this.remux) return [this.remux.describe(), v.videoHeight > 0 ? `${v.videoHeight}p` : ''].filter(Boolean).join(' · ');
+    const how = { hls: 'navegador (HLS)', mpegts: 'navegador (MPEG-TS)', native: TV.on ? 'player da TV' : 'navegador' }[this.engine] || 'navegador';
+    return [how, v.videoHeight > 0 ? `${v.videoHeight}p` : ''].filter(Boolean).join(' · ');
   }
 
   // ---------- avançar/voltar segurando a seta (TV) ----------
@@ -1045,6 +1484,8 @@ export class Player {
   _commitScrub() {
     clearTimeout(this._scrubT);
     if (!this.scrub) return;
+    this.resumeAt = 0;
+    this._seekTo = { t: this.scrub.t, at: Date.now() };
     this.video.currentTime = this.scrub.t;
     this.scrub = null;
     this.seekTip.classList.remove('on');
@@ -1104,7 +1545,12 @@ export class Player {
   destroy() {
     this._report();
     this.destroyed = true;
+    videoLandscape(false);
     clearInterval(this._subTimer);
+    clearInterval(this._perfTimer);
+    clearInterval(this._castT); // a TV continua tocando se o player fechar; dá para parar pela TV
+    debugSection('player', null);
+    clearTimeout(this._netT);
     clearInterval(this._watchdog);
     clearTimeout(this._retryT);
     this._clearStartTimer();

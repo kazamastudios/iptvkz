@@ -1,11 +1,13 @@
 // Filmes e Séries: prateleiras, grade por categoria e páginas de detalhe.
 import { h, ico, img, windowed, matcher, debounce, fmtDur, fmtTime, toast, modal, skPosters, skEpisodes, skLines, isBack } from '../core/util.js';
+import { isPhone, catSelect } from '../core/catselect.js';
 import { starIcon } from '../core/icons.js';
 import {
   C, S, visibleCats, visibleItems, favItems, isFav, toggleFav, getProgress, setProgress, clearProgress, isWatched, isStarted,
-  continueMovies, continueSeries, clearContinue, catItems, isLater, toggleLater, laterItems, adultLocked, isAdultItem, seriesDetail, movieDetail, preferredVersion, setSetting,
+  continueMovies, continueSeries, clearContinue, catItems, isLater, toggleLater, laterItems, adultLocked, isAdultItem, seriesDetail, movieDetail, preferredVersion, versionNames, setSetting,
 } from '../core/store.js';
 import { playMovie, playEpisode } from './vodplayer.js';
+import { castButton } from '../player/castpick.js';
 import { TV, KB, focusEl } from '../tv/tv.js';
 import { glideTo, glideTarget, stopGlide, scrolling } from '../core/smoothscroll.js';
 import { viewMode } from '../core/viewmode.js';
@@ -14,13 +16,13 @@ import { cleanEpisodeTitle } from '../core/titles.js';
 const SHORT = { Dublado: 'DUB', Legendado: 'LEG', Nacional: 'NAC', 'Dual áudio': 'DUAL' };
 
 const cfg = {
-  movies: { title: 'Filmes', one: 'filme', many: 'filmes', detail: 'movie' },
-  series: { title: 'Séries', one: 'série', many: 'séries', detail: 'serie' },
+  movies: { title: 'Filmes', one: 'filme', many: 'filmes', all: 'Todos os filmes', detail: 'movie' },
+  series: { title: 'Séries', one: 'série', many: 'séries', all: 'Todas as séries', detail: 'serie' },
 };
 
 function versionTags(item) {
   const vs = item.versions || [];
-  const tags = [...new Set(vs.map((v) => SHORT[v.label.replace(/ \d+$/, '')]).filter(Boolean))];
+  const tags = [...new Set(vs.map((v) => SHORT[Object.keys(SHORT).find((k) => v.label.startsWith(k))]).filter(Boolean))];
   return tags.length ? h('div.tags', tags.map((t) => h('span.badge', t))) : null;
 }
 
@@ -55,25 +57,42 @@ function smallPoster(src) {
   return String(src || '').replace(/(image\.tmdb\.org\/t\/p\/)(?:w\d+_and_h\d+_[a-z0-9]+|w(?:500|600|780)|original)\//, '$1w342/');
 }
 
+// Nome sem o ano repetido: o ano já aparece na linha de baixo (card) ou nas informações (página do filme ou da
+// série e destaque), então "Outra Mamãe (2026)" vira "Outra Mamãe". Só tira o ano do fim do nome, e só quando é o
+// mesmo ano do item.
+export function cardName(item) {
+  const name = String(item.name || '');
+  if (!item.year) return name;
+  const short = name.replace(new RegExp(String.raw`\s*[([]?\s*${Number(item.year)}\s*[)\]]?\s*$`), '').trim();
+  return short || name;
+}
+
 export function posterCard(section, item, ctx, { where = false, onOpen = null, wide = false } = {}) {
   const th = img(wide ? item.poster : smallPoster(item.poster), item.name, 'cover');
   const tags = versionTags(item);
   if (tags) th.append(tags);
   if (item.rating) th.append(h('span.badge.gold.rating', '★ ' + Number(item.rating).toFixed(1)));
   const r = progressRatio(section, item);
-  if (r > 0.02 && r < 0.95) th.append(h('div.pbar', h('i', { style: { width: r * 100 + '%' } })));
-  if (section === 'movies' && isWatched(item.id) && !(r > 0.02 && r < 0.95)) th.append(h('span.badge.seen.seen-mark', '✓ Assistido'));
+  // Canto de baixo à esquerda da capa: o ano e, quando há, "Assistido" / "Concluída" / T1:E2, numa fileira só
+  // (o ano saiu da legenda: embaixo da capa fica só o nome). Com barra de progresso, ficam logo acima dela.
+  const bottom = [];
+  let bar = null;
+  if (r > 0.02 && r < 0.95) bar = h('div.pbar', h('i', { style: { width: r * 100 + '%' } }));
+  if (item.year) bottom.push(h('span.badge.year', String(item.year)));
+  if (section === 'movies' && isWatched(item.id) && !bar) bottom.push(h('span.badge.seen', '✓ Assistido'));
   if (section === 'series') {
     const last = getProgress('s:' + item.id);
-    if (last && last.done) th.append(h('span.badge.seen.seen-mark', '✓ Concluída'));
+    if (last && last.done) bottom.push(h('span.badge.seen', '✓ Concluída'));
     else if (last) {
-      th.append(h('div.tags', { style: { top: 'auto', bottom: '16px' } }, h('span.badge', `T${last.season}:E${last.num}`)));
+      bottom.push(h('span.badge', `T${last.season}:E${last.num}`));
       const ep = getProgress(last.ep);
-      if (ep && ep.d) th.append(h('div.pbar', h('i', { style: { width: Math.min(100, (ep.t / ep.d) * 100) + '%' } })));
+      if (ep && ep.d) bar = h('div.pbar', h('i', { style: { width: Math.min(100, (ep.t / ep.d) * 100) + '%' } }));
     }
   }
+  if (bottom.length) th.append(h('div.btags' + (bar ? '.over-bar' : ''), ...bottom));
+  if (bar) th.append(bar);
   return h('div.poster', { onclick: (e) => (onOpen ? onOpen(e) : ctx.navigate(`#/${cfg[section].detail}?id=${encodeURIComponent(item.id)}`)), title: item.name },
-    th, h('div.pt', item.name), h('div.pm', (where && whereStopped(section, item)) || (item.year ? String(item.year) : ' ')));
+    th, h('div.pt', cardName(item))); // embaixo da capa só o nome: ano, episódio e progresso ficam nas etiquetas da capa
 }
 
 // Controles de uma fileira, iguais em todas as plataformas, cada uma com o seu jeito de usar:
@@ -81,6 +100,20 @@ export function posterCard(section, item, ctx, { where = false, onOpen = null, w
 //   celular, OK no controle da TV (são botões comuns, alcançáveis pelo foco);
 // - no PC, também as setas redondas que aparecem nas laterais ao passar o mouse e o arrastar com o mouse.
 // Tudo desliza pelo mesmo motor (glideTo), com a mesma curva do foco da TV.
+// Medidas das setas das fileiras em lote: primeiro todas leem, depois todas mudam (um layout só por quadro).
+const syncQueue = [];
+let syncRaf = 0;
+function queueSync(measure, apply) {
+  syncQueue.push([measure, apply]);
+  if (syncRaf) return;
+  syncRaf = requestAnimationFrame(() => {
+    syncRaf = 0;
+    const jobs = syncQueue.splice(0);
+    const ms = jobs.map(([m]) => m());
+    jobs.forEach(([, a], i) => a(ms[i]));
+  });
+}
+
 export function rowControls(row) {
   let anim = 0; // embalo do arraste
   const maxLeft = () => row.scrollWidth - row.clientWidth;
@@ -98,20 +131,20 @@ export function rowControls(row) {
     return b;
   };
   // na ponta, a seta apaga (sem "disabled": na TV o foco não pode sumir debaixo do controle)
-  const sync = () => {
-    if (!row.clientWidth) return; // fileira ainda não montada (fora da tela): sem medidas confiáveis
-    const x = glideTarget(row).x;
-    for (const [b, dir] of btns) b.classList.toggle('off', dir < 0 ? x <= 4 : x >= maxLeft() - 4);
-  };
+  // medir e depois mudar, nunca intercalado: ler a largura logo após mexer na página obriga a TV a refazer
+  // o layout inteiro (era um refazer por fileira ao abrir Filmes e Séries)
+  const measure = () => (row.clientWidth ? { x: glideTarget(row).x, max: maxLeft() } : null); // fora da tela: sem medidas
+  const apply = (m) => { if (m) for (const [b, dir] of btns) b.classList.toggle('off', dir < 0 ? m.x <= 4 : m.x >= m.max - 4); };
+  const sync = () => apply(measure());
   row.addEventListener('scroll', debounce(sync, 60), { passive: true });
   const pager = h('div.shelf-pager', btn('pager-btn', -1), btn('pager-btn', 1));
   // controle: com o gesto ↑ ↓ ↑ numa capa, o foco vai ao título desta fileira ("Ver tudo" e setas)
   row.dataset.up = '.shelf-head a[href], .shelf-pager .pager-btn';
+  queueSync(measure, apply); // todas as fileiras da tela medem juntas, no próximo quadro
   setTimeout(() => {
-    sync();
     // fileiras fora da tela só são montadas quando chegam perto: aí as setas recalculam
     const shelf = row.closest('.shelf');
-    if (shelf) shelf.addEventListener('contentvisibilityautostatechange', (e) => { if (!e.skipped) sync(); });
+    if (shelf) shelf.addEventListener('contentvisibilityautostatechange', (e) => { if (!e.skipped) queueSync(measure, apply); });
   }, 0);
 
   if (TV.on) return { body: row, pager, sync };
@@ -195,7 +228,7 @@ export function vodHome(section) {
     const filter = h('input', { placeholder: 'Filtrar categorias' });
     const list = h('div.cat-list');
     const content = h('div.vod-content');
-    const root = h('div.live.vod-browse', h('div.cats', h('label.filter', ico('search'), filter), list), content);
+    const root = h('div.live.vod-browse', h('div.cats' + (isPhone() ? '.has-select' : ''), isPhone() ? h('div.cat-bar', catSelect(list)) : null, h('label.filter', ico('search'), filter), list), content);
     filter.addEventListener('input', debounce(renderCats, 120));
 
     function renderCats() {
@@ -207,7 +240,7 @@ export function vodHome(section) {
       if (!filter.value) {
         rows.push(
           btn('home', 'Início', null, section === 'movies' ? 'film' : 'series'),
-          btn('all', `Todos os ${cfg[section].many}`, visibleItems(section).length, 'tv'),
+          btn('all', cfg[section].all, visibleItems(section).length, 'tv'),
           btn('fav', 'Favoritos', favItems(section).length, 'star'),
           h('div.cat-sep'),
         );
@@ -219,14 +252,16 @@ export function vodHome(section) {
     function renderContent() {
       if (cleanup) cleanup();
       content.scrollTop = 0;
-      // Streaming: o Início vira destaque + fileiras, sem a coluna de categorias (cada categoria já é uma fileira)
-      const stream = cat === 'home' && viewMode() === 'stream';
+      // Streaming: sem a coluna de categorias. O Início vira destaque + fileiras; o "Ver tudo" de uma fileira vira
+      // destaque (da própria categoria) + a grade só dela
+      const stream = viewMode() === 'stream';
       root.classList.toggle('stream', stream);
-      // a fileira em foco sobe até logo abaixo do destaque (folga do scroll-padding em .stream-scroll)
+      // na fileira em foco, ela sobe até logo abaixo do destaque (folga do scroll-padding em .stream-scroll)
       content.classList.toggle('stream-scroll', stream);
-      if (stream) content.dataset.reveal = 'start';
+      if (stream && cat === 'home') content.dataset.reveal = 'start';
       else delete content.dataset.reveal;
-      const view = stream ? streamHome(section, ctx, content) : cat === 'home' ? homeContent(section, ctx, content) : gridContent(section, cat, ctx, content);
+      const view = stream ? (cat === 'home' ? streamHome(section, ctx, content) : streamCategory(section, cat, ctx, content))
+        : cat === 'home' ? homeContent(section, ctx, content) : gridContent(section, cat, ctx, content);
       content.replaceChildren(view.el);
       cleanup = view.destroy;
     }
@@ -351,7 +386,7 @@ export function streamHero(ctx) {
     clearTimeout(tArt);
     el.classList.toggle('wide-art', wide);
     if (!src) return;
-    if (arts[front].getAttribute('src') === src) { arts[front].classList.add('on'); return; }
+    if (arts[front].getAttribute('src') === heroSrc(src)) { arts[front].classList.add('on'); return; }
     const next = arts[1 - front];
     next.onload = () => {
       if (cur !== item) return;
@@ -360,7 +395,7 @@ export function streamHero(ctx) {
       front = 1 - front;
     };
     next.onerror = null;
-    next.src = src;
+    next.src = heroSrc(src);
   };
 
   // Botões: filme com todos os da página do filme (que o destaque substitui); série com os episódios na página dela.
@@ -376,13 +411,13 @@ export function streamHero(ctx) {
         version = item.versions.find((v) => v.label === l);
         setSetting('versionPref', l);
         renderActs();
-      });
+      }, versionNames(item.versions));
       acts.replaceChildren(...movieActions(item, version, trailer, renderActs, acts));
     } else {
       versions.replaceChildren();
       acts.replaceChildren(
         h('button.btn.primary.big', { onclick: () => ctx.navigate(`#/${cfg.series.detail}?id=${encodeURIComponent(item.id)}`) }, ico('play'), 'Ver episódios'),
-        trailerButton(item.name, trailer), laterButton(section, item), favButton(section, item));
+        trailerButton(cardName(item), trailer), laterButton(section, item), favButton(section, item));
     }
     if (at >= 0) {
       const now = acts.querySelectorAll('button');
@@ -413,7 +448,7 @@ export function streamHero(ctx) {
   };
 
   const fill = (item, section) => {
-    title.textContent = item.name;
+    title.textContent = cardName(item);
     const bits = [item.year, item.rating ? '★ ' + Number(item.rating).toFixed(1) : null, whereStopped(section, item) || null];
     meta.replaceChildren(...bits.filter(Boolean).map((t) => h('span', String(t))));
     // sinopse: a da lista se houver; senão linhas de carregamento até o detalhe chegar (a altura é fixa: sem pulo)
@@ -492,6 +527,18 @@ function streamHome(section, ctx, scroller) {
   return { el, destroy: () => { hero.destroy(); rows.destroy(); } };
 }
 
+// Streaming, "Ver tudo" de uma categoria: o destaque mostra o mais recente dela, e embaixo só a grade da categoria.
+function streamCategory(section, cat, ctx, scroller) {
+  const hero = streamHero(ctx);
+  const grid = gridContent(section, cat, ctx, scroller, { card: wideCardFor(hero) });
+  const items = cat === 'all' ? visibleItems(section) : cat === 'fav' ? favItems(section) : catItems(section, cat);
+  const first = [...items].sort((a, b) => (b.added || 0) - (a.added || 0))[0];
+  if (first) hero.show(first, section, true);
+  const el = h('div.stream-home.stream-cat', hero.el, grid.el);
+  wireStream(el, hero);
+  return { el, destroy: () => { hero.destroy(); if (grid.destroy) grid.destroy(); } };
+}
+
 function homeContent(section, ctx, scroller, { card = posterCard } = {}) {
   const sec = C()[section];
   const page = h('div.page');
@@ -567,18 +614,19 @@ function homeContent(section, ctx, scroller, { card = posterCard } = {}) {
     if (!entries.some((e) => e.isIntersecting)) return;
     // observa de novo: se o marcador continuar perto da tela, o aviso volta e entram mais fileiras
     moreIo.unobserve(sentinel);
-    addShelves(6);
+    addShelves(TV.on ? 3 : 6);
     if (next < cats.length) moreIo.observe(sentinel);
   }, { root: scroller, rootMargin: '1200px' });
   page.append(sentinel);
-  addShelves(8);
+  // na TV, menos de cada vez: montar e desenhar 8 fileiras de capas juntas travava a troca de tela por ~0,8 s
+  addShelves(TV.on ? 3 : 8);
   if (next < cats.length) moreIo.observe(sentinel);
   return { el: page, destroy: () => { io.disconnect(); moreIo.disconnect(); } };
 }
 
-function gridContent(section, cat, ctx, scroller) {
+function gridContent(section, cat, ctx, scroller, { card = posterCard } = {}) {
   const sec = C()[section];
-  const name = cat === 'all' ? `Todos os ${cfg[section].many}` : cat === 'fav' ? 'Favoritos' : sec.catName.get(cat) || cfg[section].title;
+  const name = cat === 'all' ? cfg[section].all : cat === 'fav' ? 'Favoritos' : sec.catName.get(cat) || cfg[section].title;
   let sort = new URLSearchParams(location.hash.split('?')[1] || '').get('sort') || 'orig';
   let query = '';
   let inc = null;
@@ -586,7 +634,7 @@ function gridContent(section, cat, ctx, scroller) {
   const count = h('span.faint');
   const filter = h('input', { placeholder: `Filtrar ${cfg[section].many}` });
   filter.addEventListener('input', debounce(() => { query = filter.value; fill(); }, 150));
-  const chips = h('div.row', { style: { gap: '6px' } });
+  const chips = h('div.row.sort-chips', { style: { gap: '6px' } });
   const sorts = [['orig', 'Padrão'], ['az', 'A–Z'], ['year', 'Ano'], ['rating', 'Nota']];
   if (section === 'movies') sorts.splice(1, 0, ['new', 'Recentes']);
   const renderChips = () => chips.replaceChildren(...sorts.map(([v, l]) =>
@@ -621,7 +669,7 @@ function gridContent(section, cat, ctx, scroller) {
     const arr = items();
     count.textContent = arr.length.toLocaleString('pt-BR');
     if (!arr.length) grid.append(h('div.empty', { style: { gridColumn: '1/-1' } }, cat === 'fav' ? 'Nenhum favorito ainda.' : 'Nada encontrado.'));
-    inc = windowed(grid, arr, (it) => posterCard(section, it, ctx), { root: scroller, batch: 60 });
+    inc = windowed(grid, arr, (it) => card(section, it, ctx), { root: scroller, batch: TV.on ? 30 : 60 });
   }
   fill();
   return { el: page, destroy: () => inc && inc.destroy() };
@@ -662,7 +710,9 @@ function movieActions(movie, version, trailer, refresh, box) {
     h('button.btn.primary.big', { onclick: () => playMovie(movie, version, { onClose: refresh }) }, ico('play'),
       resumable ? `Continuar de ${p.t < 3600 ? fmtTime(p.t) : fmtClockSec(p.t)}` : 'Assistir'),
     resumable ? h('button.btn.big', { onclick: () => playMovie(movie, version, { fromStart: true, onClose: refresh }) }, ico('refresh'), 'Do início') : null,
-    trailerButton(movie.name, trailer),
+    trailerButton(cardName(movie), trailer),
+    // manda o filme para uma TV da rede, de onde parou
+    castButton(() => ({ url: version.url, title: cardName(movie), startAt: isStarted(getProgress(movie.id)) ? getProgress(movie.id).t : 0 })),
     laterButton('movies', movie),
     favButton('movies', movie),
     h('button.btn' + (isWatched(movie.id) ? '.seen-on' : ''), {
@@ -680,6 +730,10 @@ function movieActions(movie, version, trailer, refresh, box) {
   ];
 }
 
+// Imagem larga do destaque: na TV, 780 px de largura bastam (a tela tem zoom e o fundo fica escurecido);
+// a original chega a 3840 px e custava decodificar e desenhar na LG.
+const heroSrc = (src) => (TV.on ? String(src || '').replace(/(image\.tmdb\.org\/t\/p\/)(?:w1280|original)\//, '$1w780/') : src);
+
 function heroBase(item, section, ctx) {
   // Fundo: uma imagem só. Espera o detalhe (que pode trazer a imagem larga) e só então põe a larga ou a capa;
   // antes ia a capa e depois a larga por cima, duas imagens carregando.
@@ -688,7 +742,7 @@ function heroBase(item, section, ctx) {
   const setArt = (src, sharp) => {
     if (artSet || !src) return;
     artSet = true;
-    backdrop.replaceChildren(h('img', { src, alt: '', referrerpolicy: 'no-referrer' }));
+    backdrop.replaceChildren(h('img', { src: heroSrc(src), alt: '', referrerpolicy: 'no-referrer', decoding: 'async' }));
     backdrop.classList.toggle('sharp', sharp);
   };
   const settleArt = () => setArt(item.poster, false); // detalhe sem imagem larga (ou falhou): fica a capa
@@ -722,7 +776,7 @@ function heroBase(item, section, ctx) {
   // Voltar visível (PC e celular não têm a tecla do controle; na TV ela também funciona)
   const back = h('button.btn.small.ghost.detail-back', { type: 'button', onclick: () => ctx.back(`#/${section}`) }, ico('back'), 'Voltar');
   const inner = h('div.inner', back,
-    h('div.hero', poster, h('div', { style: { flex: 1, minWidth: 0 } }, h('h2', item.name), meta, versions, plot, credits, acts)));
+    h('div.hero', poster, h('div', { style: { flex: 1, minWidth: 0 } }, h('h2', cardName(item)), meta, versions, plot, credits, acts)));
   return {
     el: h('div.detail', backdrop, inner), inner, meta, versions, acts, favBtn, fillMeta, plot, laterBtn,
     settleArt: () => { clearTimeout(artTimer); settleArt(); },
@@ -779,12 +833,13 @@ function openTrailer(name, id) {
   });
 }
 
-function versionChips(container, labels, current, onPick) {
+// names: rótulo → nome para mostrar (com o idioma que o app já viu tocar); sem ele, o próprio rótulo.
+function versionChips(container, labels, current, onPick, names = {}) {
   container.replaceChildren();
   if (labels.length < 2) return;
   container.append(h('span.lbl', 'Versão'));
   for (const l of labels) {
-    container.append(h('button.chip' + (l === current ? '.on' : ''), { onclick: () => onPick(l) }, l));
+    container.append(h('button.chip' + (l === current ? '.on' : ''), { onclick: () => onPick(l) }, names[l] || l));
   }
 }
 
@@ -808,7 +863,7 @@ export function movieView(params, ctx) {
       version = movie.versions.find((v) => v.label === l);
       setSetting('versionPref', l);
       renderActs();
-    });
+    }, versionNames(movie.versions));
     d.acts.replaceChildren(...movieActions(movie, version, trailer, renderActs, d.acts));
   }
   renderActs();
@@ -898,7 +953,13 @@ export function serieView(params, ctx) {
     }
     d.acts.replaceChildren(
       target ? h('button.btn.primary.big', { onclick: () => play(target.season, target.ep.id, { fromStart: !!target.fromStart }) }, ico('play'), target.label) : null,
-      trailerButton(serie.name, trailer),
+      trailerButton(cardName(serie), trailer),
+      // manda para a TV o mesmo episódio do botão principal
+      target ? castButton(() => {
+        const ver = target.ep.versions.find((v) => v.label === versionLabel) || target.ep.versions[0];
+        const pe = getProgress(target.ep.id);
+        return { url: ver.url, title: `${cardName(serie)} · ${code(target)}`, startAt: !target.fromStart && isStarted(pe) ? pe.t : 0 };
+      }) : null,
       d.laterBtn,
       d.favBtn,
     );
@@ -942,7 +1003,7 @@ export function serieView(params, ctx) {
       const r = p && p.d ? p.t / p.d : 0;
       const stopped = isStarted(p);
       const th = img(ep.img || serie.poster, ep.title, 'cover');
-      th.append(h('div.play', ico('play')));
+      th.append(h('div.play', ico('play')), h('span.badge.epn', `E${ep.num}`)); // número na imagem: só no celular (CSS)
       if (watched && !stopped) th.append(h('span.badge.seen.seen-mark', '✓ Assistido'));
       const hasVersion = !!serieVersions || ep.versions.some((v) => v.label === versionLabel);
       const meta = [ep.dur ? fmtDur(ep.dur) : null, stopped ? `Parou em ${fmtTime(p.t)}` : watched ? 'Assistido' : null].filter(Boolean).join(' · ');

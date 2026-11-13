@@ -35,6 +35,8 @@ import java.util.function.IntConsumer;
  * mudanças no app Android baixam o APK e pedem a confirmação do sistema.
  */
 final class Updater {
+    /** Só o canal Developer se atualiza sozinho; a versão da Play tem um Updater vazio. */
+    static final boolean ENABLED = true;
     private static final String TAG = "IPTVKZ-update";
     private static final String BASE = BuildConfig.UPDATE_BASE;
     private static final long CHECK_EVERY_MS = 6 * 60 * 60 * 1000L;

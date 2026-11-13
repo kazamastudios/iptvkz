@@ -1,5 +1,7 @@
 // Configurações: listas, categorias (ocultar/ordenar), reprodução e sobre.
-import { h, ico, fmtAgo, confirmDialog, toast } from '../core/util.js';
+import { h, ico, fmtAgo, confirmDialog, toast, modal } from '../core/util.js';
+import { installTvButton } from './installtv.js';
+import { isBeta, debugOn, setDebug } from '../core/debug.js';
 import {
   S, C, activeList, orderedCats, setCatHidden, setCatOrder, resetCats, setSetting, saveNow, api,
   parentalEnabled, adultLocked, pinHash, checkPin, unlockAdult, lockAdult, setCatAdult, adultCatCount, buildLabel,
@@ -7,7 +9,7 @@ import {
 import { pinDialog } from './pin.js';
 import { TV, setTvMode, exitApp, focusEl } from '../tv/tv.js';
 import { showTermsDialog } from './terms.js';
-import { openListSave, downloadList } from './lists.js';
+import { openListSave, downloadList, openServers, canPhoneEdit } from './lists.js';
 
 const TYPE = { xtream: 'Xtream Codes', url: 'Link M3U', file: 'Arquivo M3U' };
 
@@ -27,7 +29,8 @@ export function settingsView(params, ctx) {
   // ---------- listas ----------
   const cards = h('div.list-cards');
   const act = activeList();
-  for (const l of S.lists) {
+  // a lista em uso sempre primeiro (à esquerda)
+  for (const l of [...S.lists].sort((x, y) => (act && y.id === act.id) - (act && x.id === act.id))) {
     const isActive = act && l.id === act.id;
     const t = listType(l);
     const stats = h('div.stats');
@@ -49,20 +52,28 @@ export function settingsView(params, ctx) {
         !isActive ? h('button.btn.small.primary', { onclick: () => ctx.useList(l.id) }, 'Usar esta') : null,
         h('button.btn.small', { onclick: () => ctx.refreshList(l.id) }, ico('refresh'), 'Atualizar'),
         h('button.btn.small', { onclick: () => ctx.editList(l) }, ico('edit'), 'Editar'),
-        h('button.btn.small', {
-          title: TV.on ? 'Baixar esta lista no celular, para usar em outro aparelho' : 'Baixar esta lista num arquivo, para usar em outro aparelho',
-          onclick: () => (TV.on ? openListSave(l) : downloadList(l)),
-        }, ico('download'), 'Baixar lista'),
-        h('button.btn.small.ghost', {
-          onclick: async () => {
-            if (await confirmDialog('Excluir lista', `Excluir “${l.name}”? Favoritos e progresso dessa lista também serão apagados.`, 'Excluir', true)) {
-              ctx.deleteList(l.id);
-            }
-          },
-        }, ico('trash'), 'Excluir'))));
+        // o resto num menu: o cartão fica com poucos botões (no PC, na TV e no celular)
+        h('button.btn.small', { title: 'Mais opções desta lista', onclick: () => listMenu(l) }, ico('more'), 'Mais'))));
   }
-  cards.append(h('button.list-card.add-card', { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar lista'));
-  page.append(h('div.set-section', h('h3', 'Listas'), h('p', 'Troque de lista pelo seletor no topo da barra lateral.'), cards));
+  // Mais opções de uma lista: janela com uma opção por linha (funciona igual com mouse, controle e toque)
+  function listMenu(l) {
+    const isXt = listType(l) === 'xtream';
+    let m;
+    const item = (icon, label, hint, fn, danger) => h('button.btn.menu-opt' + (danger ? '.danger' : ''), { type: 'button', onclick: () => { m.close(); fn(); } },
+      ico(icon), h('span', h('b', label), hint ? h('small', hint) : null));
+    m = modal(l.name, h('div.list-opts',
+      isXt ? item('server', 'Servidores', 'Testar e trocar o endereço do provedor', () => openServers(l, (nl) => ctx.refreshList(nl.id))) : null,
+      canPhoneEdit() ? item('qr', 'Editar pelo celular', 'QR Code para mudar a lista no celular', () => ctx.phoneEdit(l)) : null,
+      item('download', 'Baixar lista', TV.on ? 'Leva a lista para outro aparelho pelo celular' : 'Arquivo para usar em outro aparelho', () => (TV.on ? openListSave(l) : downloadList(l))),
+      item('trash', 'Excluir lista', 'Apaga também favoritos e progresso dela', async () => {
+        if (await confirmDialog('Excluir lista', `Excluir “${l.name}”? Favoritos e progresso dessa lista também serão apagados.`, 'Excluir', true)) ctx.deleteList(l.id);
+      }, true)));
+    setTimeout(() => focusEl(m.el ? m.el.querySelector('.menu-opt') : document.querySelector('.modal .menu-opt')), 50);
+  }
+
+  // até 2 listas: bloco à direita delas; com 3 ou mais, uma linha própria embaixo
+  cards.append(h('button.list-card.add-card' + (S.lists.length >= 3 ? '.add-row' : ''), { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar lista'));
+  page.append(h('div.set-section', h('h3', 'Listas'), h('p', TV.on || !matchMedia('(max-width: 760px)').matches ? 'Troque de lista pelo seletor no topo da barra lateral.' : 'Troque de lista pelo último botão da barra de baixo, o que mostra o nome da lista.'), cards));
 
   // ---------- categorias ----------
   if (C()) {
@@ -187,6 +198,13 @@ export function settingsView(params, ctx) {
       tvBody.append(h('div.pref', h('div.lbl', 'Você está acessando pela rede'),
         h('div.sub', 'As opções de rede e inicialização ficam no computador que roda o IPTVKZ.')));
     }
+    // do PC ou do celular: como levar o app para a TV (na própria TV não faz sentido)
+    if (!TV.on || navigator.maxTouchPoints > 0) {
+      tvBody.append(h('div.pref',
+        h('div.lbl', 'Instalar o IPTVKZ na TV'),
+        h('div.sub', 'Android TV, Fire TV e TV Box instalam sem cabo e sem loja; a LG, pela loja da LG.'),
+        installTvButton()));
+    }
     tvBody.append(h('div.pref',
       h('div.lbl', 'Modo TV neste aparelho'),
       h('div.sub', 'Letras maiores e navegação pelas setas e OK do controle remoto. Liga sozinho em TVs.'),
@@ -290,6 +308,14 @@ export function settingsView(params, ctx) {
         h('label.switch', autoNext, h('span.tr'), h('span', 'Automático'))))));
 
   // ---------- sobre ----------
+  // Beta: modo de depuração (painel com FPS, travadas, lista e vídeo, em qualquer tela)
+  if (isBeta()) {
+    page.append(h('div.set-section', h('h3', 'Depuração (Beta)'),
+      h('div.pref-grid', h('div.pref',
+        h('div.lbl', 'Modo de depuração'),
+        h('div.sub', 'Mostra no canto da tela FPS, travadas, memória, a lista e o vídeo, com cores: verde bom, amarelo no limite, vermelho ruim. Vale só neste aparelho.'),
+        sw(debugOn(), (on) => setDebug(on), 'Depuração')))));
+  }
   page.append(h('div.set-section',
     h('h3', 'Sobre'),
     (() => {

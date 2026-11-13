@@ -75,7 +75,9 @@ export class SeekPreview {
     return this.dark >= 12 && this.cache.size === 0;
   }
 
-  show(time, ratio, seekWidth) {
+  // load=false (arrastando a barra): mostra só o que já está guardado, sem buscar nada. Com load, só busca depois
+  // que o ponteiro para por meio segundo: cada busca é uma conexão a mais com o provedor e disputava com o vídeo.
+  show(time, ratio, seekWidth, load = true) {
     const d = this.opts.video.duration;
     if (!Number.isFinite(d)) return;
     clearTimeout(this._hideT);
@@ -86,7 +88,8 @@ export class SeekPreview {
     this.ratio = ratio;
     this.seekWidth = seekWidth;
     this._paint();
-    this._pump();
+    clearTimeout(this._pumpT);
+    if (load) this._pumpT = setTimeout(() => this._pump(), 500);
   }
 
   hide(delay = 0) {

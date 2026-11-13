@@ -336,3 +336,26 @@ test('baixar lista no celular: a chave só entrega a lista escolhida na TV', asy
   await request('POST', '/api/pair/end', { body: { token } });
   assert.strictEqual((await request('GET', `/pair/${token}/arquivo?lista=m3uurl`)).status, 410, 'depois de fechar, a chave não vale');
 });
+
+test('Assistir na TV: mensagem do Cast e resposta do mDNS são lidas certo', () => {
+  const { encodeCast, decodeCast, parseDns, dnsName } = require('../src/server/cast.js')._test;
+  // Cast: o que mandamos volta igual ao ler (4 bytes de tamanho + protobuf)
+  const msg = encodeCast('sender-0', 'receiver-0', 'urn:x-cast:com.google.cast.receiver', { type: 'LAUNCH', appId: 'CC1AD845', requestId: 7 });
+  assert.strictEqual(msg.readUInt32BE(0), msg.length - 4);
+  const back = decodeCast(msg.subarray(4));
+  assert.strictEqual(back.ns, 'urn:x-cast:com.google.cast.receiver');
+  assert.deepStrictEqual(back.data, { type: 'LAUNCH', appId: 'CC1AD845', requestId: 7 });
+  // mDNS: resposta de um Chromecast (PTR + SRV + TXT + A, com nome comprimido)
+  const name = dnsName('Sala._googlecast._tcp.local');
+  const rec = (n, type, data) => { const h = Buffer.alloc(10); h.writeUInt16BE(type, 0); h.writeUInt16BE(1, 2); h.writeUInt16BE(data.length, 8); return Buffer.concat([n, h, data]); };
+  const kv = (t) => Buffer.concat([Buffer.from([Buffer.byteLength(t)]), Buffer.from(t)]);
+  const txt = Buffer.concat([kv('fn=Sala'), kv('md=Google TV')]);
+  const srvData = Buffer.concat([Buffer.from([0, 0, 0, 0, 0x1f, 0x49]), Buffer.from([0xc0, 12])]);
+  const a = Buffer.from([192, 168, 1, 50]);
+  const head = Buffer.from([0, 0, 0x84, 0, 0, 0, 0, 4, 0, 0, 0, 0]);
+  const pkt = Buffer.concat([head, rec(dnsName('_googlecast._tcp.local'), 12, name), rec(Buffer.from([0xc0, 12]), 33, srvData), rec(Buffer.from([0xc0, 12]), 16, txt), rec(dnsName('sala.local'), 1, a)]);
+  const recs = parseDns(pkt);
+  assert.strictEqual(recs.find((r) => r.type === 33).port, 8009);
+  assert.deepStrictEqual(recs.find((r) => r.type === 16).txt, { fn: 'Sala', md: 'Google TV' });
+  assert.strictEqual(recs.find((r) => r.type === 1).ip, '192.168.1.50');
+});
