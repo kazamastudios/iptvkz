@@ -49,6 +49,9 @@ import android.widget.TextView;
 
 import java.io.File;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.net.Inet4Address;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -57,9 +60,36 @@ public class MainActivity extends Activity {
     // seletor de arquivos aberto pelo WebView (onShowFileChooser) esperando a resposta
     private static final int REQ_FILE = 4711;
     private ValueCallback<Uri[]> filePick;
+    // "Baixar lista": o WebView não salva downloads; o app pergunta onde salvar e copia o arquivo do servidor interno
+    private static final int REQ_SAVE = 4712;
+    private String saveUrl;
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_SAVE) {
+            String url = saveUrl;
+            saveUrl = null;
+            Uri dest = resultCode == RESULT_OK && data != null ? data.getData() : null;
+            if (dest == null || url == null) { savedFile(null); return; }
+            new Thread(() -> {
+                boolean ok = false;
+                HttpURLConnection con = null;
+                try {
+                    con = (HttpURLConnection) new URL(url).openConnection();
+                    try (InputStream in = con.getInputStream(); OutputStream out = getContentResolver().openOutputStream(dest)) {
+                        byte[] buf = new byte[64 * 1024];
+                        for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+                    }
+                    ok = con.getResponseCode() == 200;
+                } catch (Exception e) {
+                    Log.e(TAG, "Salvar arquivo: " + e);
+                } finally {
+                    if (con != null) con.disconnect();
+                }
+                savedFile(ok);
+            }, "salvar").start();
+            return;
+        }
         if (requestCode == REQ_FILE) {
             ValueCallback<Uri[]> cb = filePick;
             filePick = null;
@@ -362,6 +392,26 @@ public class MainActivity extends Activity {
             @JavascriptInterface
             public boolean canPickFiles() { return true; }
 
+            // "Baixar lista" no celular: abre o "Salvar como" do Android e grava o arquivo que o servidor interno
+            // gera (só endereços do próprio app). A página fica sabendo do resultado por window.__iptvkzSaved.
+            @JavascriptInterface
+            public void saveFile(String url, String name) {
+                main.post(() -> {
+                    if (url == null || !url.startsWith("http://127.0.0.1:")) { savedFile(false); return; }
+                    saveUrl = url;
+                    Intent save = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    save.addCategory(Intent.CATEGORY_OPENABLE);
+                    save.setType("application/json");
+                    save.putExtra(Intent.EXTRA_TITLE, name);
+                    try {
+                        startActivityForResult(save, REQ_SAVE);
+                    } catch (Exception e) {
+                        saveUrl = null;
+                        savedFile(false);
+                    }
+                });
+            }
+
             // Espera o foco do campo chegar ao WebView antes de pedir o teclado.
             @JavascriptInterface
             public void showKeyboard() { main.postDelayed(MainActivity.this::showKeyboard, 150); }
@@ -430,6 +480,13 @@ public class MainActivity extends Activity {
         });
         root.addView(web, new ViewGroup.LayoutParams(-1, -1));
         web.requestFocus();
+    }
+
+    /** Avisa a página como terminou o "Salvar como": true, false (falhou) ou null (a pessoa cancelou). */
+    private void savedFile(Boolean ok) {
+        main.post(() -> {
+            if (web != null) web.evaluateJavascript("window.__iptvkzSaved && window.__iptvkzSaved(" + ok + ")", null);
+        });
     }
 
     /** Endereço do próprio servidor embutido (http://127.0.0.1:porta). */

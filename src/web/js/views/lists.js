@@ -93,7 +93,21 @@ const isPhoneDevice = () => !TV.on && (androidPhoneApp() || window.matchMedia('(
 
 // Baixa o arquivo da lista direto no aparelho (computador, celular, navegador).
 export function downloadList(list) {
-  h('a', { href: `/api/list-export?list=${encodeURIComponent(list.id)}`, download: '' }).click();
+  const path = `/api/list-export?list=${encodeURIComponent(list.id)}`;
+  const native = window.IPTVKZAndroid;
+  if (native) {
+    // App Android: o WebView não salva downloads. O app abre o "Salvar como" e grava o arquivo.
+    if (!native.saveFile) return toast('Atualize o IPTVKZ para baixar a lista neste aparelho.', 'error');
+    const slug = String(list.name || 'lista').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'lista';
+    window.__iptvkzSaved = (ok) => {
+      window.__iptvkzSaved = null;
+      if (ok === true) toast('Lista salva. Em outro aparelho, use “Adicionar lista” › “Lista IPTVKZ”.', 'ok', 6000);
+      else if (ok === false) toast('Não foi possível salvar o arquivo da lista.', 'error');
+    };
+    native.saveFile(location.origin + path, `iptvkz-lista-${slug}.json`);
+    return;
+  }
+  h('a', { href: path, download: '' }).click();
 }
 
 // Resumo do arquivo de lista baixada, mostrado antes de carregar.
@@ -303,7 +317,7 @@ export function openServers(list, onChanged, onClose) {
   const showErr = (msg) => { err.textContent = msg; err.classList.toggle('hidden', !msg); };
   const rowsBox = h('div.speed-box');
   const addInput = h('input.input', { placeholder: 'http://servidor.com:8080 (pode colar vários)', autocomplete: 'off' });
-  const addBox = h('div.row.hidden', { style: { gap: '8px', marginBottom: '10px' } }, addInput,
+  const addBox = h('div.row.hidden.add-server', { style: { gap: '8px', marginBottom: '10px' } }, addInput,
     h('button.btn.small', { type: 'button', onclick: () => addFromInput() }, 'Adicionar'));
   const addBtn = h('button.btn.small.ghost', { type: 'button', onclick: () => { addBox.classList.remove('hidden'); addInput.focus(); } }, ico('plus'), 'Adicionar servidor');
 
@@ -382,7 +396,7 @@ export function openServers(list, onChanged, onClose) {
   modal(`Servidores · ${list.name}`, h('div',
     h('p.muted', { style: { margin: '0 0 12px' } }, 'Endereços da mesma conta (mesmo usuário e senha). O primeiro é o que está em uso; se ele cair, o app usa o próximo.'),
     err, rowsBox, addBox,
-    h('div.row', { style: { gap: '8px', marginTop: '4px' } }, testBtn, addBtn)), { wide: true, onClose });
+    h('div.row.servers-acts', { style: { gap: '8px', marginTop: '4px' } }, testBtn, addBtn)), { wide: true, onClose });
   setTimeout(() => focusEl(testBtn), 50);
 }
 

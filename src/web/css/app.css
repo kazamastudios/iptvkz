@@ -231,7 +231,17 @@ input, select, textarea { font: inherit; color: inherit; }
   .modal .row.cred-row { flex-direction: column; align-items: stretch; gap: 0; }
   .modal .row.file-row { flex-wrap: wrap; gap: 8px; }
   .modal .row.file-row > .btn { flex: 1 1 100%; justify-content: center; }
-  .modal .form-actions .btn { flex: 1; justify-content: center; }
+  .modal .form-actions { flex-wrap: wrap; }
+  .modal .form-actions .btn { flex: 1; justify-content: center; white-space: nowrap; }
+  /* "Excluir lista" (editar a lista) numa linha só, em cima de Cancelar e Salvar */
+  .modal .form-actions .btn.danger { flex: 1 1 100%; margin-right: 0 !important; }
+  /* Servidores: o endereço ocupa a linha e as etiquetas e botões vão para baixo; nada passa da largura da tela */
+  .modal .speed-row { flex-wrap: wrap; row-gap: 6px; }
+  .modal .speed-host { flex: 1 1 100%; }
+  .modal .servers-acts, .modal .add-server { flex-wrap: wrap; }
+  .modal .servers-acts .btn { flex: 1 1 100%; justify-content: center; }
+  .modal .add-server .input { flex: 1 1 100%; min-width: 0; }
+  .modal .add-server .btn { flex: 1 1 100%; justify-content: center; }
 }
 .modal-back.show .modal { transform: none; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 4px 24px; }
