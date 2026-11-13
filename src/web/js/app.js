@@ -190,6 +190,7 @@ const STATUS_INFO = {
   disabled: ['bad', 'Conta desativada'],
   refused: ['bad', 'Acesso recusado'],
   offline: ['warn', 'Lista fora do ar'],
+  blocked: ['bad', 'Bloqueada pela rede'],
   local: ['idle', 'Arquivo local'],
   unknown: ['idle', 'Lista não verificada'],
 };
@@ -200,6 +201,7 @@ const STATUS_DETAIL = {
   refused: 'O servidor recusou o acesso: a lista pode ter expirado ou o usuário e a senha mudaram.',
   refusedM3u: 'O provedor não entregou a lista: o link pode ter expirado ou mudado.',
   offline: 'O servidor da lista não respondeu. Pode ser temporário.',
+  blocked: 'A rede ou a operadora que você está usando bloqueou o endereço desta lista. Não é um problema do IPTVKZ: em outra rede (como o Wi-Fi de casa) ela pode abrir normalmente.',
   unknown: 'Sem conexão no momento: a lista será verificada quando a conexão voltar.',
   local: 'Lista de arquivo: não dá para saber se os links ainda funcionam.',
 };
@@ -699,12 +701,20 @@ function showBlocked(state) {
   if (TV.on) setTimeout(() => focusEl(again), 30);
 }
 
+// A rede (operadora) desviou o acesso ao endereço da lista: a mensagem do servidor diz isso (util.js, netError).
+const blockedByNetwork = (msg) => /desviou o acesso/.test(msg || '');
+
 function showError() {
   const list = activeList();
+  // Bloqueio da rede: a pessoa tende a culpar o app. A tela diz com todas as letras de onde vem.
+  const blocked = blockedByNetwork(lastError);
   showState(h('div.center-state',
     ico('alert'),
-    h('h2', 'Não foi possível carregar a lista'),
-    h('p', lastError),
+    h('h2', blocked ? 'A rede bloqueou esta lista' : 'Não foi possível carregar a lista'),
+    blocked
+      ? h('p', 'O endereço desta lista foi bloqueado pela rede ou pela operadora que você está usando agora. Não é um problema do IPTVKZ. Em outra rede, como o Wi-Fi de casa, ela pode abrir normalmente. Se continuar, fale com o provedor da lista.')
+      : h('p', lastError),
+    blocked ? h('p.faint', { style: { fontSize: '12px' } }, lastError) : null,
     h('div.row', { style: { marginTop: '8px' } },
       h('button.btn.primary', { onclick: () => loadActive(true) }, ico('refresh'), 'Tentar de novo'),
       list ? h('button.btn', { onclick: () => ctx.editList(list) }, ico('edit'), 'Editar lista') : null,

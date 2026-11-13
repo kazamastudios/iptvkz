@@ -802,8 +802,9 @@ async function checkXtream(cfg, timeout = STATUS_TIMEOUT) {
   let res;
   try {
     res = await fetchWithTimeout(`${x.base}/player_api.php?${q}`, {}, timeout);
-  } catch {
-    return { state: 'offline' };
+  } catch (err) {
+    // a rede (operadora) desviou o acesso ao endereço: não é o servidor que está fora do ar
+    return { state: err && err.blocked ? 'blocked' : 'offline' };
   }
   // Muitos painéis respondem 401/403 quando a conta venceu ou foi bloqueada.
   if (res.status === 401 || res.status === 403) return { state: 'refused', http: res.status };
@@ -837,8 +838,8 @@ async function checkM3uLink(url) {
   let res;
   try {
     res = await fetchWithTimeout(url, {}, STATUS_TIMEOUT);
-  } catch {
-    return { state: 'offline' };
+  } catch (err) {
+    return { state: err && err.blocked ? 'blocked' : 'offline' };
   }
   const stop = () => { try { res.body && res.body.cancel(); } catch {} };
   if (res.status === 401 || res.status === 403) { stop(); return { state: 'refused', http: res.status }; }

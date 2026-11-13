@@ -566,6 +566,29 @@ test('arquivo de lista: app, vídeo ou página não entram, com mensagem para a 
   assert.strictEqual(ok.status, 200);
 });
 
+test('lista bloqueada pela rede: http desviado para https que não é do servidor', async () => {
+  // a "operadora" desvia o http para uma página https sem certificado válido
+  const tls = require('tls');
+  const fake = tls.createServer({}, (c) => c.end());
+  await new Promise((r) => fake.listen(0, '127.0.0.1', r));
+  const port = fake.address().port;
+  const desvio = http.createServer((q, r) => { r.writeHead(302, { Location: `https://127.0.0.1:${port}/bloqueio` }); r.end(); });
+  await new Promise((r) => desvio.listen(0, '127.0.0.1', r));
+  const url = `http://127.0.0.1:${desvio.address().port}/get.php`;
+  try {
+    await addLists([{ id: 'bloq', type: 'm3u', name: 'Bloqueada', url }]);
+    const st = await request('GET', '/api/list-status?list=bloq');
+    assert.strictEqual(st.json.state, 'blocked');
+    const c = await request('GET', '/api/catalog?list=bloq&section=live');
+    assert.strictEqual(c.status, 500);
+    assert.match(c.json.error, /desviou o acesso/);
+    assert.ok(!/tente o link com http/.test(c.json.error));
+  } finally {
+    desvio.close();
+    fake.close();
+  }
+});
+
 test('EPG: guia .xml.gz da lista chega para o canal certo', async () => {
   const body = { list: 'm3uurl', chans: [{ k: 'a', e: 'c1', n: 'Canal 1' }] };
   const r = await until(async () => {
