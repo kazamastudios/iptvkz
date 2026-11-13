@@ -1,6 +1,8 @@
 // Gera o app Android (celular e TV) nos dois canais.
 // Uso: npm run android           canal Developer: APK + arquivos de atualização em dist/android/
 //      npm run android:play      canal Google Play: AAB em dist/android/play/
+//                                PLAY_BETA=1: "IPTVKZ Beta" (teste interno/fechado); sem ele: "IPTVKZ" (produção),
+//                                que só sai assinado a partir de uma tag v<versão do app>.
 // Chaves do Developer: ANDROID_KEYSTORE, ANDROID_KEYSTORE_PASSWORD e ANDROID_UPDATE_KEY (arquivo PEM).
 // Chaves da Play: PLAY_UPLOAD_KEYSTORE, PLAY_UPLOAD_KEYSTORE_PASSWORD, PLAY_UPLOAD_KEY_ALIAS e
 // PLAY_UPLOAD_KEY_PASSWORD. Sem elas, o AAB sai sem assinatura e com "UNSIGNED" no nome (só para conferir).
@@ -154,10 +156,12 @@ function developer(v) {
   fs.writeFileSync(path.join(out, 'android-update.json.sig'), signature.toString('base64'));
 }
 
-// Confere o AAB com o bundletool: estrutura válida e manifesto sem nada que a Play recusaria.
-function checkBundle(aab) {
+// Confere o AAB com o bundletool: estrutura válida, manifesto sem nada que a Play recusaria e canal certo
+// (Beta com nome e versão de Beta; produção sem nenhum sinal de Beta).
+function checkBundle(aab, beta) {
   const jar = process.env.BUNDLETOOL;
   if (!jar) {
+    if (process.env.CI) throw new Error('BUNDLETOOL não definida: o CI sempre confere o AAB.');
     console.log('BUNDLETOOL não definida: AAB não validado.');
     return;
   }
@@ -170,31 +174,50 @@ function checkBundle(aab) {
   // celular e TV: aparece nos dois launchers
   if (!manifest.includes('LEANBACK_LAUNCHER')) problems.push('não aparece no launcher da TV');
   if (!manifest.includes('android.intent.category.LAUNCHER')) problems.push('não aparece no launcher do celular');
+  const versionName = (/android:versionName="([^"]*)"/.exec(manifest) || [])[1] || '';
+  const label = (/<application[^>]*android:label="([^"]*)"/.exec(manifest) || [])[1] || '';
+  if (beta && !/-beta\.\d+$/.test(versionName)) problems.push(`Beta sem "-beta" na versão (${versionName})`);
+  if (beta && label !== 'IPTVKZ Beta') problems.push(`Beta com o nome "${label}"`);
+  if (!beta && /beta/i.test(versionName)) problems.push(`produção com versão de Beta (${versionName})`);
+  if (!beta && label !== 'IPTVKZ') problems.push(`produção com o nome "${label}"`);
   if (problems.length) throw new Error('AAB da Play reprovado: ' + problems.join('; '));
-  console.log('AAB da Play conferido: manifesto sem instalação de APK, para celular e TV.');
+  console.log(`AAB da Play conferido: ${label} ${versionName}, sem instalação de APK, para celular e TV.`);
+}
+
+// Produção assinada só a partir da tag da versão (ex.: v1.2.0 com nativeName=1.2.0). Beta sai de qualquer lugar.
+function checkProductionRef(v, signed) {
+  if (!signed) return;
+  const ref = process.env.GITHUB_REF || '';
+  if (ref !== `refs/tags/v${v.nativeName}`) {
+    throw new Error(`AAB de produção assinado só a partir da tag v${v.nativeName} (agora: ${ref || 'sem tag'}). ` +
+      'Para testar, gere o Beta (PLAY_BETA=1).');
+  }
 }
 
 function play(v) {
   const versionCode = Number(process.env.PLAY_VERSION_CODE || v.playVersionCode);
   if (!(versionCode > 0)) throw new Error('playVersionCode inválido em version.properties');
   const signed = !!process.env.PLAY_UPLOAD_KEYSTORE;
+  const beta = process.env.PLAY_BETA === '1';
+  if (!beta) checkProductionRef(v, signed);
   fs.rmSync(playOut, { recursive: true, force: true });
   fs.mkdirSync(playOut, { recursive: true });
 
   ensureLibnode();
   // O pacote embutido usa o versionCode como versão: cada envio à Play reinstala o src/ novo.
+  // No Beta, a página abre no modo Beta (tema âmbar), igual ao Beta das outras plataformas.
   const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'iptvkz-play-'));
-  buildBundle(versionCode, stage, false);
+  buildBundle(versionCode, stage, beta);
   fs.rmSync(stage, { recursive: true, force: true });
-  gradle('bundlePlayRelease', { PLAY_VERSION_CODE: String(versionCode) });
+  gradle('bundlePlayRelease', { PLAY_VERSION_CODE: String(versionCode), PLAY_BETA: beta ? '1' : '' });
 
-  const name = `IPTVKZ-play-${v.nativeName}-${versionCode}${signed ? '' : '-UNSIGNED'}.aab`;
+  const name = `IPTVKZ-play-${beta ? 'beta-' : ''}${v.nativeName}-${versionCode}${signed ? '' : '-UNSIGNED'}.aab`;
   const aab = path.join(playOut, name);
   fs.copyFileSync(path.join(android, 'app', 'build', 'outputs', 'bundle', 'playRelease', 'app-play-release.aab'), aab);
   check16k(aab, 'base/');
   fs.writeFileSync(aab + '.sha256', `${sha256(aab)}  ${name}\n`);
   console.log(`${name}: ${(fs.statSync(aab).size / 1048576).toFixed(1)} MB${signed ? '' : ' (sem assinatura: não envie à Play)'}`);
-  checkBundle(aab);
+  checkBundle(aab, beta);
 }
 
 const v = props();

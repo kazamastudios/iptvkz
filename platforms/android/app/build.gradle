@@ -7,8 +7,10 @@ def bundleVersion = (System.getenv('BUNDLE_VERSION') ?: v.bundleVersion).toInteg
 def playVersionCode = (System.getenv('PLAY_VERSION_CODE') ?: v.playVersionCode).toInteger()
 def env = { String name -> System.getenv(name) ?: '' }
 // Canal Developer: só a versão publicada (tag v*) é o app oficial; o resto é o Beta (nome, ícone e banner próprios).
-// O canal Play é sempre o "IPTVKZ" (o que vai para a loja nunca sai como Beta).
 def isBeta = !env('GITHUB_REF').startsWith('refs/tags/v')
+// Canal Play: PLAY_BETA=1 gera o "IPTVKZ Beta" para o teste interno/fechado (mesmo pacote, versionName com "-beta").
+// Sem ele, o "IPTVKZ" da produção; scripts/build-android.js só assina esse a partir de uma tag v*.
+def playBeta = env('PLAY_BETA') == '1'
 def hasKey = env('ANDROID_KEYSTORE') != ''
 
 android {
@@ -78,8 +80,10 @@ android {
             applicationId(project.findProperty('playApplicationId') ?: env('PLAY_APPLICATION_ID') ?: 'com.kazamastudios.iptvkz')
             versionCode playVersionCode
             buildConfigField 'int', 'BUNDLE_VERSION', "${playVersionCode}"
-            buildConfigField 'boolean', 'IS_BETA', 'false'
-            manifestPlaceholders = [appLabel: 'IPTVKZ']
+            buildConfigField 'boolean', 'IS_BETA', "${playBeta}"
+            manifestPlaceholders = [appLabel: playBeta ? 'IPTVKZ Beta' : 'IPTVKZ']
+            // aparece na Play Console ao criar a versão: "1.2.0-beta.5" nunca passa por versão de produção
+            if (playBeta) versionNameSuffix "-beta.${playVersionCode}"
             // Sem chave de upload sai um AAB sem assinatura (só para conferir o build). Nunca a chave de debug.
             if (env('PLAY_UPLOAD_KEYSTORE')) signingConfig signingConfigs.playUpload
         }
@@ -89,8 +93,9 @@ android {
     externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
     sourceSets {
         main { jniLibs.srcDirs = ['libnode/bin'] }
-        // Beta (só no canal Developer): ícone e banner âmbar com o selo BETA (scripts/make-beta-icons.py)
+        // Beta: ícone e banner âmbar com o selo BETA (scripts/make-beta-icons.py)
         if (isBeta || !hasKey) developerRelease { res.srcDirs = ['src/beta/res'] }
+        if (playBeta) playRelease { res.srcDirs = ['src/beta/res'] }
     }
     packaging { jniLibs { useLegacyPackaging = true } }
     aaptOptions { noCompress 'zip' }

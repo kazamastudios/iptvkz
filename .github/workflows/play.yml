@@ -1,8 +1,10 @@
-# Versão da Google Play (Android TV): gera e confere o AAB. Não envia nada à Play.
+# Versão da Google Play (celular e TV): gera e confere o AAB. NUNCA envia nada à Play.
 # Fica separado do build.yml de propósito: se este falhar, o canal Developer (GitHub Releases) segue normal.
-# - Em pull requests que mexem no app: testa e gera um AAB SEM assinatura, só para conferir.
+# - Em pull requests que mexem no app: testa e gera um AAB Beta SEM assinatura, só para conferir.
 # - No botão "Run workflow": gera o AAB assinado com a chave de upload (secrets PLAY_UPLOAD_*),
 #   confere com o bundletool e guarda como artefato para enviar à mão na Play Console.
+#   canal "beta": "IPTVKZ Beta", para o teste interno/fechado. Sai de qualquer branch.
+#   canal "producao": "IPTVKZ", para a produção. Só roda a partir da tag da versão (Use workflow from → v1.2.0).
 name: Google Play
 
 on:
@@ -16,6 +18,11 @@ on:
       - '.github/workflows/play.yml'
   workflow_dispatch:
     inputs:
+      canal:
+        description: 'beta = IPTVKZ Beta (teste interno/fechado). producao = IPTVKZ (só a partir da tag v*)'
+        type: choice
+        options: [beta, producao]
+        default: beta
       version_code:
         description: 'versionCode (vazio = playVersionCode de platforms/android/version.properties)'
         required: false
@@ -34,7 +41,17 @@ jobs:
   aab:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # PR e "beta" geram o IPTVKZ Beta; só "producao" gera o IPTVKZ vermelho
+      PLAY_BETA: ${{ inputs.canal == 'producao' && '0' || '1' }}
+      ARTIFACT: ${{ inputs.canal == 'producao' && 'IPTVKZ-GooglePlay-Producao' || 'IPTVKZ-GooglePlay-Beta' }}
     steps:
+      - name: Produção só a partir de uma tag v*
+        if: inputs.canal == 'producao' && !startsWith(github.ref, 'refs/tags/v')
+        run: |
+          echo "::error::Produção só a partir de uma tag v* (em 'Use workflow from', escolha a tag). Para testar, use o canal beta."
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -93,6 +110,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PLAY_VERSION_CODE: ${{ inputs.version_code }}
 
+      - name: Resumo (canal, nome e versão)
+        run: |
+          AAB=$(ls dist/android/play/*.aab)
+          M=$(java -jar "$BUNDLETOOL" dump manifest --bundle="$AAB")
+          {
+            echo "### $( [ "$PLAY_BETA" = 1 ] && echo 'Beta: só teste interno ou fechado' || echo 'Produção' )"
+            echo "- Arquivo: \`$(basename "$AAB")\`"
+            echo "- Nome no aparelho: $(echo "$M" | grep -o '<application[^>]*' | grep -o 'android:label="[^"]*"' | cut -d'"' -f2)"
+            echo "- versionName: $(echo "$M" | grep -o 'android:versionName="[^"]*"' | cut -d'"' -f2)"
+            echo "- versionCode: $(echo "$M" | grep -o 'android:versionCode="[^"]*"' | cut -d'"' -f2)"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Tamanho de download estimado
         run: |
           AAB=$(ls dist/android/play/*.aab)
@@ -105,7 +134,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: IPTVKZ-GooglePlay
+          name: ${{ env.ARTIFACT }}
           path: dist/android/play/*
           if-no-files-found: error
           retention-days: 30
