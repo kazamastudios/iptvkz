@@ -35,7 +35,7 @@ async function fetchWithTimeout(url, opts = {}, ms = 90000) {
     return res;
   } catch (err) {
     if (ctrl.signal.aborted) throw new Error('Tempo esgotado ao acessar ' + safeHost(url));
-    throw new Error('Não foi possível conectar a ' + safeHost(url) + ' (' + (err.cause?.code || err.message) + ')');
+    throw netError(url, err);
   } finally {
     clearTimeout(timer);
   }
@@ -43,6 +43,34 @@ async function fetchWithTimeout(url, opts = {}, ms = 90000) {
 
 function safeHost(url) {
   try { return new URL(url).host; } catch { return 'o servidor'; }
+}
+
+// Falha de conexão em palavras: o código do Node (ou a mensagem, no fetch da TV LG) vira algo que a pessoa entende.
+const NET_ERRORS = [
+  [/ECONNREFUSED/, 'o servidor recusou a conexão; confira o endereço e a porta'],
+  [/ENOTFOUND|EAI_AGAIN|getaddrinfo/, 'endereço não encontrado; confira se o link está certo'],
+  [/ECONNRESET|socket hang up|other side closed|aborted/i, 'a conexão caiu no meio'],
+  [/ETIMEDOUT|ESOCKETTIMEDOUT|UND_ERR_CONNECT_TIMEOUT/, 'o servidor não respondeu a tempo'],
+  [/EHOSTUNREACH|ENETUNREACH|ENETDOWN/, 'sem caminho até o servidor; confira a internet'],
+  [/CERT|SSL|TLS|self.signed|unable to verify/i, 'problema no certificado de segurança (https); tente o link com http://'],
+  [/bad port/i, 'porta não permitida no endereço'],
+];
+function netError(url, err) {
+  const raw = [err && err.cause && err.cause.code, err && err.code, err && err.cause && err.cause.message, err && err.message].filter(Boolean).join(' ');
+  const hit = NET_ERRORS.find(([re]) => re.test(raw));
+  return new Error(`Não foi possível conectar a ${safeHost(url)}: ${hit ? hit[1] : raw || 'erro desconhecido'}.`);
+}
+
+// Resposta HTTP de erro em palavras (lista M3U, API do Xtream).
+function httpError(url, status) {
+  const host = safeHost(url);
+  let msg;
+  if (status === 404) msg = `${host} respondeu que o endereço não existe (erro 404). Confira o link com o seu provedor.`;
+  else if (status === 401 || status === 403) msg = `${host} recusou o acesso (erro ${status}). A lista pode ter expirado ou o link mudou.`;
+  else if (status === 429) msg = `${host} recebeu pedidos demais (erro 429). Espere um pouco e tente de novo.`;
+  else if (status >= 500) msg = `O servidor ${host} está com problema (erro ${status}). Tente de novo mais tarde.`;
+  else msg = `O servidor respondeu ${status} (${host})`;
+  return Object.assign(new Error(msg), { status });
 }
 
 // Baixa o corpo e entrega o texto em pedaços (onText) conforme chega. Lista grande em provedor lento pode levar
@@ -75,7 +103,10 @@ async function readBody(url, onText, { onProgress, headers, idleMs = 45000, maxM
       if (res.body && res.body.cancel) res.body.cancel().catch(() => {});
       return { notModified: true, etag, lastModified, got: 0, total: 0 };
     }
-    if (!res.ok) throw Object.assign(new Error(`O servidor respondeu ${res.status} (${safeHost(url)})`), { status: res.status });
+    if (!res.ok) {
+      if (res.body && res.body.cancel) res.body.cancel().catch(() => {});
+      throw httpError(url, res.status);
+    }
     // com compressão, o tamanho informado é o comprimido: não serve de total (nem para ver se chegou inteira; aí
     // quem acusa a lista cortada é a descompressão, que falha sem o fim do arquivo)
     const total = res.headers.get('content-encoding') ? 0 : Number(res.headers.get('content-length')) || 0;
@@ -109,7 +140,7 @@ async function readBody(url, onText, { onProgress, headers, idleMs = 45000, maxM
     if (err.handler) throw err;
     if (ctrl.signal.aborted) throw Object.assign(new Error('Tempo esgotado ao baixar de ' + safeHost(url)), { timeout: true });
     if (err.status) throw err;
-    throw new Error('Não foi possível conectar a ' + safeHost(url) + ' (' + (err.cause?.code || err.message) + ')');
+    throw netError(url, err);
   } finally {
     clearTimeout(idle);
     clearTimeout(hard);

@@ -771,6 +771,7 @@ async function checkXtream(cfg, timeout = STATUS_TIMEOUT) {
 }
 
 // Link M3U: basta ver se o servidor ainda entrega uma playlist (não baixa a lista inteira).
+const M3U_START = /^\uFEFF?\s*(#EXTM3U|#EXTINF|#EXTGRP|(https?|rtmp|rtsp|udp|rtp):\/\/)/i;
 async function checkM3uLink(url) {
   let res;
   try {
@@ -794,7 +795,9 @@ async function checkM3uLink(url) {
   } finally {
     reader.cancel().catch(() => {});
   }
-  return /^\uFEFF?\s*#EXTM3U/i.test(head) ? { state: 'active' } : { state: 'refused' };
+  // Muitos provedores mandam a lista sem o cabeçalho #EXTM3U (começa direto no #EXTINF, ou só com os links), e a
+  // montagem aceita: aqui também. Página, texto de aviso ou resposta vazia contam como recusa.
+  return M3U_START.test(head) ? { state: 'active' } : { state: 'refused' };
 }
 
 // Teste de velocidade dos servidores da mesma conta: um de cada vez (leve para a TV e para o provedor),

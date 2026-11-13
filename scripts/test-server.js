@@ -118,6 +118,8 @@ function startFake() {
       res.write(body.subarray(0, Math.floor(body.length / 2)));
       return setTimeout(() => res.destroy(), 50);
     }
+    // lista sem o cabeçalho #EXTM3U (começa direto no #EXTINF): muitos provedores mandam assim
+    if (u.pathname === '/sem-cabecalho.m3u') return res.end(m3u(12, FAKE).split('\n').slice(1).join('\n'));
     if (u.pathname === '/grande.m3u') return res.end(m3u(Number(u.searchParams.get('n')), FAKE));
     if (u.pathname === '/guia.xml.gz') return res.end(zlib.gzipSync(xmltv()));
     if (u.pathname === '/player_api.php') return xtreamApi(u.searchParams, res);
@@ -475,6 +477,34 @@ test('M3U por link: pede a lista comprimida (gzip) e lê igual; comprimida e cor
   assert.strictEqual(cut.json.catalog.updatedAt, r.json.catalog.updatedAt, 'a versão guardada continua');
   assert.strictEqual(cut.json.catalog.live.items.length, r.json.catalog.live.items.length);
   await request('DELETE', '/api/list?list=gz');
+});
+
+test('M3U sem o cabeçalho #EXTM3U: carrega e a verificação não bloqueia a lista', async () => {
+  await addLists([{ id: 'semcab', type: 'm3u', name: 'Sem cabeçalho', url: `${FAKE}/sem-cabecalho.m3u` }]);
+  const r = await request('GET', '/api/catalog?list=semcab&section=live');
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.json.catalog.live.items.length, 4);
+  const st = await request('GET', '/api/list-status?list=semcab');
+  assert.strictEqual(st.json.state, 'active', 'não aparece como "o provedor recusou"');
+  await request('DELETE', '/api/list?list=semcab');
+});
+
+test('erros de download em palavras: endereço inexistente e servidor que recusa a conexão', async () => {
+  // uma porta que acabou de ficar livre: ninguém atende nela
+  const closed = await new Promise((r) => { const s = http.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => r(p)); }); });
+  await addLists([
+    { id: 'e404', type: 'm3u', name: '404', url: `${FAKE}/nao-existe.m3u` },
+    { id: 'erecusa', type: 'm3u', name: 'Recusa', url: `http://127.0.0.1:${closed}/lista.m3u` },
+  ]);
+  const a = await request('GET', '/api/catalog?list=e404&section=live');
+  assert.ok(a.status >= 400);
+  assert.match(a.json.error, /não existe \(erro 404\)/);
+  const b = await request('GET', '/api/catalog?list=erecusa&section=live');
+  assert.strictEqual(b.status, 500);
+  assert.match(b.json.error, /recusou a conexão/);
+  assert.ok(!/fetch failed|ECONN/.test(b.json.error), 'sem o código técnico');
+  await request('DELETE', '/api/list?list=e404');
+  await request('DELETE', '/api/list?list=erecusa');
 });
 
 test('M3U por link monta enquanto baixa: igual a montar com o texto inteiro', async () => {
