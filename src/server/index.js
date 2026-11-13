@@ -407,7 +407,7 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/sessions/gone' && m === 'GET') return sendJson(res, 200, { gone: sessions.isGone(q.get('target')) });
 
-  if (p === '/api/net' && m === 'GET') return sendJson(res, 200, await net.checkInternet());
+  if (p === '/api/net' && m === 'GET') return sendJson(res, 200, await net.checkInternet(catalogs.anyBuilding));
 
   if (p === '/api/list-speed' && m === 'POST') {
     const b = await readJsonBody(req);

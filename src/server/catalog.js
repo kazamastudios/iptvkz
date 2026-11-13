@@ -1297,6 +1297,11 @@ function isRefreshing(id) {
   return inflight.has(id);
 }
 
+// alguma lista sendo montada agora (o servidor fica ocupado: medições de tempo não valem)
+function anyBuilding() {
+  return inflight.size > 0;
+}
+
 function progressOf(id) {
   const p = progress.get(id);
   return p ? { phase: p.phase, got: p.got, total: p.total, secs: Math.round((Date.now() - p.at) / 1000) } : null;
@@ -1338,6 +1343,7 @@ module.exports = {
   getCatalog,
   speedTest,
   isRefreshing,
+  anyBuilding,
   warm,
   progressOf,
   updatedAtOf,

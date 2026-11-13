@@ -267,6 +267,8 @@ export class Player {
     const on = (ev, fn) => v.addEventListener(ev, fn);
     on('play', () => this._setIcon(this.btnPlay, 'pause'));
     on('pause', () => { this._setIcon(this.btnPlay, 'play'); this._showCtrl(); this._report(); });
+    // qualquer pulo no vídeo (barra, teclas, retomar de onde parou) conta como "mexeu na barra" para o aviso de internet
+    on('seeking', () => { this._seekAt = Date.now(); });
     on('waiting', () => { this._spin(true); this._netStall(true); if (this.hadFrame) this.stalls = (this.stalls || 0) + 1; });
     on('playing', () => {
       this._spin(false);
@@ -810,6 +812,8 @@ export class Player {
     if (waiting) {
       this._netT = setTimeout(async () => {
         if (this.destroyed || !this.errorEl.classList.contains('hidden')) return;
+        // mexeu na barra no meio da espera (ou está arrastando agora): é o vídeo indo para outro ponto, não a internet
+        if (this.scrub || (this._isDragging && this._isDragging()) || Date.now() - (this._seekAt || 0) < 12000) return this._netStall(true);
         let offline = navigator.onLine === false;
         try { offline = offline || (await api('/api/net')).online === false; } catch {}
         if (this.destroyed) return;
@@ -817,7 +821,7 @@ export class Player {
         this.netTag.classList.remove('hidden');
         // folga: travadinhas curtas, servidores lentos para abrir e o carregamento depois de mexer na barra
         // (o provedor precisa achar o novo ponto do vídeo) não são internet ruim
-      }, !this.hadFrame || Date.now() - (this._seekAt || 0) < 15000 ? 12000 : 4000);
+      }, !this.hadFrame || Date.now() - (this._seekAt || 0) < 15000 ? 12000 : 6000);
     } else if (!this.netTag.classList.contains('hidden')) {
       this._netT = setTimeout(() => this.netTag.classList.add('hidden'), 3000);
     }

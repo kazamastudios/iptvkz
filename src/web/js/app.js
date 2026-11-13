@@ -231,7 +231,9 @@ function statusModel() {
   }[net.state];
   // Conectado, mas demorando a responder (o teste é um pedido pequeno: normal fica bem abaixo de 300 ms).
   // Aí os vídeos demoram e travam por causa da internet, não do app: a bolinha avisa em amarelo.
-  if (net.state === 'online' && net.ms > SLOW_NET_MS) {
+  // lenta de verdade: duas medições seguidas acima do limite, nenhuma com o servidor ocupado (montando uma lista, a
+  // resposta demora por causa dele, não da internet) e sem lista carregando nesta tela
+  if (net.state === 'online' && net.slowRuns >= 2 && appState !== 'loading') {
     Object.assign(n, { tone: 'warn', label: 'Internet instável', detail: `${net.ms} ms para responder. Vídeos podem demorar a abrir ou travar.` });
   }
   let list = null;
@@ -342,14 +344,19 @@ function checkNet() {
     const prev = net.state;
     let state;
     let ms = null;
+    let busy = false;
     try {
       const r = await api('/api/net');
       state = r.online ? 'online' : 'offline';
       ms = r.ms ?? null;
+      busy = !!r.busy;
     } catch {
       state = 'noserver';
     }
-    net = { state, ms, at: Date.now() };
+    // medição com o servidor ocupado não conta, nem para lenta nem para rápida
+    const slow = state === 'online' && ms != null && ms > SLOW_NET_MS;
+    const slowRuns = busy ? (net.slowRuns || 0) : slow ? (net.slowRuns || 0) + 1 : 0;
+    net = { state, ms, at: Date.now(), slowRuns };
     renderListStatus();
     if (prev !== state && prev !== 'checking') {
       if (state === 'online') {
