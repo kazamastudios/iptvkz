@@ -1348,3 +1348,7 @@ html { -webkit-tap-highlight-color: transparent; }
 .list-opts .menu-opt > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .list-opts .menu-opt small { color: var(--muted); font-weight: 400; font-size: 12px; white-space: normal; }
 .list-opts .menu-opt.danger, .list-opts .menu-opt.danger .ico { color: var(--bad, #ff6b6b); }
+/* A barra de tempo é só do player: o navegador nunca assume o gesto como rolagem. Antes só valia no celular em pé;
+   deitado (tela mais larga), o Android cancelava o arraste depois de poucos milímetros e só arrastes curtos funcionavam. */
+.player .seek { touch-action: none; }
+@media (pointer: coarse) { .player .seek { height: 28px; } } /* tela de toque: barra mais alta para o dedo, deitado ou em pé */
