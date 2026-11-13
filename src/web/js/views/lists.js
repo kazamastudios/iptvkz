@@ -39,7 +39,7 @@ function pairingBox(onList, onRestore, onReady) {
     qr.make();
     box.replaceChildren(
       h('img.pair-qr', { src: qr.createDataURL(6, 3), alt: 'QR Code para adicionar a lista pelo celular' }),
-      h('div', h('b', TV.on ? 'Mais rápido pelo celular' : 'Ou mande pelo celular'), h('p.muted', `Escaneie com a câmera, no mesmo Wi-Fi ${TV.on ? 'da TV' : 'deste computador'}, e preencha a lista por lá. Uma lista baixada no celular entra por “Carregar lista”.`)));
+      h('div', h('b', TV.on ? 'Mais rápido pelo celular' : 'Ou mande pelo celular'), h('p.muted', `Escaneie com a câmera, no mesmo Wi-Fi ${TV.on ? 'da TV' : 'deste computador'}, e preencha a lista por lá. Uma lista baixada no celular entra por “Lista IPTVKZ”.`)));
     box.classList.remove('hidden');
     if (onReady) onReady();
     poll();
@@ -113,7 +113,7 @@ export function openListSave(list) {
     if (stopped) return;
     if (r && r.downloaded) {
       status.replaceChildren(h('b', 'Lista baixada no celular.'), h('br'),
-        'Para usar em outro aparelho, abra “Adicionar lista” nele, escaneie o QR Code e escolha “Carregar lista” no celular.');
+        'Para usar em outro aparelho, abra “Adicionar lista” nele, escaneie o QR Code e escolha “Lista IPTVKZ” no celular.');
     }
     timer = setTimeout(poll, 2000);
   };
@@ -408,7 +408,7 @@ export function openListForm(existing, onSaved, onDelete) {
   for (let i = -12; i <= 12; i++) tz.append(h('option', { value: i, selected: Number(ex.tzOffset || 0) === i }, i === 0 ? 'Sem ajuste' : `${i > 0 ? '+' : ''}${i} h`));
   const fileInput = h('input', { type: 'file', accept: '.m3u,.m3u8,.txt', style: { display: 'none' } });
   // só aparece quando o QR Code do celular estiver na tela
-  const phoneHint = h('div.hint.hidden', 'Pelo celular: escaneie o QR Code acima e escolha “Carregar lista”.');
+  const phoneHint = h('div.hint.hidden', 'Pelo celular: escaneie o QR Code acima e escolha “Lista IPTVKZ”.');
   // Carregar lista: arquivo baixado pelo botão “Baixar lista” (aqui ou em outro aparelho)
   let loadFile = null;
   const loadInput = h('input', { type: 'file', accept: '.json,application/json', style: { display: 'none' } });
@@ -508,7 +508,7 @@ export function openListForm(existing, onSaved, onDelete) {
     url: h('button', { type: 'button', onclick: () => setTab('url') }, ico('link'), 'Link M3U'),
     file: h('button', { type: 'button', onclick: () => setTab('file') }, ico('file'), 'Arquivo M3U'),
   };
-  if (!existing) tabBtns.load = h('button', { type: 'button', onclick: () => setTab('load') }, ico('download'), 'Carregar lista');
+  if (!existing) tabBtns.load = h('button', { type: 'button', onclick: () => setTab('load') }, ico('upload'), 'Lista IPTVKZ');
   const extras = h('div');
   const paneBox = h('div');
   function setTab(t) {
@@ -567,7 +567,7 @@ export function openListForm(existing, onSaved, onDelete) {
     e.preventDefault();
     showErr('');
     if (tab === 'load') {
-      if (!loadFile) return showErr(nativeTvApp() ? 'Use o QR Code acima com o celular e escolha “Carregar lista”.' : 'Escolha o arquivo da lista baixada.');
+      if (!loadFile) return showErr(nativeTvApp() ? 'Use o QR Code acima com o celular e escolha “Lista IPTVKZ”.' : 'Escolha o arquivo da lista baixada.');
       try {
         const body = await loadFile.text();
         const { summary } = await api('/api/list-import?dry=1', { method: 'POST', body });

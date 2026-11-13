@@ -109,7 +109,7 @@ textarea{width:100%;padding:10px 12px;margin:0 0 14px;border-radius:10px;border:
 <div id="done" class="hidden"><h1>Pronto!</h1><p id="donetext">A lista foi enviada. Continue na TV.</p></div>
 <div id="main">
 <h1>Adicionar lista</h1><p>Os dados vão direto para a sua TV, pela rede de casa.</p>
-<div class="tabs"><button type="button" id="tx" class="on">Xtream</button><button type="button" id="tm">Link M3U</button><button type="button" id="tb">Carregar lista</button></div>
+<div class="tabs"><button type="button" id="tx" class="on">Xtream</button><button type="button" id="tm">Link M3U</button><button type="button" id="tb">Lista IPTVKZ</button></div>
 <form id="f">
 <div id="px"><label for="s">Servidor (ou cole o link get.php)</label><input id="s" autocomplete="off" autocapitalize="none" inputmode="url" placeholder="http://servidor.com:8080">
 <button type="button" class="more" id="mb">+ O provedor deu mais de um servidor?</button>
@@ -120,13 +120,13 @@ textarea{width:100%;padding:10px 12px;margin:0 0 14px;border-radius:10px;border:
 <div id="err"></div><button class="send" id="b">Enviar para a TV</button>
 </form>
 <div id="pb" class="hidden">
-<h2>Carregar lista</h2><p>Escolha o arquivo que você baixou pelo botão “Baixar lista”, em outra TV (começa com “iptvkz-lista”). Ela entra nesta TV com favoritos e histórico; as outras listas continuam.</p>
+<h2>Lista IPTVKZ</h2><p>Escolha o arquivo que você baixou pelo botão “Baixar lista”, em outra TV (começa com “iptvkz-lista”). Ela entra nesta TV com favoritos e histórico; as outras listas continuam.</p>
 <input type="file" id="a" accept=".json,application/json">
 <div id="berr"></div><button class="send" id="rb" type="button">Carregar lista</button>
 </div>
 </div>
 <div id="save" class="hidden"><h1>Baixar lista no celular</h1>
-<p>Baixa um arquivo com a lista, os favoritos e o histórico dela. Em outro aparelho, abra “Adicionar lista”, escaneie o QR Code e use “Carregar lista”.</p>
+<p>Baixa um arquivo com a lista, os favoritos e o histórico dela. Em outro aparelho, abra “Adicionar lista”, escaneie o QR Code e use “Lista IPTVKZ”.</p>
 <p class="warn">O arquivo contém o usuário e a senha da lista. Guarde com cuidado e não compartilhe.</p>
 <a class="send" id="dl" download>Baixar lista</a>
 <p id="saved" class="hidden" style="margin-top:16px">Download iniciado. Confira a pasta de downloads do celular.</p>
