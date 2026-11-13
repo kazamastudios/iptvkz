@@ -61,6 +61,9 @@ android {
             versionCode v.nativeVersion.toInteger()
             buildConfigField 'int', 'BUNDLE_VERSION', "${bundleVersion}"
             buildConfigField 'boolean', 'IS_BETA', "${isBeta}"
+            // Só o app oficial (assinado com a chave do projeto) se atualiza pelo GitHub. O Beta gerado no PC é outro
+            // pacote: atualizar por lá instalaria o IPTVKZ oficial ao lado, ou trocaria o código de teste pelo publicado.
+            buildConfigField 'boolean', 'SELF_UPDATE', "${hasKey}"
             buildConfigField 'String', 'UPDATE_BASE', "\"${env('UPDATE_BASE') ?: 'https://github.com/kazamastudios/iptvkz/releases/latest/download/'}\""
             if (hasKey) {
                 signingConfig signingConfigs.release

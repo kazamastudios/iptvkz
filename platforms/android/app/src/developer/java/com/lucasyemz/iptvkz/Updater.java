@@ -35,8 +35,9 @@ import java.util.function.IntConsumer;
  * mudanças no app Android baixam o APK e pedem a confirmação do sistema.
  */
 final class Updater {
-    /** Só o canal Developer se atualiza sozinho; a versão da Play tem um Updater vazio. */
-    static final boolean ENABLED = true;
+    /** Só o canal Developer se atualiza sozinho (a versão da Play tem um Updater vazio), e só o app oficial:
+     *  o Beta gerado no PC recebe build novo pelo adb. */
+    static final boolean ENABLED = BuildConfig.SELF_UPDATE;
     private static final String TAG = "IPTVKZ-update";
     private static final String BASE = BuildConfig.UPDATE_BASE;
     private static final long CHECK_EVERY_MS = 6 * 60 * 60 * 1000L;
@@ -79,6 +80,7 @@ final class Updater {
     }
 
     void checkIfDue() {
+        if (!ENABLED) return;
         long now = System.currentTimeMillis();
         synchronized (Updater.class) {
             if (running || now - lastCheck < CHECK_EVERY_MS) return;
