@@ -43,10 +43,13 @@ function safeHost(url) {
   try { return new URL(url).host; } catch { return 'o servidor'; }
 }
 
-// Baixa o corpo inteiro dentro do prazo: o provedor pode parar de enviar no meio da resposta.
-async function readText(url, ms = 120000) {
+// Baixa o corpo inteiro. Lista grande em provedor lento pode levar minutos: o prazo só vence se o provedor
+// ficar idleMs sem mandar nada (parou no meio) ou passar de maxMs no total. onProgress(recebido, total) a cada
+// pedaço; total é 0 quando o provedor não informa o tamanho.
+async function readText(url, { onProgress, idleMs = 45000, maxMs = 15 * 60000 } = {}) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
+  let idle = setTimeout(() => ctrl.abort(), idleMs);
+  const hard = setTimeout(() => ctrl.abort(), maxMs);
   try {
     const res = await fetch(url, {
       redirect: 'follow',
@@ -54,20 +57,34 @@ async function readText(url, ms = 120000) {
       signal: ctrl.signal,
     });
     if (!res.ok) throw Object.assign(new Error(`O servidor respondeu ${res.status} (${safeHost(url)})`), { status: res.status });
-    return await res.text();
+    // com compressão, o tamanho informado é o comprimido: não serve de total
+    const total = res.headers.get('content-encoding') ? 0 : Number(res.headers.get('content-length')) || 0;
+    const chunks = [];
+    let got = 0;
+    if (res.body) {
+      for await (const chunk of res.body) {
+        clearTimeout(idle);
+        idle = setTimeout(() => ctrl.abort(), idleMs);
+        chunks.push(chunk);
+        got += chunk.length;
+        if (onProgress) onProgress(got, total);
+      }
+    }
+    return Buffer.concat(chunks, got).toString('utf8');
   } catch (err) {
     if (ctrl.signal.aborted) throw Object.assign(new Error('Tempo esgotado ao baixar de ' + safeHost(url)), { timeout: true });
     if (err.status) throw err;
     throw new Error('Não foi possível conectar a ' + safeHost(url) + ' (' + (err.cause?.code || err.message) + ')');
   } finally {
-    clearTimeout(timer);
+    clearTimeout(idle);
+    clearTimeout(hard);
   }
 }
 
-const fetchText = (url) => readText(url);
+const fetchText = (url, opts) => readText(url, opts);
 
-async function fetchJson(url) {
-  const text = await readText(url);
+async function fetchJson(url, opts) {
+  const text = await readText(url, opts);
   try {
     return JSON.parse(text);
   } catch {

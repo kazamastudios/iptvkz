@@ -398,8 +398,7 @@ async function handleApi(req, res, url) {
 
   if (p === '/api/catalog/status' && m === 'GET') {
     const id = q.get('list');
-    const cached = store.readJson(`catalog-${id}.json`, null);
-    return sendJson(res, 200, { refreshing: catalogs.isRefreshing(id), updatedAt: cached ? cached.updatedAt : null });
+    return sendJson(res, 200, { refreshing: catalogs.isRefreshing(id), updatedAt: catalogs.updatedAtOf(id), progress: catalogs.progressOf(id) });
   }
 
   if (p === '/api/m3u' && m === 'POST') {
@@ -555,6 +554,9 @@ const server = http.createServer((req, res) => {
   }
   serveStatic(req, res, url.pathname);
 });
+// A primeira carga de uma lista grande, num provedor lento, fica minutos no mesmo pedido (/api/catalog): o
+// padrão do Node (5 min) cortaria. Quem limita é o download (util.readText), não o servidor.
+server.requestTimeout = 0;
 
 // Inicia o servidor. Rodando direto (`npm start`) usa a porta fixa e encerra se ela já estiver
 // ocupada; no app de computador tenta as próximas portas e não desliga por inatividade.

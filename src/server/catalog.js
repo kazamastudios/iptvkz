@@ -378,8 +378,8 @@ function xtream(list) {
   const pathP = encodeURIComponent(list.password || '');
   return {
     base,
-    api: (action, extra = '') =>
-      fetchJson(`${base}/player_api.php?username=${u}&password=${p}${action ? '&action=' + action : ''}${extra}`),
+    api: (action, extra = '', opts) =>
+      fetchJson(`${base}/player_api.php?username=${u}&password=${p}${action ? '&action=' + action : ''}${extra}`, opts),
     live: (id, ext) => `${base}/live/${pathU}/${pathP}/${id}.${ext}`,
     movie: (id, ext) => `${base}/movie/${pathU}/${pathP}/${id}.${ext || 'mp4'}`,
     episode: (id, ext) => `${base}/series/${pathU}/${pathP}/${id}.${ext || 'mp4'}`,
@@ -453,6 +453,12 @@ function num(v) {
 
 async function buildFromXtream(list) {
   const x = xtream(list);
+  const prog = progress.get(list.id);
+  const sizes = {}; // bytes recebidos de cada pedido (vários ao mesmo tempo no PC)
+  const onProgress = (action) => (got) => {
+    sizes[action] = got;
+    if (prog) prog.got = Object.values(sizes).reduce((a, b) => a + b, 0);
+  };
   const t0 = Date.now();
   const timing = {}; // quanto levou cada pedido (aparece no modo de depuração)
   const auth = await x.api('');
@@ -465,7 +471,7 @@ async function buildFromXtream(list) {
   const get = async (action) => {
     const t = Date.now();
     try {
-      return await x.api(action);
+      return await x.api(action, '', { onProgress: onProgress(action) });
     } catch (err) {
       if (err.timeout) throw err;
       return [];
@@ -487,6 +493,7 @@ async function buildFromXtream(list) {
     results = actions.map((a) => got.get(a));
   }
   timing.download = Date.now() - t0;
+  if (prog) prog.phase = 'build';
   timing.parallel = require('os').totalmem() > 3 * 1024 ** 3;
   const [liveCats, liveStreams, vodCats, vodStreams, serCats, serList] = results;
 
@@ -740,8 +747,21 @@ async function checkStatus(list) {
 
 const memory = new Map(); // id -> catalog
 const inflight = new Map(); // id -> Promise
+// Andamento do carregamento, para a tela mostrar que está andando: id -> { phase, got, total, at }
+// phase: 'download' (baixando do provedor) ou 'build' (organizando canais, filmes e séries)
+const progress = new Map();
 
 async function build(list) {
+  progress.set(list.id, { phase: 'download', got: 0, total: 0, at: Date.now() });
+  try {
+    return await buildNow(list);
+  } finally {
+    progress.delete(list.id);
+  }
+}
+
+async function buildNow(list) {
+  const prog = progress.get(list.id);
   let data;
   if (list.type === 'xtream') {
     // Fora do ar? tenta os servidores reservas da mesma conta, na ordem
@@ -763,9 +783,14 @@ async function build(list) {
     } catch {
       throw new Error('O arquivo desta lista não foi encontrado. Edite a lista e envie o arquivo de novo.');
     }
+    prog.phase = 'build';
     data = buildFromM3U(text, list);
   } else {
-    data = buildFromM3U(await fetchText(list.url), list);
+    const text = await fetchText(list.url, { onProgress: (got, total) => Object.assign(prog, { got, total }) });
+    prog.phase = 'build';
+    // deixa a tela receber o "organizando" antes de o servidor ficar ocupado montando o catálogo
+    await new Promise((r) => setTimeout(r, 50));
+    data = buildFromM3U(text, list);
   }
   const catalog = tidyCatalog({ v: 1, listId: list.id, updatedAt: Date.now(), ...data });
   store.writeJson(`catalog-${list.id}.json`, catalog);
@@ -799,6 +824,19 @@ function isRefreshing(id) {
   return inflight.has(id);
 }
 
+function progressOf(id) {
+  const p = progress.get(id);
+  return p ? { phase: p.phase, got: p.got, total: p.total, secs: Math.round((Date.now() - p.at) / 1000) } : null;
+}
+
+// data da versão guardada, sem ler o arquivo do catálogo (dezenas de MB) só para isso
+function updatedAtOf(id) {
+  const m = memory.get(id);
+  if (m) return m.updatedAt;
+  const c = store.readJson(`catalog-${id}.json`, null);
+  return c ? c.updatedAt : null;
+}
+
 function forget(id) {
   memory.delete(id);
 }
@@ -807,6 +845,8 @@ module.exports = {
   getCatalog,
   speedTest,
   isRefreshing,
+  progressOf,
+  updatedAtOf,
   forget,
   xtreamSeriesInfo,
   xtreamVodInfo,

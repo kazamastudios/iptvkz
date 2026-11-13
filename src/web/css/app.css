@@ -957,7 +957,10 @@ input, select, textarea { font: inherit; color: inherit; }
 .sk-col .sk-text:first-child { margin-top: 0; }
 .sk-ep { display: flex; align-items: center; gap: 16px; padding: 10px; border-radius: 12px; background: var(--card); }
 .sk-still { width: 168px; height: 94px; flex: none; }
-.sk-status { display: flex; align-items: center; gap: 10px; margin: 2px 0 16px; color: var(--muted); }
+.sk-status { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 2px 0 16px; color: var(--muted); }
+/* andamento do download da lista: só transform anima */
+.load-bar { height: 3px; margin: -8px 0 16px; border-radius: 2px; background: var(--line, rgba(255,255,255,.12)); overflow: hidden; max-width: 420px; }
+.load-bar i { display: block; height: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); transition: transform .9s linear; }
 .sk-page { overflow: hidden; height: 100%; }
 .sk-now::before { content: ""; display: block; width: 60%; height: 10px; margin-top: 4px; border-radius: 6px; }
 .detail .plot .sk-text { max-width: 620px; }

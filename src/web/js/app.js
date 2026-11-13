@@ -573,18 +573,40 @@ async function loadActive(force = false) {
   appState = 'loading';
   renderNav();
   const token = ++loadToken;
+  // o texto acompanha o andamento que o servidor informa (baixando X MB, organizando)
+  const stText = h('span', `Carregando ${list.name}...`);
+  const stHint = h('span.faint', force ? 'Listas grandes podem levar alguns minutos.' : '');
+  const stBar = h('div.load-bar.hidden', h('i'));
   showLoading = () => {
     const posters = ['movies', 'series', 'mylist', 'favorites', 'history'].includes(parseHash().name);
     showState(h('div.page.sk-page',
-      h('div.sk-status', h('div.spinner.small'), h('span', `Carregando ${list.name}...`),
-        force ? h('span.faint', 'Listas grandes podem levar até um minuto.') : null),
+      h('div.sk-status', h('div.spinner.small'), stText, stHint), stBar,
       posters ? h('div.poster-grid', skPosters(18)) : h('div.ch-grid', skChannels(24))), 'IPTVKZ');
   };
   if (parseHash().name === 'settings') route();
   else showLoading();
+  const progTimer = setInterval(async () => {
+    let p = null;
+    try { p = (await catalogStatus(list.id)).progress; } catch {}
+    if (!p || token !== loadToken) return;
+    const mb = (n) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0).replace('.', ',');
+    if (p.phase === 'build') {
+      stText.textContent = `Organizando canais, filmes e séries de ${list.name}...`;
+      stBar.classList.add('hidden');
+    } else if (p.got > 0) {
+      stText.textContent = p.total ? `Baixando ${list.name}: ${mb(p.got)} de ${mb(p.total)} MB` : `Baixando ${list.name}: ${mb(p.got)} MB`;
+      if (p.total) {
+        stBar.classList.remove('hidden');
+        stBar.firstChild.style.transform = `scaleX(${Math.min(1, p.got / p.total)})`;
+      }
+    } else stText.textContent = `Conectando ao provedor de ${list.name}...`;
+    // demorou: é o provedor, e só a primeira vez é assim
+    if (p.secs >= 8) stHint.textContent = 'Listas grandes demoram na primeira vez; depois a lista abre na hora.';
+  }, 1000);
   try {
     const t0 = performance.now();
-    const r = await loadCatalog(list.id, { force });
+    let r;
+    try { r = await loadCatalog(list.id, { force }); } finally { clearInterval(progTimer); }
     lastLoad = { ms: Math.round(performance.now() - t0), at: Date.now() };
     if (token !== loadToken) return; // trocou ou excluiu a lista enquanto carregava
     appState = 'ready';
