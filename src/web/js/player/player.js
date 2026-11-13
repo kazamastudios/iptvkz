@@ -757,6 +757,7 @@ export class Player {
   }
 
   _showError(kind) {
+    const leave = this.opts.onBack || this.opts.onCancel;
     const fmt = kind === 'format';
     const slow = kind === 'timeout';
     const title = fmt ? 'Este aparelho não toca este formato' : this.opts.live ? 'Canal indisponível' : slow ? 'O servidor da lista não mandou o vídeo' : 'Não foi possível carregar';
@@ -770,12 +771,19 @@ export class Player {
       h('h3', title),
       h('p', text),
       h('div.acts',
-        h('button.btn', { onclick: () => this.retry() }, ico('refresh'), 'Tentar de novo')),
+        // sair também: só "Tentar de novo" deixava a pessoa presa nesta tela
+        leave ? h('button.btn', { onclick: () => leave() }, ico('back'), 'Voltar') : null,
+        h('button.btn.primary', { onclick: () => this.retry() }, ico('refresh'), 'Tentar de novo')),
     );
     this.errorEl.classList.remove('hidden');
     clearTimeout(this._netT);
     this.netTag.classList.add('hidden');
-    if (TV.on) focusEl(this.errorEl.querySelector('.btn')); // senão o controle fica preso atrás do player
+    if (TV.on) focusEl(this.errorEl.querySelector('.btn.primary')); // senão o controle fica preso atrás do player
+  }
+
+  // A tela de erro (ou "tocando em outro aparelho") está aberta: a tecla Voltar sai do vídeo direto.
+  hasError() {
+    return !this.errorEl.classList.contains('hidden');
   }
 
   _hideError() {
