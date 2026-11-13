@@ -138,6 +138,7 @@ export async function loadCatalog(listId, { force = false, first = 'live', whole
     ver: 1,
   };
   next[order[0]] = indexSection(c[order[0]]);
+  if (c.idMap) applyIdMap(listId, c.idMap);
   // as outras seções, uma de cada vez (aparelho fraco não recebe duas listas grandes juntas)
   const rest = (async () => {
     for (const sec of order.slice(1)) {
@@ -158,6 +159,56 @@ export async function loadCatalog(listId, { force = false, first = 'live', whole
   epgCache.clear();
   seriesCache.clear();
   return { refreshing: r.refreshing, rest, warning: r.warning || null, shrunk: c.shrunk || null, counts: c.counts || null };
+}
+
+// A lista do painel trocou de jeito (M3U <-> API): o servidor manda o mapa id antigo -> novo dos canais, episódios
+// e categorias. Aplica aqui também, para este aparelho não gravar de volta os ids antigos. Mesmo código de
+// src/server/idmap.js (applyMap); aplicar de novo não muda nada.
+function applyIdMap(lid, map) {
+  const ids = map.ids || {};
+  const tr = (arr) => {
+    let hit = false;
+    const out = [];
+    for (const id of arr) { const n = ids[id] || id; if (n !== id) hit = true; if (out.indexOf(n) < 0) out.push(n); }
+    return hit ? out : null;
+  };
+  for (const key of ['favorites', 'recents']) {
+    const b = S[key] && S[key][lid];
+    if (!b) continue;
+    let hit = false;
+    for (const k of Object.keys(b)) { const n = Array.isArray(b[k]) && tr(b[k]); if (n) { b[k] = n; hit = true; } }
+    if (hit) save(key);
+  }
+  const prog = S.progress && S.progress[lid];
+  if (prog) {
+    let hit = false;
+    for (const k of Object.keys(prog)) {
+      const p = prog[k];
+      if (p && p.ep && ids[p.ep]) { p.ep = ids[p.ep]; hit = true; }
+      const n = ids[k];
+      if (!n) continue;
+      if (!prog[n] || ((p && p.at) || 0) > (prog[n].at || 0)) prog[n] = p;
+      delete prog[k];
+      hit = true;
+    }
+    if (hit) save('progress');
+  }
+  const cp = S.catPrefs && S.catPrefs[lid];
+  if (cp && map.cats) {
+    let hit = false;
+    for (const sec of Object.keys(map.cats)) {
+      const m = map.cats[sec];
+      const v = cp[sec];
+      if (!v) continue;
+      for (const f of ['hidden', 'order']) {
+        if (!Array.isArray(v[f])) continue;
+        const out = [];
+        for (const id of v[f]) { const n = m[id] || id; if (n !== id) hit = true; if (out.indexOf(n) < 0) out.push(n); }
+        v[f] = out;
+      }
+    }
+    if (hit) save('catPrefs');
+  }
 }
 
 // As seções já chegaram? (as que faltam continuam chegando por trás)
