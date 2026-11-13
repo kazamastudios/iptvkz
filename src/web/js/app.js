@@ -163,7 +163,7 @@ function renderListSwitch() {
     menu.append(h('button' + (l.id === cur.id ? '.cur' : ''), { onclick: () => { menu.classList.add('hidden'); if (l.id !== cur.id) useList(l.id); } },
       l.id === cur.id ? ico('check') : h('span', { style: { width: '20px' } }),
       // o status vai embaixo do nome: ao lado, num menu estreito, cortava o nome ("Cont...")
-      h('span.lm-name', h('span.lm-label', l.name), h('span.lm-st', { 'data-lstat': l.id }))));
+      h('span.lm-name', h('span.lm-row', h('span.lm-label', l.name), h('span.ldot', { 'data-ldot': l.id })), h('span.lm-st', { 'data-lstat': l.id }))));
   }
   menu.append(h('div.sep'),
     h('button', { onclick: () => { menu.classList.add('hidden'); ctx.addList(); } }, ico('plus'), 'Adicionar lista'),
@@ -412,14 +412,17 @@ let othersBusy = false;
 // Preenche os lugares que mostram o status de uma lista ([data-lstat="id"]: o seletor e os cartões de
 // Configurações). Só troca esses pedaços: a tela não redesenha nem perde a rolagem ou o foco.
 function paintListStatus() {
-  for (const el of document.querySelectorAll('[data-lstat]')) {
-    const st = listStatusOf(el.getAttribute('data-lstat'));
+  // a bolinha fica ao lado do nome ([data-ldot]); o texto (vence em breve, vencida, fora do ar...) embaixo dele
+  // ([data-lstat]), só quando não está tudo bem
+  for (const el of document.querySelectorAll('[data-ldot], [data-lstat]')) {
+    const dot = el.hasAttribute('data-ldot');
+    const st = listStatusOf(el.getAttribute(dot ? 'data-ldot' : 'data-lstat'));
     const sig = st ? st.state : '';
     if (el.dataset.sig === sig) continue;
     el.dataset.sig = sig;
     el.title = st ? st.label : '';
-    // ativa: só o ponto verde; o resto (vence em breve, vencida, fora do ar...) com o texto
-    el.replaceChildren(...(st ? [h('span.status-dot.' + st.tone), st.tone === 'ok' ? '' : h('span', st.label)] : []));
+    if (dot) el.replaceChildren(...(st ? [h('span.status-dot.' + st.tone)] : []));
+    else el.replaceChildren(...(st && st.tone !== 'ok' ? [h('span', st.label)] : []));
   }
 }
 

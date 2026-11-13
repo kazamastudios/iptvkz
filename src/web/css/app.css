@@ -1390,3 +1390,8 @@ html { -webkit-tap-highlight-color: transparent; }
 .lm-st { margin-top: 2px; }
 .lc-st { margin-top: 4px; }
 .lm-st:empty, .lc-st:empty { display: none; }
+/* Bolinha do status ao lado do nome, centralizada na altura dele; nome grande termina em "…" e não empurra a bolinha */
+.lm-row, .nm-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lm-row .lm-label, .nm-row .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ldot { flex: none; display: flex; align-items: center; }
+.ldot:empty { display: none; }
