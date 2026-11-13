@@ -84,6 +84,10 @@ async function readText(url, { onProgress, idleMs = 45000, maxMs = 15 * 60000 } 
       }
     }
     texts.push(decoder.end());
+    // o provedor fechou a conexão antes do fim: a lista chegou pela metade e não pode substituir a anterior
+    if (total && got < total) {
+      throw Object.assign(new Error(`A lista chegou incompleta (${Math.round(got / 1048576)} de ${Math.round(total / 1048576)} MB). Tente de novo.`), { status: 'incomplete' });
+    }
     return texts.join('');
   } catch (err) {
     if (ctrl.signal.aborted) throw Object.assign(new Error('Tempo esgotado ao baixar de ' + safeHost(url)), { timeout: true });

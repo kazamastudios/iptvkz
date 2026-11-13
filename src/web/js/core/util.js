@@ -443,7 +443,8 @@ export function modal(title, body, { wide = false, cls = '', onClose, locked = f
   return { el: box, close };
 }
 
-export function confirmDialog(title, text, okLabel = 'Confirmar', danger = false) {
+// Resolve true (ok), false (o outro botão) ou null (fechou sem escolher; para quem só testa "sim", é um não).
+export function confirmDialog(title, text, okLabel = 'Confirmar', danger = false, cancelLabel = 'Cancelar') {
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => {
@@ -455,9 +456,9 @@ export function confirmDialog(title, text, okLabel = 'Confirmar', danger = false
     const m = modal(title, [
       h('p.muted', text),
       h('div.form-actions',
-        h('button.btn.ghost', { onclick: () => finish(false) }, 'Cancelar'),
+        h('button.btn.ghost', { onclick: () => finish(false) }, cancelLabel),
         h('button.btn' + (danger ? '.danger' : '.primary'), { onclick: () => finish(true) }, okLabel)),
-    ], { onClose: () => finish(false) });
+    ], { onClose: () => finish(null) });
     // no controle, o foco já começa na resposta (em ações perigosas, no Cancelar)
     if (TV.on) setTimeout(() => focusEl(m.el.querySelector(danger ? '.form-actions .btn.ghost' : '.form-actions .btn:last-child')), 60);
   });

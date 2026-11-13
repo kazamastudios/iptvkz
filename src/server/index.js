@@ -371,8 +371,9 @@ async function handleApi(req, res, url) {
         return sendText(req, res, 200, head, body);
       }
       const parts = catalogs.partsOf(r.catalog);
-      const body = `{"refreshing":${r.refreshing},"building":${r.building},"catalog":{${parts.meta},"${section}":${parts[section]}}}`;
-      const memo = r.refreshing || r.building ? null : parts.memo[section] || (parts.memo[section] = {});
+      const warn = r.warning ? `"warning":${JSON.stringify(r.warning)},` : '';
+      const body = `{${warn}"refreshing":${r.refreshing},"building":${r.building},"catalog":{${parts.meta},"${section}":${parts[section]}}}`;
+      const memo = r.refreshing || r.building || r.warning ? null : parts.memo[section] || (parts.memo[section] = {});
       return sendText(req, res, 200, head, body, memo);
     }
     const { catalog, refreshing } = await catalogs.getCatalog(list, { force });
@@ -419,6 +420,13 @@ async function handleApi(req, res, url) {
   if (p === '/api/diag' && m === 'GET') {
     if (!req.isLocal) return sendJson(res, 403, { error: 'Só no próprio aparelho' });
     return sendJson(res, 200, { ...require('./diag').last, memMB: Math.round(process.memoryUsage().rss / 1048576), node: process.version });
+  }
+  // a lista encolheu muito na última atualização: voltar para a anterior ou ficar com a nova
+  if (p === '/api/catalog/shrunk' && m === 'POST') {
+    const list = requireList(q.get('list'));
+    const ok = catalogs.settleShrunk(list, q.get('back') === '1');
+    catalogText.delete(list.id);
+    return sendJson(res, ok ? 200 : 409, ok ? { ok: true } : { error: 'Não há versão anterior guardada.' });
   }
   if (p === '/api/catalog/status' && m === 'GET') {
     const id = q.get('list');

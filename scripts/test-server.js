@@ -65,10 +65,23 @@ function xtreamApi(q, res) {
   send();
 }
 
+let variant = 'full';
+
 function startFake() {
   fake = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
     if (u.pathname === '/lista.m3u') return res.end(m3u(30, FAKE));
+    // lista que muda a cada teste: inteira, cortada no meio, uma página no lugar, ou bem menor
+    if (u.pathname === '/varia.m3u') {
+      const full = m3u(120, FAKE);
+      if (variant === 'cut') {
+        res.writeHead(200, { 'Content-Length': Buffer.byteLength(full) });
+        res.write(full.slice(0, 2000));
+        return setTimeout(() => res.destroy(), 50);
+      }
+      if (variant === 'html') return res.end('<!doctype html><html><body>Conta suspensa</body></html>');
+      return res.end(variant === 'small' ? m3u(6, FAKE) : full);
+    }
     if (u.pathname === '/grande.m3u') return res.end(m3u(Number(u.searchParams.get('n')), FAKE));
     if (u.pathname === '/guia.xml.gz') return res.end(zlib.gzipSync(xmltv()));
     if (u.pathname === '/player_api.php') return xtreamApi(u.searchParams, res);
@@ -317,6 +330,45 @@ test('catálogo no formato antigo (um arquivo só) abre e é convertido', async 
   const r = await request('GET', '/api/catalog?list=old&section=live');
   assert.strictEqual(r.json.catalog.live.items[0].name, 'Canal');
   await until(async () => (fs.existsSync(path.join(DATA, 'catalog-old.meta.json')) && !fs.existsSync(path.join(DATA, 'catalog-old.json')) ? true : null));
+});
+
+test('atualizar: lista cortada ou página no lugar mantêm a versão guardada, com aviso', async () => {
+  variant = 'full';
+  await addLists([{ id: 'var', type: 'm3u', name: 'Varia', url: `${FAKE}/varia.m3u` }]);
+  const ok = await request('GET', '/api/catalog?list=var&section=live');
+  assert.strictEqual(ok.status, 200);
+  await until(async () => (fs.existsSync(path.join(DATA, 'catalog-var.meta.json')) ? true : null));
+  for (const [v, msg] of [['cut', /incompleta|conectar/], ['html', /página/]]) {
+    variant = v;
+    const r = await request('GET', '/api/catalog?list=var&section=live&refresh=1');
+    assert.strictEqual(r.status, 200, `${v}: a versão guardada continua`);
+    assert.match(r.json.warning || '', msg);
+    assert.strictEqual(r.json.catalog.updatedAt, ok.json.catalog.updatedAt);
+    assert.strictEqual(r.json.catalog.live.items.length, ok.json.catalog.live.items.length);
+  }
+  // sem versão guardada, o erro vai para a tela
+  variant = 'html';
+  await addLists([{ id: 'var2', type: 'm3u', name: 'Varia 2', url: `${FAKE}/varia.m3u` }]);
+  const bad = await request('GET', '/api/catalog?list=var2&section=live');
+  assert.strictEqual(bad.status, 500);
+  assert.match(bad.json.error, /página/);
+});
+
+test('atualizar: lista bem menor vale, e dá para voltar à anterior', async () => {
+  variant = 'small';
+  const r = await request('GET', '/api/catalog?list=var&section=live&refresh=1');
+  assert.strictEqual(r.status, 200);
+  assert.ok(r.json.catalog.shrunk, 'avisa que encolheu');
+  assert.ok(r.json.catalog.shrunk.after < r.json.catalog.shrunk.before);
+  const files = () => fs.readdirSync(DATA).filter((f) => f.startsWith('catalog-var.') && f !== 'catalog-var.meta.json');
+  await until(async () => (files().length === 6 ? true : null)); // a nova e a anterior
+  const back = await request('POST', '/api/catalog/shrunk?list=var&back=1');
+  assert.strictEqual(back.status, 200);
+  const after = await request('GET', '/api/catalog?list=var&section=live');
+  assert.ok(!after.json.catalog.shrunk);
+  assert.ok(after.json.catalog.live.items.length > r.json.catalog.live.items.length, 'a anterior voltou');
+  await until(async () => (files().length === 3 ? true : null));
+  variant = 'full';
 });
 
 test('EPG: guia .xml.gz da lista chega para o canal certo', async () => {

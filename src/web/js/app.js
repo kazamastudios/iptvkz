@@ -689,6 +689,9 @@ async function loadActive(force = false) {
     appState = 'ready';
     // a busca e as contagens da barra esperam as outras seções, que continuam chegando por trás
     r.rest.then(() => { if (token === loadToken) { warmSearch(); renderNav(); } }, () => {});
+    // não deu para atualizar: a versão guardada continua valendo
+    if (r.warning) toast(r.warning, 'error', 9000);
+    if (r.shrunk) askShrunk(list, r.shrunk);
     renderListSwitch();
     if (current && current.name === 'settings') renderNav(); // quem está em Configurações não perde o lugar
     else { current = null; route(); }
@@ -702,6 +705,25 @@ async function loadActive(force = false) {
   }
 }
 
+// A última atualização trouxe bem menos itens que antes: a nova já vale, mas a pessoa pode voltar à anterior.
+// Fechar sem escolher deixa para depois (pergunta de novo na próxima abertura).
+async function askShrunk(list, s) {
+  const n = (x) => Number(x).toLocaleString('pt-BR');
+  const v = await confirmDialog('A lista ficou bem menor',
+    `“${list.name}” veio com ${n(s.after)} itens; antes tinha ${n(s.before)}. Pode ser uma mudança do seu provedor (plano ou conteúdo) ou um problema passageiro dele.`,
+    'Voltar à anterior', false, 'Manter a nova');
+  if (v === null) return;
+  try {
+    await api(`/api/catalog/shrunk?list=${encodeURIComponent(list.id)}&back=${v ? 1 : 0}`, { method: 'POST' });
+  } catch (e) {
+    return toast(e.message, 'error');
+  }
+  if (v) {
+    await loadActive();
+    toast('A versão anterior da lista voltou.', 'ok');
+  }
+}
+
 function watchRefresh(listId) {
   clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
@@ -712,7 +734,8 @@ function watchRefresh(listId) {
       pollTimer = null;
       if (C() && C().listId === listId && st.updatedAt && st.updatedAt > C().updatedAt) {
         // com a pessoa usando a lista, só troca quando todas as seções chegarem
-        await loadCatalog(listId, { first: firstSection(), whole: true });
+        const nr = await loadCatalog(listId, { first: firstSection(), whole: true });
+        if (nr.shrunk && activeList()) askShrunk(activeList(), nr.shrunk);
         warmSearch();
         const playing = isOverlayOpen() || (current && current.name === 'live' && parseHash().params.get('ch'));
         if (!playing) { current = null; route(); }

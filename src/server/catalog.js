@@ -336,7 +336,11 @@ async function buildFromM3U(text, list) {
       addVersion(ep.versions, { label, url, group: e.group });
     }
   });
-  if (!count) throw new Error('A lista está vazia ou não é um arquivo M3U válido.');
+  if (!count) {
+    // o provedor às vezes responde uma página (aviso, login, erro) no lugar da lista
+    if (/^\s*</.test(text.slice(0, 200))) throw new Error('O provedor respondeu uma página, não uma lista M3U. Confira o link com o seu provedor.');
+    throw new Error('A lista está vazia ou não é um arquivo M3U válido.');
+  }
 
   const series = [...seriesMap.values()].map((s) => ({
     ...s,
@@ -922,6 +926,17 @@ async function buildNow(list, { first, onSection, stamp = Date.now() } = {}) {
   // Depois de convertido, o servidor só entrega o texto das seções: os itens montados saem da memória (numa lista
   // de 60 MB são centenas de MB, e era o que derrubava o app em aparelho de 2 GB). Fica só o resumo com as partes.
   const light = lightOf(catalog);
+  // Encolheu muito em relação à versão anterior (menos de 30% dos itens)? Pode ser mudança do provedor (plano,
+  // conteúdo) ou um problema dele. A nova vale, mas a anterior fica guardada e a tela oferece voltar a ela.
+  const prev = memory.get(list.id) || readMeta(list.id);
+  const total = (c) => (c && c.counts ? c.counts.live + c.counts.movies + c.counts.series : 0);
+  if (prev && prev.files && total(prev) >= 50 && total(light) < total(prev) * 0.3) {
+    const { prev: _p, shrunk: _s, ...older } = prev;
+    light.prev = older;
+    light.shrunk = { before: total(prev), after: total(light) };
+  }
+  // o resumo que vai para a tela leva as medições e o aviso acima
+  parts.meta = JSON.stringify(light).slice(1, -1);
   partsCache.set(light, parts);
   memory.set(list.id, light);
   // grava um arquivo por seção, por trás (a tela não espera o armazenamento)
@@ -933,6 +948,8 @@ async function buildNow(list, { first, onSection, stamp = Date.now() } = {}) {
 function lightOf(catalog) {
   const light = {};
   for (const k of Object.keys(catalog)) if (!SECTIONS.includes(k)) light[k] = catalog[k];
+  const n = (k) => (catalog[k] && Array.isArray(catalog[k].items) ? catalog[k].items.length : 0);
+  light.counts = { live: n('live'), movies: n('movies'), series: n('series') };
   return light;
 }
 
@@ -960,8 +977,9 @@ async function saveFiles(id, light, parts) {
   light.files = files;
   // a partir daqui, as seções vêm do disco: o texto sai da memória
   partsCache.set(light, diskParts(id, light));
-  // conjuntos antigos, temporários e o formato antigo
+  // conjuntos antigos, temporários e o formato antigo (menos a versão anterior, se a tela vai oferecer voltar)
   const keep = new Set([metaName(id), ...SECTIONS.map((k) => secName(id, files, k))]);
+  if (light.prev) SECTIONS.forEach((k) => keep.add(secName(id, light.prev.files, k)));
   for (const f of fs.readdirSync(store.DATA)) {
     if (f.startsWith(`catalog-${id}.`) && !keep.has(f)) fs.unlink(store.file(f), () => {});
   }
@@ -982,6 +1000,24 @@ function diskParts(id, light) {
   return parts;
 }
 
+// Depois de uma lista que encolheu muito: volta para a versão anterior (back) ou fica com a nova (keep).
+// Troca o resumo de uma vez (atômico) e apaga os arquivos do conjunto que sai.
+function settleShrunk(list, back) {
+  const id = list.id;
+  const meta = readMeta(id);
+  if (!meta || !meta.prev) return false;
+  const stay = back ? meta.prev : (({ prev, shrunk, ...rest }) => rest)(meta);
+  const gone = back ? meta.files : meta.prev.files;
+  store.writeText(metaName(id), JSON.stringify(stay));
+  SECTIONS.forEach((k) => fs.unlink(store.file(secName(id, gone, k)), () => {}));
+  partsCache.set(stay, diskParts(id, stay));
+  memory.set(id, stay);
+  // voltou para a anterior: não atualiza sozinho de novo tão cedo (encolheria outra vez e perguntaria de novo);
+  // "Atualizar lista" continua funcionando na hora
+  if (back) failedAt.set(id, Date.now() + STALE_MS);
+  return true;
+}
+
 // Resumo guardado no formato novo, ou null.
 function readMeta(id) {
   const meta = store.readJson(metaName(id), null);
@@ -989,16 +1025,22 @@ function readMeta(id) {
 }
 
 // first: a seção que a tela vai mostrar primeiro (o Xtream a pede antes e a libera assim que chega)
+// última atualização que falhou: a versão guardada continua, sem tentar de novo a cada pedido da tela
+const failedAt = new Map();
+const RETRY_MS = 10 * 60 * 1000;
+
 function refresh(list, first) {
   if (!inflight.has(list.id)) {
     const b = { done: {}, meta: null, waiters: [] };
     const wake = () => { b.waiters = b.waiters.filter((w) => !w()); };
     const onSection = (sec, data, meta) => { b.done[sec] = data; b.meta = meta; wake(); };
     building.set(list.id, b);
-    const p = build(list, { first, onSection }).finally(() => {
+    const p = build(list, { first, onSection });
+    const done = () => {
       inflight.delete(list.id);
       if (building.get(list.id) === b) building.delete(list.id);
-    });
+    };
+    p.then(() => { failedAt.delete(list.id); done(); }, () => { failedAt.set(list.id, Date.now()); done(); });
     inflight.set(list.id, p);
   }
   return inflight.get(list.id);
@@ -1024,7 +1066,16 @@ const hasCache = (id) => memory.has(id) || fs.existsSync(store.file(metaName(id)
 async function getSection(list, sec, { force = false, wait = false } = {}) {
   if (force || !hasCache(list.id)) refresh(list, sec);
   if (force || wait || !hasCache(list.id)) {
-    const r = await sectionFrom(list, sec);
+    let r;
+    try {
+      r = await sectionFrom(list, sec);
+    } catch (err) {
+      // Não deu para atualizar (provedor fora, lista incompleta, página no lugar da lista): se há uma versão
+      // guardada, ela continua valendo e a tela avisa. Sem versão guardada, o erro vai para a tela.
+      if (!hasCache(list.id)) throw err;
+      const { catalog } = await getCatalog(list);
+      return { catalog, refreshing: false, building: false, warning: `Não foi possível atualizar a lista: ${err.message}` };
+    }
     if (r && r.partial) return { ...r, building: true };
     if (r) return { catalog: r.catalog, refreshing: false, building: true };
   }
@@ -1065,7 +1116,7 @@ async function getCatalog(list, { force = false } = {}) {
     memory.set(list.id, cached);
     if (cached.base && !activeBase.has(list.id)) activeBase.set(list.id, cached.base);
     const stale = Date.now() - cached.updatedAt > STALE_MS;
-    if (stale) refresh(list).catch(() => {});
+    if (stale && Date.now() - (failedAt.get(list.id) || 0) > RETRY_MS) refresh(list).catch(() => {});
     return { catalog: cached, refreshing: stale || inflight.has(list.id) };
   }
   return { catalog: await refresh(list), refreshing: false };
@@ -1120,6 +1171,7 @@ module.exports = {
   updatedAtOf,
   epgUrlOf,
   getSection,
+  settleShrunk,
   partsOf,
   fullText,
   SECTIONS,
