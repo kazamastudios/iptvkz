@@ -39,7 +39,7 @@ function pairingBox(onList, onRestore, onReady) {
     qr.make();
     box.replaceChildren(
       h('img.pair-qr', { src: qr.createDataURL(6, 3), alt: 'QR Code para adicionar a lista pelo celular' }),
-      h('div', h('b', TV.on ? 'Mais rápido pelo celular' : 'Ou mande pelo celular'), h('p.muted', `Escaneie com a câmera, no mesmo Wi-Fi ${TV.on ? 'da TV' : 'deste computador'}, e preencha a lista por lá. Uma lista baixada no celular entra por “Carregar lista”.`)));
+      h('div', h('b', TV.on ? 'Mais rápido pelo celular' : 'Ou mande pelo celular'), h('p.muted', `Escaneie com a câmera, no mesmo Wi-Fi ${TV.on ? 'da TV' : 'deste computador'}, e preencha a lista por lá. Uma lista baixada no celular entra por “Lista IPTVKZ”.`)));
     box.classList.remove('hidden');
     if (onReady) onReady();
     poll();
@@ -55,11 +55,59 @@ function pairingBox(onList, onRestore, onReady) {
 }
 
 // App da TV (Android TV ou LG): sem seletor de arquivos nem downloads.
-const nativeTvApp = () => !!(window.IPTVKZAndroid || window.webOSSystem || window.PalmSystem);
+// Começo de um arquivo escolhido (2 KB), como texto latin1 (bytes), para conferir o tipo antes de enviar.
+function headOf(file) {
+  return new Promise((resolve) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ''));
+    r.onerror = () => resolve('');
+    r.readAsBinaryString(file.slice(0, 2048));
+  });
+}
+
+// Igual a m3uFileProblem do servidor (src/server/util.js): o erro aparece na hora em que o arquivo é escolhido.
+function m3uFileProblem(head) {
+  const h = String(head || '').replace(/^(\uFEFF|\u00EF\u00BB\u00BF)/, '');
+  if (!h.trim()) return 'O arquivo está vazio.';
+  if (/\u0000/.test(h) || /^(PK\u0003\u0004|MZ|%PDF|\u007FELF|\u0089PNG|GIF8|\u00FF\u00D8)/.test(h) || /^[^]{4}ftyp/.test(h)) {
+    return 'Esse arquivo não é uma lista: parece um app, um vídeo, uma imagem ou um documento. Escolha o arquivo .m3u que o provedor mandou.';
+  }
+  if (/^\s*</.test(h)) return 'Esse arquivo é uma página da internet, não uma lista M3U. Escolha o arquivo .m3u que o provedor mandou.';
+  if (!/^\s*(#EXTM3U|#EXTINF|#EXTGRP|(https?|rtmp|rtsp|udp|rtp):\/\/)/i.test(h) && !/^#EXTINF/im.test(h)) {
+    return 'Esse arquivo não é uma lista M3U. Escolha o arquivo .m3u que o provedor mandou.';
+  }
+  return null;
+}
+
+// App do celular Android: o mesmo app da Android TV, que lá se identifica com "SmartTV" no navegador.
+const androidApp = () => !!window.IPTVKZAndroid;
+const androidPhoneApp = () => androidApp() && !/SmartTV/.test(navigator.userAgent);
+// Aparelho que não abre o seletor de arquivos (o arquivo vem pelo celular, no QR Code): TV LG, Android TV e
+// APKs antigos do celular, sem o seletor (canPickFiles).
+const nativeTvApp = () => !!(window.webOSSystem || window.PalmSystem ||
+  (androidApp() && !(androidPhoneApp() && window.IPTVKZAndroid.canPickFiles && window.IPTVKZAndroid.canPickFiles())));
+// O próprio aparelho é o celular: QR Code não serve (seria escanear a si mesmo).
+// Celular com um APK antigo (sem o seletor de arquivos): não há QR Code para indicar, só atualizar o app.
+const OLD_APP = 'Este app ainda não abre arquivos no celular: atualize o IPTVKZ (Configurações) e tente de novo.';
+const isPhoneDevice = () => !TV.on && (androidPhoneApp() || window.matchMedia('(hover: none) and (pointer: coarse)').matches);
 
 // Baixa o arquivo da lista direto no aparelho (computador, celular, navegador).
 export function downloadList(list) {
-  h('a', { href: `/api/list-export?list=${encodeURIComponent(list.id)}`, download: '' }).click();
+  const path = `/api/list-export?list=${encodeURIComponent(list.id)}`;
+  const native = window.IPTVKZAndroid;
+  if (native) {
+    // App Android: o WebView não salva downloads. O app abre o "Salvar como" e grava o arquivo.
+    if (!native.saveFile) return toast('Atualize o IPTVKZ para baixar a lista neste aparelho.', 'error');
+    const slug = String(list.name || 'lista').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'lista';
+    window.__iptvkzSaved = (ok) => {
+      window.__iptvkzSaved = null;
+      if (ok === true) toast('Lista salva. Em outro aparelho, use “Adicionar lista” › “Lista IPTVKZ”.', 'ok', 6000);
+      else if (ok === false) toast('Não foi possível salvar o arquivo da lista.', 'error');
+    };
+    native.saveFile(location.origin + path, `iptvkz-lista-${slug}.json`);
+    return;
+  }
+  h('a', { href: path, download: '' }).click();
 }
 
 // Resumo do arquivo de lista baixada, mostrado antes de carregar.
@@ -113,7 +161,7 @@ export function openListSave(list) {
     if (stopped) return;
     if (r && r.downloaded) {
       status.replaceChildren(h('b', 'Lista baixada no celular.'), h('br'),
-        'Para usar em outro aparelho, abra “Adicionar lista” nele, escaneie o QR Code e escolha “Carregar lista” no celular.');
+        'Para usar em outro aparelho, abra “Adicionar lista” nele, escaneie o QR Code e escolha “Lista IPTVKZ” no celular.');
     }
     timer = setTimeout(poll, 2000);
   };
@@ -229,7 +277,7 @@ export function openListPhone(list, { onSaved, onRefresh, onDelete } = {}) {
 }
 
 // O QR só faz sentido fora do celular (no celular, edita direto pela tela)
-export const canPhoneEdit = () => TV.on || !window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+export const canPhoneEdit = () => !isPhoneDevice();
 
 // Links tipo http://host:porta/get.php?username=X&password=Y&type=m3u_plus viram Xtream.
 // Texto colado com um ou vários endereços (um por linha, ou separados por espaço, vírgula...). Conserta o que dá:
@@ -269,7 +317,7 @@ export function openServers(list, onChanged, onClose) {
   const showErr = (msg) => { err.textContent = msg; err.classList.toggle('hidden', !msg); };
   const rowsBox = h('div.speed-box');
   const addInput = h('input.input', { placeholder: 'http://servidor.com:8080 (pode colar vários)', autocomplete: 'off' });
-  const addBox = h('div.row.hidden', { style: { gap: '8px', marginBottom: '10px' } }, addInput,
+  const addBox = h('div.row.hidden.add-server', { style: { gap: '8px', marginBottom: '10px' } }, addInput,
     h('button.btn.small', { type: 'button', onclick: () => addFromInput() }, 'Adicionar'));
   const addBtn = h('button.btn.small.ghost', { type: 'button', onclick: () => { addBox.classList.remove('hidden'); addInput.focus(); } }, ico('plus'), 'Adicionar servidor');
 
@@ -348,8 +396,31 @@ export function openServers(list, onChanged, onClose) {
   modal(`Servidores · ${list.name}`, h('div',
     h('p.muted', { style: { margin: '0 0 12px' } }, 'Endereços da mesma conta (mesmo usuário e senha). O primeiro é o que está em uso; se ele cair, o app usa o próximo.'),
     err, rowsBox, addBox,
-    h('div.row', { style: { gap: '8px', marginTop: '4px' } }, testBtn, addBtn)), { wide: true, onClose });
+    h('div.row.servers-acts', { style: { gap: '8px', marginTop: '4px' } }, testBtn, addBtn)), { wide: true, onClose });
   setTimeout(() => focusEl(testBtn), 50);
+}
+
+// Link digitado ou colado: sem http (o mais comum nos provedores) ganha http://; espaços e aspas em volta saem.
+// Esquema digitado errado (htp://, http:/, http;//) é consertado como no campo do servidor Xtream.
+export function fixLink(text) {
+  let t = String(text || '').trim().replace(/^[<("']+/, '').replace(/[>)"']+$/, '');
+  const sch = t.match(/^h?t{1,2}p{1,2}(s?)(?:[:;.]+\/*|\/+)/i);
+  if (sch) t = `http${sch[1] ? 's' : ''}://` + t.slice(sch[0].length);
+  else if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]|$)|^localhost(:\d+)?([/?#]|$)/i.test(t)) t = 'http://' + t;
+  return t;
+}
+
+// Nome de uma lista sem nome: o servidor dela (sem "www.").
+function linkName(url) {
+  try { return new URL(url).hostname.replace(/^www\./, '') || 'Minha lista'; } catch { return 'Minha lista'; }
+}
+
+// Nome automático que já existe em outra lista ganha um número ("servidor.com 2"), para dar para saber qual é qual.
+function freeName(base, id) {
+  const taken = new Set(S.lists.filter((l) => l.id !== id).map((l) => l.name));
+  let n = base;
+  for (let i = 2; taken.has(n); i++) n = `${base} ${i}`;
+  return n;
 }
 
 function xtreamFromUrl(url) {
@@ -389,6 +460,7 @@ export function openListForm(existing, onSaved, onDelete) {
   const ex = existing || {};
   let tab = ex.type === 'xtream' ? 'xtream' : ex.source === 'file' ? 'file' : existing ? 'url' : 'xtream';
   let pickedFile = null;
+  let pairFile = null; // arquivo .m3u que chegou pelo celular (QR Code): já está no aparelho, esperando o Salvar
   const listId = ex.id || uid(); // o mesmo id em novas tentativas, para não criar listas repetidas
 
   const err = h('div.error-box.hidden');
@@ -406,24 +478,40 @@ export function openListForm(existing, onSaved, onDelete) {
   const epgUrl = h('input.input', { value: ex.epgUrl || '', placeholder: 'Opcional: http://.../guia.xml(.gz)' });
   const tz = h('select.input');
   for (let i = -12; i <= 12; i++) tz.append(h('option', { value: i, selected: Number(ex.tzOffset || 0) === i }, i === 0 ? 'Sem ajuste' : `${i > 0 ? '+' : ''}${i} h`));
-  const fileInput = h('input', { type: 'file', accept: '.m3u,.m3u8,.txt', style: { display: 'none' } });
+  // .php: o get.php baixado do painel Xtream também é uma lista (o que vale é o conteúdo, conferido ao escolher)
+  const fileInput = h('input', { type: 'file', accept: '.m3u,.m3u8,.txt,.php', style: { display: 'none' } });
   // só aparece quando o QR Code do celular estiver na tela
-  const phoneHint = h('div.hint.hidden', 'Pelo celular: escaneie o QR Code acima e escolha “Carregar lista”.');
+  const phoneHint = h('div.hint.hidden', 'Pelo celular: escaneie o QR Code acima e escolha “Lista IPTVKZ”.');
   // Carregar lista: arquivo baixado pelo botão “Baixar lista” (aqui ou em outro aparelho)
   let loadFile = null;
   const loadInput = h('input', { type: 'file', accept: '.json,application/json', style: { display: 'none' } });
   const loadLabel = h('span.muted', 'Nenhum arquivo escolhido');
+  // Confere o arquivo assim que é escolhido (um app, um vídeo ou uma página não viram lista): o erro aparece na hora,
+  // antes de enviar. O servidor confere de novo ao receber.
+  const pickError = (label, msg) => { label.textContent = msg; label.classList.add('err-text'); };
+  const pickOk = (label, text) => { label.textContent = text; label.classList.remove('err-text'); };
   loadInput.addEventListener('change', () => {
     loadFile = loadInput.files[0] || null;
-    if (loadFile) loadLabel.textContent = loadFile.name;
+    if (!loadFile) return;
+    pickOk(loadLabel, loadFile.name);
+    const f = loadFile;
+    headOf(f).then((head) => {
+      if (loadFile !== f) return;
+      if (!/^\s*\{/.test(head.replace(/^(\uFEFF|\u00EF\u00BB\u00BF)/, ''))) { loadFile = null; pickError(loadLabel, 'Esse arquivo não é uma lista baixada do IPTVKZ. O certo começa com “iptvkz-lista” e termina em .json.'); }
+    });
   });
-  const fileLabel = h('span.muted', ex.source === 'file' ? 'Arquivo já enviado. Escolha outro só se quiser trocar.' : 'Nenhum arquivo escolhido');
+  const fileLabel = h('span.muted', ex.source === 'file' ? 'Arquivo já enviado. Escolha outro só se quiser trocar.' : nativeTvApp() ? '' : 'Nenhum arquivo escolhido');
   fileInput.addEventListener('change', () => {
     pickedFile = fileInput.files[0] || null;
-    if (pickedFile) {
-      fileLabel.textContent = `${pickedFile.name} (${(pickedFile.size / 1048576).toFixed(1)} MB)`;
-      if (!name.value) name.value = pickedFile.name.replace(/\.(m3u8?|txt)$/i, '');
-    }
+    if (!pickedFile) return;
+    const f = pickedFile;
+    pickOk(fileLabel, `${f.name} (${(f.size / 1048576).toFixed(1)} MB)`);
+    headOf(f).then((head) => {
+      if (pickedFile !== f) return;
+      const problem = m3uFileProblem(head);
+      if (problem) { pickedFile = null; return pickError(fileLabel, problem); }
+      if (!name.value) name.value = f.name.replace(/\.(m3u8?|txt|php)$/i, '');
+    });
   });
 
   const xtHint = h('div.hidden', { style: { marginTop: '-6px', marginBottom: '14px' } });
@@ -493,13 +581,15 @@ export function openListForm(existing, onSaved, onDelete) {
     xtream: h('div',
       serverSel ? field('Servidor', serverSel, 'O que está em uso. Escolha outro para trocar, ou “Adicionar servidor” para incluir mais.')
         : field('Servidor', server, 'Endereço com porta, como o provedor informou. Pode colar o link get.php inteiro.'),
-      h('div.row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass)))),
+      h('div.row.cred-row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass)))),
     url: h('div', field('Link da lista (M3U/M3U8)', url), xtHint),
     file: h('div', h('div.field', h('label', 'Arquivo da lista'),
-      h('div.row', h('button.btn', { type: 'button', onclick: () => fileInput.click() }, ico('upload'), 'Escolher arquivo'), fileLabel), fileInput)),
+      // os apps da TV (e o Android) não abrem seletor de arquivos: lá o arquivo vem pelo celular, no QR Code
+      nativeTvApp() ? fileLabel : h('div.row.file-row', h('button.btn', { type: 'button', onclick: () => fileInput.click() }, ico('upload'), 'Escolher arquivo'), fileLabel), fileInput,
+      nativeTvApp() ? h('div.hint', isPhoneDevice() ? OLD_APP : 'Este aparelho não abre arquivos: escaneie o QR Code acima com o celular e escolha “Arquivo M3U” por lá.') : null)),
     load: h('div', h('div.field', h('label', 'Arquivo da lista baixada'),
       // os apps da TV não abrem seletor de arquivos: lá o arquivo vem pelo celular
-      nativeTvApp() ? null : h('div.row', h('button.btn', { type: 'button', onclick: () => loadInput.click() }, ico('upload'), 'Escolher arquivo'), loadLabel), loadInput,
+      nativeTvApp() ? null : h('div.row.file-row', h('button.btn', { type: 'button', onclick: () => loadInput.click() }, ico('upload'), 'Escolher arquivo'), loadLabel), loadInput,
       phoneHint,
       h('div.hint', 'O arquivo começa com “iptvkz-lista” e é gerado pelo botão “Baixar lista”. A lista entra com favoritos e histórico; as outras continuam.'))),
   };
@@ -508,7 +598,7 @@ export function openListForm(existing, onSaved, onDelete) {
     url: h('button', { type: 'button', onclick: () => setTab('url') }, ico('link'), 'Link M3U'),
     file: h('button', { type: 'button', onclick: () => setTab('file') }, ico('file'), 'Arquivo M3U'),
   };
-  if (!existing) tabBtns.load = h('button', { type: 'button', onclick: () => setTab('load') }, ico('download'), 'Carregar lista');
+  if (!existing) tabBtns.load = h('button', { type: 'button', onclick: () => setTab('load') }, ico('upload'), 'Lista IPTVKZ');
   const extras = h('div');
   const paneBox = h('div');
   function setTab(t) {
@@ -521,13 +611,18 @@ export function openListForm(existing, onSaved, onDelete) {
   const saveBtn = h('button.btn.primary', { type: 'submit' }, existing ? 'Salvar e recarregar' : 'Adicionar lista');
   setTab(tab);
   // TV e PC: QR para mandar a lista pelo celular (no PC é opcional, dá para digitar). No celular não faz sentido.
-  const touchOnly = !TV.on && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  const touchOnly = isPhoneDevice();
   const pairing = !touchOnly && !existing ? pairingBox((list) => {
     // o que veio do celular entra no mesmo caminho do formulário (validação e lista repetida)
     const x = list.type === 'm3u' ? xtreamFromUrl(list.url) : xtreamFromUrl(list.server);
     name.value = list.name;
     const fromPhone = list.type === 'xtream' ? parseServers(`${list.server}\n${list.servers || ''}`) : [];
-    if (x) { server.value = x.server; user.value = x.username; pass.value = x.password; setTab('xtream'); setServers(null, fromPhone); }
+    if (list.source === 'file' && list.pairFile) {
+      // arquivo .m3u mandado pelo celular: já está aqui, só falta salvar a lista
+      pairFile = list.pairFile;
+      fileLabel.textContent = `Arquivo recebido do celular${list.size ? ` (${(list.size / 1048576).toFixed(1)} MB)` : ''}`;
+      setTab('file');
+    } else if (x) { server.value = x.server; user.value = x.username; pass.value = x.password; setTab('xtream'); setServers(null, fromPhone); }
     else if (list.type === 'xtream') { setServers(fromPhone[0] || list.server, fromPhone.slice(1)); user.value = list.username; pass.value = list.password; setTab('xtream'); }
     else { url.value = list.url; setTab('url'); }
     form.dispatchEvent(new Event('submit', { cancelable: true }));
@@ -539,7 +634,8 @@ export function openListForm(existing, onSaved, onDelete) {
     h('div.tabs', Object.values(tabBtns)),
     paneBox,
     extras,
-    h('p.faint', { style: { fontSize: '12px', margin: '0 0 8px' } }, 'Os dados ficam só neste computador, na pasta data/ do IPTVKZ.'),
+    // vale em todas as plataformas: no navegador da TV usando o PC, o "aparelho" é o computador
+    h('p.faint', { style: { fontSize: '12px', margin: '0 0 8px' } }, 'Os dados da lista ficam guardados só no aparelho onde o IPTVKZ está instalado.'),
     h('div.form-actions',
       existing && onDelete ? h('button.btn.danger', {
         type: 'button',
@@ -567,7 +663,7 @@ export function openListForm(existing, onSaved, onDelete) {
     e.preventDefault();
     showErr('');
     if (tab === 'load') {
-      if (!loadFile) return showErr(nativeTvApp() ? 'Use o QR Code acima com o celular e escolha “Carregar lista”.' : 'Escolha o arquivo da lista baixada.');
+      if (!loadFile) return showErr(nativeTvApp() ? (isPhoneDevice() ? OLD_APP : 'Use o QR Code acima com o celular e escolha “Lista IPTVKZ”.') : 'Escolha o arquivo da lista baixada.');
       try {
         const body = await loadFile.text();
         const { summary } = await api('/api/list-import?dry=1', { method: 'POST', body });
@@ -590,14 +686,16 @@ export function openListForm(existing, onSaved, onDelete) {
     if (tab === 'xtream') {
       Object.assign(list, { server: server.value.trim(), servers: serverLines(), username: user.value.trim(), password: pass.value });
       if (!list.server || !list.username || !list.password) return showErr('Preencha servidor, usuário e senha.');
-      if (!list.name) list.name = list.server.replace(/^https?:\/\//, '').split(/[:/]/)[0];
+      if (!list.name) list.name = freeName(list.server.replace(/^https?:\/\//, '').split(/[:/]/)[0], list.id);
     } else if (tab === 'url') {
-      list.url = url.value.trim();
-      if (!/^https?:\/\//i.test(list.url)) return showErr('Informe um link começando com http:// ou https://');
-      if (!list.name) list.name = 'Minha lista';
+      list.url = fixLink(url.value);
+      url.value = list.url;
+      if (!/^https?:\/\/[^/\s]+/i.test(list.url)) return showErr('Informe o link da lista, como http://servidor.com/lista.m3u');
+      // sem nome: o do servidor (com várias listas, "Minha lista" repetido não diz qual é qual)
+      if (!list.name) list.name = freeName(linkName(list.url), list.id);
     } else {
-      if (!pickedFile && ex.source !== 'file') return showErr('Escolha o arquivo .m3u da lista.');
-      if (!list.name) list.name = 'Minha lista';
+      if (!pickedFile && !pairFile && ex.source !== 'file') return showErr(nativeTvApp() ? (isPhoneDevice() ? OLD_APP : 'Escaneie o QR Code acima com o celular e mande o arquivo por “Arquivo M3U”.') : 'Escolha o arquivo .m3u da lista.');
+      if (!list.name) list.name = freeName('Minha lista', list.id);
     }
 
     const dup = findDuplicate(list);
@@ -608,6 +706,9 @@ export function openListForm(existing, onSaved, onDelete) {
     try {
       if (tab === 'file' && pickedFile) {
         await api(`/api/m3u?list=${encodeURIComponent(list.id)}`, { method: 'POST', body: pickedFile });
+      } else if (tab === 'file' && pairFile) {
+        await api(`/api/m3u-pair?list=${encodeURIComponent(list.id)}&file=${pairFile}`, { method: 'POST' });
+        pairFile = null;
       }
       const i = S.lists.findIndex((l) => l.id === list.id);
       if (i >= 0) S.lists[i] = list;

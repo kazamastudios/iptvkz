@@ -2,14 +2,80 @@
 // abre este formulário direto na TV, pela rede de casa. Nada passa por serviços de fora.
 // A mesma página baixa uma lista no celular (com favoritos e histórico) e usa esse arquivo em outra TV.
 const crypto = require('crypto');
+const fs = require('fs');
 const net = require('./network');
 const backup = require('./backup');
 const store = require('./store');
 const catalogs = require('./catalog');
+const { m3uFileProblem } = require('./util');
 
 const TTL = 15 * 60 * 1000;
 const MAX_BODY = 60 * 1024 * 1024; // o backup pode trazer arquivos .m3u inteiros
 const MAX_FIELD = 2048;
+const MAX_M3U = 300 * 1024 * 1024; // arquivo .m3u mandado pelo celular (o mesmo limite do envio pelo computador)
+// Arquivo .m3u que chegou pelo celular, esperando a TV salvar a lista: m3u-pair-<id>.m3u na pasta de dados.
+const pairName = (id) => `m3u-pair-${id}.m3u`;
+
+// Arquivos do celular que a TV não chegou a usar (fechou o formulário): saem depois de um dia.
+function dropOldPairFiles() {
+  let names = [];
+  try { names = fs.readdirSync(store.DATA).filter((f) => /^m3u-pair-[0-9a-f]+\.(m3u|tmp)$/.test(f)); } catch {}
+  for (const f of names) {
+    try { if (Date.now() - fs.statSync(store.file(f)).mtimeMs > 86400000) fs.unlinkSync(store.file(f)); } catch {}
+  }
+}
+
+// A TV salvou a lista: o arquivo do celular vira o arquivo da lista (como o enviado pelo computador).
+function adoptFile(fileId, listId) {
+  if (!/^[0-9a-f]{16}$/.test(fileId || '') || !/^[\w-]+$/.test(listId || '')) return false;
+  try {
+    fs.renameSync(store.file(pairName(fileId)), store.file(`m3u-${listId}.m3u`));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Recebe o .m3u do celular direto no disco, em pedaços (sem juntar 100 MB na memória da TV). Confere o começo:
+// precisa ser uma lista (como na montagem: #EXTM3U, #EXTINF ou já os links).
+function receiveM3u(req) {
+  return new Promise((resolve, reject) => {
+    const id = crypto.randomBytes(8).toString('hex');
+    const tmp = store.file(`m3u-pair-${id}.tmp`);
+    const out = fs.createWriteStream(tmp);
+    let size = 0;
+    let head = '';
+    let failed = null;
+    const fail = (msg) => {
+      if (failed) return;
+      failed = new Error(msg);
+      req.unpipe(out);
+      out.destroy();
+      fs.unlink(tmp, () => {});
+      reject(failed);
+    };
+    req.on('data', (c) => {
+      size += c.length;
+      if (head.length < 1024) head += c.toString('latin1', 0, Math.min(c.length, 1024));
+      if (size > MAX_M3U) { fail('O arquivo passa de 300 MB.'); req.destroy(); }
+    });
+    req.on('error', () => fail('O arquivo não chegou inteiro. Tente de novo.'));
+    req.on('aborted', () => fail('O arquivo não chegou inteiro. Tente de novo.'));
+    out.on('error', () => fail('Não foi possível gravar o arquivo na TV (sem espaço?).'));
+    out.on('finish', () => {
+      if (failed) return;
+      if (!size) { fs.unlink(tmp, () => {}); return reject(new Error('O arquivo está vazio.')); }
+      const problem = m3uFileProblem(head);
+      if (problem) {
+        fs.unlink(tmp, () => {});
+        return reject(new Error(problem));
+      }
+      try { fs.renameSync(tmp, store.file(pairName(id))); } catch (e) { return fail('Não foi possível gravar o arquivo na TV.'); }
+      resolve({ id, size });
+    });
+    req.pipe(out);
+  });
+}
 let enabled = false;
 let session = null;
 
@@ -27,6 +93,7 @@ function current(token) {
 // mode 'edit': o celular edita essa lista (dados, servidores, atualizar, excluir); a TV aplica cada pedido.
 function begin(port, address, list, mode) {
   if (!enabled) return { available: false };
+  dropOldPairFiles();
   const given = /^\d+\.\d+\.\d+\.\d+$/.test(address || '') && net.isPrivate(address) && !net.isLoopback(address);
   const addr = given ? { address } : net.lanAddresses().find((a) => !a.virtual);
   if (!addr) return { available: false };
@@ -73,15 +140,30 @@ function cleanEdit(f) {
   };
 }
 
+// Link colado no celular: sem http (o mais comum) ganha http://, e o http digitado errado (htp:/, http;//) é
+// consertado. Igual ao formulário da TV (fixLink em src/web/js/views/lists.js).
+function fixLink(text) {
+  let t = String(text || '').trim().replace(/^[<("']+/, '').replace(/[>)"']+$/, '');
+  const sch = t.match(/^h?t{1,2}p{1,2}(s?)(?:[:;.]+\/*|\/+)/i);
+  if (sch) t = `http${sch[1] ? 's' : ''}://` + t.slice(sch[0].length);
+  else if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]|$)|^localhost(:\d+)?([/?#]|$)/i.test(t)) t = 'http://' + t;
+  return t;
+}
+
+// O que o celular mandou, conferido. Sem condição de virar lista: { error } com o que falta, para o celular mostrar.
 function clean(body) {
   const text = (v) => String(v == null ? '' : v).trim().slice(0, MAX_FIELD);
   const name = text(body.name);
   if (body.type === 'xtream') {
     const list = { type: 'xtream', name, server: text(body.server), servers: String(body.servers == null ? '' : body.servers).slice(0, 8000), username: text(body.username), password: String(body.password == null ? '' : body.password).slice(0, MAX_FIELD) };
-    return list.server && list.username && list.password ? list : null;
+    const missing = [!list.server && 'o servidor', !list.username && 'o usuário', !list.password && 'a senha'].filter(Boolean);
+    if (missing.length) return { error: `Falta preencher ${missing.length > 1 ? `${missing.slice(0, -1).join(', ')} e ${missing[missing.length - 1]}` : missing[0]}.` };
+    return list;
   }
-  const url = text(body.url);
-  return /^https?:\/\//i.test(url) ? { type: 'm3u', name, url } : null;
+  const url = fixLink(body.url);
+  if (!url) return { error: 'Cole o link da lista.' };
+  if (!/^https?:\/\/[^/\s]+/i.test(url)) return { error: 'Esse link não parece certo. Ele começa com http:// e tem o endereço do provedor, como http://servidor.com/lista.m3u' };
+  return { type: 'm3u', name, url };
 }
 
 const HEADERS = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
@@ -95,7 +177,7 @@ const FORM = `<!doctype html>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#08080b;color:#f4f4f8;font:16px system-ui,-apple-system,sans-serif;padding:24px 18px}
 main{max-width:460px;margin:0 auto}h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:20px 0 6px}p{color:#a0a0b4;margin:0 0 18px;font-size:14px;line-height:1.45}
-.tabs{display:flex;gap:8px;margin-bottom:16px}.tabs button{flex:1 1 auto;padding:0 10px;white-space:nowrap;height:44px;border-radius:10px;border:1px solid #33334a;background:#14141d;color:#a0a0b4;font:inherit}
+.tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:16px}.tabs button{padding:0 10px;white-space:nowrap;height:44px;border-radius:10px;border:1px solid #33334a;background:#14141d;color:#a0a0b4;font:inherit}
 .tabs button.on{background:#ff2a2a;border-color:#ff2a2a;color:#fff;font-weight:600}
 label{display:block;font-size:13px;color:#c9c9d8;margin:0 0 6px}input{width:100%;height:48px;padding:0 12px;margin:0 0 14px;border-radius:10px;border:1px solid #33334a;background:#14141d;color:#fff;font-size:16px}
 input[type=file]{height:auto;padding:14px;border-style:dashed;font-size:15px;color:#c9c9d8}
@@ -105,48 +187,69 @@ input[type=file]{height:auto;padding:14px;border-style:dashed;font-size:15px;col
 textarea{width:100%;padding:10px 12px;margin:0 0 14px;border-radius:10px;border:1px solid #33334a;background:#14141d;color:#fff;font:16px system-ui}
 .more{background:none;border:0;color:#c9c9d8;font:14px system-ui;padding:0 0 14px;text-decoration:underline}
 #err,#berr{color:#ff8a8a;font-size:14px;min-height:20px;margin-bottom:8px}.hidden{display:none}
+#up{height:6px;background:#2a2a38;border-radius:3px;overflow:hidden;margin-top:12px}#up i{display:block;height:100%;background:#ffb547;transform-origin:left;transform:scaleX(0);transition:transform .2s}
 </style></head><body><main>
 <div id="done" class="hidden"><h1>Pronto!</h1><p id="donetext">A lista foi enviada. Continue na TV.</p></div>
 <div id="main">
 <h1>Adicionar lista</h1><p>Os dados vão direto para a sua TV, pela rede de casa.</p>
-<div class="tabs"><button type="button" id="tx" class="on">Xtream</button><button type="button" id="tm">Link M3U</button><button type="button" id="tb">Carregar lista</button></div>
+<div class="tabs"><button type="button" id="tx" class="on">Xtream</button><button type="button" id="tm">Link M3U</button><button type="button" id="tf">Arquivo M3U</button><button type="button" id="tb">Lista IPTVKZ</button></div>
 <form id="f">
 <div id="px"><label for="s">Servidor (ou cole o link get.php)</label><input id="s" autocomplete="off" autocapitalize="none" inputmode="url" placeholder="http://servidor.com:8080">
 <button type="button" class="more" id="mb">+ O provedor deu mais de um servidor?</button>
 <div id="ms" class="hidden"><label for="ss">Outros servidores do mesmo provedor</label><textarea id="ss" rows="4" autocapitalize="none" placeholder="Pode colar vários de uma vez, do jeito que vieram"></textarea></div>
 <label for="u">Usuário</label><input id="u" autocomplete="off" autocapitalize="none"><label for="w">Senha</label><input id="w" type="password" autocomplete="off"></div>
 <div id="pm" class="hidden"><label for="l">Link da lista</label><input id="l" autocomplete="off" autocapitalize="none" inputmode="url" placeholder="http://…/lista.m3u"></div>
+<div id="pf" class="hidden"><label for="mf">Arquivo da lista (.m3u)</label><input type="file" id="mf" accept=".m3u,.m3u8,.txt,.php,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain"></div>
 <label for="n">Nome (opcional)</label><input id="n" autocomplete="off" placeholder="Minha lista">
-<div id="err"></div><button class="send" id="b">Enviar para a TV</button>
+<div id="err"></div><button class="send" id="b">Enviar para a TV</button><div id="up" class="hidden"><i></i></div>
 </form>
 <div id="pb" class="hidden">
-<h2>Carregar lista</h2><p>Escolha o arquivo que você baixou pelo botão “Baixar lista”, em outra TV (começa com “iptvkz-lista”). Ela entra nesta TV com favoritos e histórico; as outras listas continuam.</p>
+<h2>Lista IPTVKZ</h2><p>Escolha o arquivo que você baixou pelo botão “Baixar lista”, em outra TV (começa com “iptvkz-lista”). Ela entra nesta TV com favoritos e histórico; as outras listas continuam.</p>
 <input type="file" id="a" accept=".json,application/json">
 <div id="berr"></div><button class="send" id="rb" type="button">Carregar lista</button>
 </div>
 </div>
 <div id="save" class="hidden"><h1>Baixar lista no celular</h1>
-<p>Baixa um arquivo com a lista, os favoritos e o histórico dela. Em outro aparelho, abra “Adicionar lista”, escaneie o QR Code e use “Carregar lista”.</p>
+<p>Baixa um arquivo com a lista, os favoritos e o histórico dela. Em outro aparelho, abra “Adicionar lista”, escaneie o QR Code e use “Lista IPTVKZ”.</p>
 <p class="warn">O arquivo contém o usuário e a senha da lista. Guarde com cuidado e não compartilhe.</p>
 <a class="send" id="dl" download>Baixar lista</a>
 <p id="saved" class="hidden" style="margin-top:16px">Download iniciado. Confira a pasta de downloads do celular.</p>
 </div></main>
 <script>
 var type='xtream',$=function(i){return document.getElementById(i)};
-function tab(t){type=t;$('tx').className=t==='xtream'?'on':'';$('tm').className=t==='m3u'?'on':'';$('tb').className=t==='backup'?'on':'';
-$('f').className=t==='backup'?'hidden':'';$('pb').className=t==='backup'?'':'hidden';$('px').className=t==='xtream'?'':'hidden';$('pm').className=t==='m3u'?'':'hidden'}
-$('tx').onclick=function(){tab('xtream')};$('tm').onclick=function(){tab('m3u')};$('tb').onclick=function(){tab('backup')};
+function tab(t){type=t;$('tx').className=t==='xtream'?'on':'';$('tm').className=t==='m3u'?'on':'';$('tf').className=t==='file'?'on':'';$('tb').className=t==='backup'?'on':'';
+$('f').className=t==='backup'?'hidden':'';$('pb').className=t==='backup'?'':'hidden';$('px').className=t==='xtream'?'':'hidden';$('pm').className=t==='m3u'?'':'hidden';$('pf').className=t==='file'?'':'hidden'}
+$('tx').onclick=function(){tab('xtream')};$('tm').onclick=function(){tab('m3u')};$('tf').onclick=function(){tab('file')};$('tb').onclick=function(){tab('backup')};
 var lista=new URLSearchParams(location.search).get('lista');
 if(lista){$('main').className='hidden';$('save').className='';$('dl').href=location.pathname.replace(/\\/$/,'')+'/arquivo?lista='+encodeURIComponent(lista);$('dl').addEventListener('click',function(){$('saved').className=''})}
 function finish(t){$('main').className='hidden';$('donetext').textContent=t;$('done').className=''}
 $('mb').onclick=function(){$('mb').className='hidden';$('ms').className='';$('ss').focus()};
 $('s').addEventListener('change',function(){try{var u=new URL($('s').value.trim()),a=u.searchParams.get('username'),b=u.searchParams.get('password');if(a&&b&&/get\\.php|player_api\\.php/i.test(u.pathname)){$('s').value=u.protocol+'//'+u.host;$('u').value=a;$('w').value=b}}catch(e){}});
-$('f').addEventListener('submit',function(e){e.preventDefault();$('err').textContent='';$('b').disabled=true;
-fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:type,name:$('n').value,server:$('s').value,servers:$('ss').value,username:$('u').value,password:$('w').value,url:$('l').value})})
-.then(function(r){if(r.ok){finish('A lista foi enviada. Continue na TV.');return}if(r.status===410){$('err').textContent='Este código expirou. Escaneie o novo QR Code na TV.'}else{$('err').textContent='Confira os campos e tente de novo.'}$('b').disabled=false})
-.catch(function(){$('err').textContent='Não foi possível falar com a TV. Confira se o celular está no mesmo Wi-Fi.';$('b').disabled=false})});
+function answer(r){if(r.ok){finish('A lista foi enviada. Continue na TV.');return}return r.json().catch(function(){return {}}).then(function(j){
+$('up').className='hidden';$('err').textContent=r.status===410?'Este código expirou. Escaneie o novo QR Code na TV.':(j.error||'Confira os campos e tente de novo.');$('b').disabled=false;$('b').textContent='Enviar para a TV'})}
+// envio com andamento (o fetch não informa quanto do arquivo já subiu); devolve algo com a cara da resposta do fetch
+function send(url,body,onp){return new Promise(function(ok,no){var x=new XMLHttpRequest();x.open('POST',url);
+x.upload.onprogress=function(e){if(e.lengthComputable)onp(e.loaded/e.total)};
+x.onload=function(){ok({ok:x.status>=200&&x.status<300,status:x.status,json:function(){return Promise.resolve().then(function(){return JSON.parse(x.responseText)})}})};
+x.onerror=no;x.send(body)})}
+// confere o arquivo antes de enviar (um app ou um vídeo não sobem à toa): o servidor da TV confere de novo
+var BIN='Esse arquivo não é uma lista: parece um app, um vídeo, uma imagem ou um documento. Escolha o arquivo .m3u que o provedor mandou.';
+function headOf(f){return new Promise(function(ok){var r=new FileReader();r.onload=function(){ok(String(r.result||''))};r.onerror=function(){ok('')};r.readAsBinaryString(f.slice(0,2048))})}
+function m3uBad(h){var t=h.replace(/^ï»¿/,'');if(!t.trim())return 'O arquivo está vazio.';for(var i=0;i<t.length;i++)if(t.charCodeAt(i)===0)return BIN;
+if(t.slice(0,2)==='PK'||t.slice(0,2)==='MZ'||t.slice(0,4)==='%PDF'||t.slice(1,4)==='PNG'||t.slice(4,8)==='ftyp')return BIN;t=t.trim();
+if(t.charAt(0)==='<')return 'Esse arquivo é uma página da internet, não uma lista M3U. Escolha o arquivo .m3u que o provedor mandou.';
+if(!/^(#EXTM3U|#EXTINF|#EXTGRP|https?:|rtmp:|rtsp:|udp:|rtp:)/i.test(t)&&!/#EXTINF/i.test(t))return 'Esse arquivo não é uma lista M3U. Escolha o arquivo .m3u que o provedor mandou.';return ''}
+function lost(){$('up').className='hidden';$('err').textContent='Não foi possível falar com a TV. Confira se o celular está no mesmo Wi-Fi.';$('b').disabled=false;$('b').textContent='Enviar para a TV'}
+$('f').addEventListener('submit',function(e){e.preventDefault();$('err').textContent='';
+if(type==='file'){var mf=$('mf').files[0];if(!mf){$('err').textContent='Escolha o arquivo .m3u da lista.';return}
+headOf(mf).then(function(h){var bad=m3uBad(h);if(bad){$('err').textContent=bad;return}$('b').disabled=true;$('b').textContent='Enviando... 0%';$('up').className='';
+send(location.pathname.replace(/\\/$/,'')+'/m3u?nome='+encodeURIComponent($('n').value.trim()||mf.name),mf,function(p){var n=Math.round(p*100);
+$('b').textContent=n<100?'Enviando para a TV... '+n+'%':'Guardando na TV...';$('up').firstChild.style.transform='scaleX('+p+')'}).then(answer).catch(lost);});return}
+$('b').disabled=true;
+fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:type,name:$('n').value,server:$('s').value,servers:$('ss').value,username:$('u').value,password:$('w').value,url:$('l').value})}).then(answer).catch(lost)});
 $('rb').addEventListener('click',function(){$('berr').textContent='';var file=$('a').files[0];
-if(!file){$('berr').textContent='Escolha o arquivo de backup.';return}
+if(!file){$('berr').textContent='Escolha o arquivo da lista baixada (começa com “iptvkz-lista”).';return}
+if(file.size>50*1048576||!/[.]json$/i.test(file.name)){$('berr').textContent='Esse arquivo não é uma lista baixada do IPTVKZ. O certo começa com “iptvkz-lista” e termina em .json.';return}
 $('rb').disabled=true;file.text().then(function(t){return fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:t})})
 .then(function(r){return r.json().catch(function(){return {}}).then(function(j){
 if(r.ok){finish('Lista enviada. Confirme na TV.');return}
@@ -284,6 +387,16 @@ function handle(req, res, url) {
     res.writeHead(405, HEADERS);
     return res.end();
   }
+  // arquivo .m3u: chega cru (o corpo é o arquivo) e o nome vai no endereço
+  if (sub === 'm3u') {
+    return receiveM3u(req).then(({ id, size }) => {
+      if (s !== current(token) || s.used) { fs.unlink(store.file(pairName(id)), () => {}); return json(410, { error: 'Este código expirou. Escaneie o novo QR Code na TV.' }); }
+      const name = String(url.searchParams.get('nome') || '').replace(/\.(m3u8?|txt)$/i, '').trim().slice(0, 120);
+      s.received = { type: 'm3u', source: 'file', name, pairFile: id, size };
+      s.used = true;
+      return json(200, { ok: true });
+    }, (err) => json(400, { error: err.message }));
+  }
   return readBody(req).then((text) => {
     const body = JSON.parse(text);
     if (body && body.app === 'iptvkz') {
@@ -294,7 +407,7 @@ function handle(req, res, url) {
       return json(200, { ok: true });
     }
     const list = clean(body);
-    if (!list) { res.writeHead(400, HEADERS); return res.end(); }
+    if (list.error) return json(400, { error: list.error });
     s.received = list;
     s.used = true;
     res.writeHead(200, HEADERS);
@@ -302,4 +415,4 @@ function handle(req, res, url) {
   }).catch(() => json(400, { error: 'O arquivo é grande demais ou não chegou inteiro.' }));
 }
 
-module.exports = { enable, enabled: () => enabled, begin, status, takeRestore, end, handle };
+module.exports = { enable, enabled: () => enabled, begin, status, takeRestore, end, handle, adoptFile };

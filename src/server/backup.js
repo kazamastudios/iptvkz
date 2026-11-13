@@ -8,6 +8,9 @@ const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
 
 // Uma lista com os dados dela (favoritos, recentes, histórico e categorias), para levar a outro aparelho.
+// a tela chama o arquivo de “Lista IPTVKZ” (gerado por “Baixar lista”)
+const NOT_OURS = 'Este arquivo não é uma lista baixada do IPTVKZ. O certo começa com “iptvkz-lista” e é gerado pelo botão “Baixar lista”.';
+
 function build(listId) {
   const state = store.getState();
   const list = state.lists.find((l) => l && String(l.id) === String(listId));
@@ -23,9 +26,9 @@ function build(listId) {
 // Confere o arquivo enviado pelo celular antes de guardar qualquer coisa.
 function parse(text) {
   let data;
-  try { data = JSON.parse(text); } catch { throw new Error('O arquivo não é um backup do IPTVKZ.'); }
+  try { data = JSON.parse(text); } catch { throw new Error(NOT_OURS); }
   if (!isObj(data) || data.app !== 'iptvkz' || data.kind !== 'backup' || !isObj(data.state)) {
-    throw new Error('O arquivo não é um backup do IPTVKZ.');
+    throw new Error(NOT_OURS);
   }
   if (data.v !== 1) throw new Error('Este backup é de uma versão mais nova do IPTVKZ. Atualize o app e tente de novo.');
   const s = data.state;

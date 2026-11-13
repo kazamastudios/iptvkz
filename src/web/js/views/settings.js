@@ -19,6 +19,7 @@ function listType(l) {
 
 function host(l) {
   const raw = l.type === 'xtream' ? l.server : l.url;
+  if (!raw) return ''; // lista de arquivo: não tem endereço
   try { return new URL(/^https?:/.test(raw) ? raw : 'http://' + raw).host; } catch { return ''; }
 }
 
@@ -44,7 +45,9 @@ export function settingsView(params, ctx) {
     }
     cards.append(h('div.list-card' + (isActive ? '.active' : ''),
       h('div.top', ico(t === 'xtream' ? 'server' : t === 'file' ? 'file' : 'link'),
-        h('div', { style: { minWidth: 0, flex: 1 } }, h('div.nm', l.name), h('div.ty', [TYPE[t], host(l)].filter(Boolean).join(' · '))),
+        h('div', { style: { minWidth: 0, flex: 1 } }, h('div.nm-row', h('div.nm', l.name), h('span.ldot', { 'data-ldot': l.id })), h('div.ty', [TYPE[t], host(l)].filter(Boolean).join(' · ')),
+          // status verificado (ativa, vence em breve, vencida...), preenchido pelo app (paintListStatus)
+          h('div.lc-st', { 'data-lstat': l.id })),
         isActive ? h('span.badge.onair', 'EM USO') : null),
       stats,
       isActive && C() ? h('div.faint', { style: { fontSize: '12px' } }, `Atualizada ${fmtAgo(C().updatedAt)}`) : null,
@@ -73,7 +76,10 @@ export function settingsView(params, ctx) {
 
   // até 2 listas: bloco à direita delas; com 3 ou mais, uma linha própria embaixo
   cards.append(h('button.list-card.add-card' + (S.lists.length >= 3 ? '.add-row' : ''), { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar lista'));
-  page.append(h('div.set-section', h('h3', 'Listas'), h('p', TV.on || !matchMedia('(max-width: 760px)').matches ? 'Troque de lista pelo seletor no topo da barra lateral.' : 'Troque de lista pelo último botão da barra de baixo, o que mostra o nome da lista.'), cards));
+  // sem nenhuma lista não há o que trocar: a dica é adicionar
+  const listHint = !S.lists.length ? 'Nenhuma lista ainda. Adicione a sua para começar.'
+    : TV.on || !matchMedia('(max-width: 760px)').matches ? 'Troque de lista pelo seletor no topo da barra lateral.' : 'Troque de lista pelo último botão da barra de baixo, o que mostra o nome da lista.';
+  page.append(h('div.set-section', h('h3', 'Listas'), h('p', listHint), cards));
 
   // ---------- categorias ----------
   if (C()) {

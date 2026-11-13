@@ -414,6 +414,12 @@ export function liveView(params, ctx) {
       if (!player) return false;
       const k = e.key;
       const back = e.type === 'back';
+      // com a tela de erro aberta, Voltar sai do canal (antes, na TV, só soltava o foco do "Tentar de novo",
+      // que voltava para ele: a pessoa ficava presa)
+      if (back && player.hasError()) {
+        ctx.navigate(`#/live?cat=${encodeURIComponent(cat)}`);
+        return true;
+      }
       if (TV.on) {
         if (root.classList.contains('drawer')) {
           if (back) { closeDrawer(); return true; }

@@ -5,6 +5,7 @@ import { TV, KB, setKbNav, detectTv, applyTv, move, DIRS, focusFirst, focusEl, i
 import { icon } from './core/icons.js';
 import {
   S, C, api, favItems, laterItems, watchHistory, loadState, loadCatalog, clearCatalog, catalogStatus, activeList, saveNow, save, flushSaves, setSetting, buildLabel,
+  sectionsLoaded, sectionsReady, onSection,
 } from './core/store.js';
 import { liveView } from './views/live.js';
 import { vodHome, movieView, serieView } from './views/vod.js';
@@ -38,6 +39,16 @@ const routes = {
   settings: settingsView,
 };
 const NAV_OF = { movie: 'movies', serie: 'series' };
+// Seções da lista que cada tela usa. A lista chega por seção (a da tela atual primeiro): a tela que precisa de
+// uma que ainda não chegou mostra o carregando até ela chegar. Configurações não precisa de nenhuma.
+const ALL_SECTIONS = ['live', 'movies', 'series'];
+const NEEDS = {
+  live: ['live'], guide: ['live'], movies: ['movies'], movie: ['movies'], series: ['series'], serie: ['series'],
+  history: ALL_SECTIONS, mylist: ALL_SECTIONS, favorites: ALL_SECTIONS, search: ALL_SECTIONS,
+};
+const SECTION_NAME = { live: 'canais', movies: 'filmes', series: 'séries' };
+// a seção que a tela atual mostra primeiro (as telas que misturam tudo começam pelos canais)
+const firstSection = () => (NEEDS[parseHash().name] || ['live'])[0];
 
 let current = null;
 let appState = 'boot'; // boot | welcome | loading | error | ready
@@ -148,13 +159,17 @@ function renderListSwitch() {
     h('div.meta', h('div.name', cur.name), h('div.sub', cur.type === 'xtream' ? 'Xtream Codes' : 'Lista M3U')),
     ico('chevronDown'));
   for (const l of S.lists) {
+    // status de cada lista (a da tela e as outras, verificadas por trás): só indica, não impede a troca
     menu.append(h('button' + (l.id === cur.id ? '.cur' : ''), { onclick: () => { menu.classList.add('hidden'); if (l.id !== cur.id) useList(l.id); } },
-      l.id === cur.id ? ico('check') : h('span', { style: { width: '20px' } }), l.name));
+      l.id === cur.id ? ico('check') : h('span', { style: { width: '20px' } }),
+      // o status vai embaixo do nome: ao lado, num menu estreito, cortava o nome ("Cont...")
+      h('span.lm-name', h('span.lm-row', h('span.lm-label', l.name), h('span.ldot', { 'data-ldot': l.id })), h('span.lm-st', { 'data-lstat': l.id }))));
   }
   menu.append(h('div.sep'),
     h('button', { onclick: () => { menu.classList.add('hidden'); ctx.addList(); } }, ico('plus'), 'Adicionar lista'),
     h('button', { onclick: () => { menu.classList.add('hidden'); ctx.navigate('#/settings'); } }, ico('settings'), 'Gerenciar listas'));
   box.append(btn, menu);
+  paintListStatus();
 }
 
 document.addEventListener('mousedown', (e) => {
@@ -183,6 +198,7 @@ const STATUS_DETAIL = {
   banned: 'O provedor bloqueou esta conta.',
   disabled: 'O provedor desativou esta conta.',
   refused: 'O servidor recusou o acesso: a lista pode ter expirado ou o usuário e a senha mudaram.',
+  refusedM3u: 'O provedor não entregou a lista: o link pode ter expirado ou mudado.',
   offline: 'O servidor da lista não respondeu. Pode ser temporário.',
   unknown: 'Sem conexão no momento: a lista será verificada quando a conexão voltar.',
   local: 'Lista de arquivo: não dá para saber se os links ainda funcionam.',
@@ -215,8 +231,10 @@ function statusModel() {
   }[net.state];
   // Conectado, mas demorando a responder (o teste é um pedido pequeno: normal fica bem abaixo de 300 ms).
   // Aí os vídeos demoram e travam por causa da internet, não do app: a bolinha avisa em amarelo.
-  if (net.state === 'online' && net.ms > SLOW_NET_MS) {
-    Object.assign(n, { tone: 'warn', label: 'Internet lenta', detail: `${net.ms} ms para responder. Vídeos podem demorar a abrir ou travar.` });
+  // lenta de verdade: duas medições seguidas acima do limite, nenhuma com o servidor ocupado (montando uma lista, a
+  // resposta demora por causa dele, não da internet) e sem lista carregando nesta tela
+  if (net.state === 'online' && net.slowRuns >= 2 && appState !== 'loading') {
+    Object.assign(n, { tone: 'warn', label: 'Internet instável', detail: `${net.ms} ms para responder. Vídeos podem demorar a abrir ou travar.` });
   }
   let list = null;
   const al = activeList();
@@ -230,7 +248,7 @@ function statusModel() {
     }
     list = {
       tone, label, sub, name: al.name, state: d ? d.state : null,
-      detail: (d && STATUS_DETAIL[d.state]) || '',
+      detail: (d && STATUS_DETAIL[refusedKey(al, d.state)]) || '',
       cons: d && d.maxCons ? `${d.activeCons || 0} de ${d.maxCons} conexões em uso` : '',
     };
   }
@@ -326,14 +344,19 @@ function checkNet() {
     const prev = net.state;
     let state;
     let ms = null;
+    let busy = false;
     try {
       const r = await api('/api/net');
       state = r.online ? 'online' : 'offline';
       ms = r.ms ?? null;
+      busy = !!r.busy;
     } catch {
       state = 'noserver';
     }
-    net = { state, ms, at: Date.now() };
+    // medição com o servidor ocupado não conta, nem para lenta nem para rápida
+    const slow = state === 'online' && ms != null && ms > SLOW_NET_MS;
+    const slowRuns = busy ? (net.slowRuns || 0) : slow ? (net.slowRuns || 0) + 1 : 0;
+    net = { state, ms, at: Date.now(), slowRuns };
     renderListStatus();
     if (prev !== state && prev !== 'checking') {
       if (state === 'online') {
@@ -350,7 +373,9 @@ function checkNet() {
 async function checkListStatus() {
   const list = activeList();
   if (!list) { status = { listId: null, data: null, checking: false, at: 0 }; return renderListStatus(); }
-  if (status.listId !== list.id) status = { listId: list.id, data: null, checking: false, at: 0 };
+  // lista que acabou de virar a da tela: começa com o que a verificação por trás já sabe (a tela de bloqueio de uma
+  // lista vencida aparece na hora); a verificação de agora confirma
+  if (status.listId !== list.id) status = { listId: list.id, data: (otherStatus.get(list.id) || {}).data || null, checking: false, at: 0 };
   else if (status.checking) return;
   const prev = status.data && status.data.state;
   status.checking = true;
@@ -372,9 +397,70 @@ async function checkListStatus() {
   status.checking = false;
   status.at = Date.now();
   renderListStatus();
+  paintListStatus();
   const [tone] = STATUS_INFO[data.state] || ['idle'];
-  if (tone === 'bad' && prev !== data.state && isPlaying()) toast(`${list.name}: ${STATUS_DETAIL[data.state]}`, 'error', 9000);
+  if (tone === 'bad' && prev !== data.state && isPlaying()) toast(`${list.name}: ${STATUS_DETAIL[refusedKey(list, data.state)]}`, 'error', 9000);
+  // a lista passou a ser bloqueada (ou foi liberada): a tela troca, a não ser que esteja vendo algo agora
+  if (!!BLOCK_INFO[prev] !== !!BLOCK_INFO[data.state] && !isPlaying() && parseHash().name !== 'settings') {
+    if (!BLOCK_INFO[data.state] && appState === 'error') loadActive();
+    else { current = null; route(); }
+  }
   if (data.state === 'offline' && net.state === 'online') suggestServer(list);
+}
+
+// ---------- status das outras listas ----------
+// Além da lista da tela (a cada 2 min), as outras são verificadas por trás, uma de cada vez e bem mais espaçado:
+// leve na TV (um pedido pequeno por vez, sem baixar a lista) e nunca com vídeo tocando. O resultado aparece no
+// seletor de listas e em Configurações; não impede a troca (a tela de bloqueio vale quando a lista fica ativa).
+const OTHERS_EVERY = 12 * 60 * 1000;
+const otherStatus = new Map(); // id da lista -> { data, at }
+let othersBusy = false;
+
+// Preenche os lugares que mostram o status de uma lista ([data-lstat="id"]: o seletor e os cartões de
+// Configurações). Só troca esses pedaços: a tela não redesenha nem perde a rolagem ou o foco.
+function paintListStatus() {
+  // a bolinha fica ao lado do nome ([data-ldot]); o texto (vence em breve, vencida, fora do ar...) embaixo dele
+  // ([data-lstat]), só quando não está tudo bem
+  for (const el of document.querySelectorAll('[data-ldot], [data-lstat]')) {
+    const dot = el.hasAttribute('data-ldot');
+    const st = listStatusOf(el.getAttribute(dot ? 'data-ldot' : 'data-lstat'));
+    const sig = st ? st.state : '';
+    if (el.dataset.sig === sig) continue;
+    el.dataset.sig = sig;
+    el.title = st ? st.label : '';
+    if (dot) el.replaceChildren(...(st ? [h('span.status-dot.' + st.tone)] : []));
+    else el.replaceChildren(...(st && st.tone !== 'ok' ? [h('span', st.label)] : []));
+  }
+}
+
+// [tom, texto] do status conhecido de uma lista, ou null (ainda não verificada, ou sem como verificar)
+function listStatusOf(id) {
+  const a = activeList();
+  const data = a && a.id === id && status.listId === id ? status.data : (otherStatus.get(id) || {}).data;
+  if (!data || data.state === 'unknown' || data.state === 'local') return null;
+  const [tone, label] = STATUS_INFO[data.state] || [];
+  return tone ? { tone, label, state: data.state } : null;
+}
+
+async function checkOtherLists() {
+  if (othersBusy || document.hidden || isPlaying() || net.state !== 'online') return;
+  const a = activeList();
+  // a que está esperando há mais tempo (lista de arquivo não tem o que verificar)
+  const due = S.lists.filter((l) => (!a || l.id !== a.id) && !(l.type !== 'xtream' && l.source === 'file'))
+    .map((l) => ({ l, at: (otherStatus.get(l.id) || {}).at || 0 }))
+    .filter((x) => Date.now() - x.at > OTHERS_EVERY)
+    .sort((x, y) => x.at - y.at)[0];
+  if (!due) return;
+  othersBusy = true;
+  try {
+    const data = await api(`/api/list-status?list=${encodeURIComponent(due.l.id)}`);
+    otherStatus.set(due.l.id, { data, at: Date.now() });
+  } catch {
+    otherStatus.set(due.l.id, { data: null, at: Date.now() }); // tenta de novo na próxima rodada
+  } finally {
+    othersBusy = false;
+  }
+  paintListStatus();
 }
 
 // Servidor em uso fora do ar, com internet funcionando: testa os outros servidores da mesma conta e sugere
@@ -504,6 +590,10 @@ function route() {
     appState = 'welcome';
     return showState(welcomeView(() => ctx.addList()), 'IPTVKZ');
   }
+  const blocked = name !== 'settings' && listBlocked();
+  // a tela de bloqueio já explica: o aviso do topo, igual, sai enquanto ela está aberta
+  document.body.classList.toggle('list-blocked', !!blocked);
+  if (blocked) return showBlocked(blocked);
   // A lista carregando não prende o app: Configurações continua aberta para trocar ou excluir.
   if (appState === 'loading' && name !== 'settings') {
     if (current && showLoading) showLoading();
@@ -511,6 +601,18 @@ function route() {
   }
   if (appState === 'error' && name !== 'settings') return showError();
   if (!C() && name !== 'settings') return;
+  const need = NEEDS[name] || NEEDS.live;
+  if (name !== 'settings' && !sectionsLoaded(need)) {
+    const hash = location.hash;
+    const missing = need.filter((sec) => !sectionsLoaded([sec])).map((sec) => SECTION_NAME[sec]);
+    const what = missing.length > 1 ? `${missing.slice(0, -1).join(', ')} e ${missing[missing.length - 1]}` : missing[0];
+    const posters = !need.includes('live') || need.length > 1;
+    showState(h('div.page.sk-page',
+      h('div.sk-status', h('div.spinner.small'), h('span', `Carregando ${what}...`)),
+      posters ? h('div.poster-grid', skPosters(18)) : h('div.ch-grid', skChannels(24))), 'IPTVKZ');
+    sectionsReady(need).then((ok) => { if (ok && location.hash === hash) route(); });
+    return;
+  }
 
   if (current && current.name === name && current.update && current.update(params)) return;
   unmount();
@@ -529,6 +631,7 @@ function route() {
   if (view.scrollTop) view.scrollTop = 0;
   if (TV.on) settleImages(350);
   view.replaceChildren(res.el);
+  paintListStatus(); // status das listas nos cartões de Configurações
   // voltando: a tela reaparece onde estava, em qualquer plataforma
   const mem = goingBack && focusMemory.get(location.hash);
   if (mem) setTimeout(() => restoreFocus(mem), 30);
@@ -538,9 +641,62 @@ function route() {
       const a = document.activeElement;
       if (a && a.dataset && a.dataset.native) return; // teclado da TV aberto: o foco não pode sair do campo
       const inContent = a && a !== document.body && document.contains(a) && view.contains(a);
-      if (!inContent && !document.querySelector('.modal-back, .vod-overlay, .tvkb')) focusFirst();
+      // janela fechando (.closing, sai em 200 ms) não conta: lista que carrega rápido chegava aqui antes dela sumir
+      // e a tela ficava sem foco nenhum
+      if (!inContent && !document.querySelector('.modal-back:not(.closing), .vod-overlay, .tvkb')) focusFirst();
     }, 30);
   }
+}
+
+// Lista que o provedor não libera mais (vencida, bloqueada, desativada, acesso recusado): nada da lista abre,
+// porque nenhum canal ou vídeo vai tocar. A tela explica e oferece o que dá para fazer. "Fora do ar" não bloqueia
+// (costuma ser passageiro) e Configurações continua aberta. Vale em PC, TV (foco no primeiro botão) e celular.
+const BLOCK_INFO = {
+  expired: ['Esta lista expirou', 'A assinatura venceu. Fale com o seu provedor para renovar; depois toque em “Verificar de novo”.'],
+  banned: ['O provedor bloqueou esta conta', 'Fale com o seu provedor para entender o motivo e liberar a conta.'],
+  disabled: ['O provedor desativou esta conta', 'Fale com o seu provedor para reativar a conta.'],
+  refused: ['O provedor recusou o acesso', 'A lista pode ter expirado, ou o usuário e a senha mudaram. Confira com o seu provedor e, se mudou algo, edite a lista.'],
+  // lista M3U por link: não há usuário e senha para conferir, e sim o link
+  refusedM3u: ['O provedor não entregou a lista', 'O link pode ter expirado ou mudado. Confira com o seu provedor e, se ele mandou um link novo, edite a lista.'],
+};
+// "recusado" de uma lista M3U por link tem texto próprio (fala do link, não de usuário e senha)
+function refusedKey(list, state) {
+  return state === 'refused' && list && list.type !== 'xtream' ? 'refusedM3u' : state;
+}
+function listBlocked() {
+  const l = activeList();
+  return l && status.listId === l.id && status.data && BLOCK_INFO[status.data.state] ? status.data.state : null;
+}
+function showBlocked(state) {
+  const list = activeList();
+  const [title, text] = BLOCK_INFO[refusedKey(list, state)];
+  const again = h('button.btn.primary', {
+    onclick: async () => {
+      again.disabled = true;
+      again.textContent = 'Verificando...';
+      status.at = 0;
+      await checkListStatus();
+      current = null;
+      route();
+    },
+  }, ico('refresh'), 'Verificar de novo');
+  const remove = async () => {
+    if (!await confirmDialog('Excluir lista?', `“${list.name}” sai deste aparelho, com os favoritos e o histórico dela.`, 'Excluir')) return;
+    await deleteList(list.id);
+  };
+  showState(h('div.center-state.blocked-list',
+    ico('alert'),
+    h('h2', title),
+    h('p', h('b', list.name), ` · ${text}`),
+    h('p.muted', 'Enquanto isso, os canais, filmes e séries desta lista ficam indisponíveis.'),
+    h('div.row', { style: { marginTop: '8px', justifyContent: 'center', flexWrap: 'wrap', gap: '10px' } },
+      again,
+      h('button.btn', { onclick: () => ctx.editList(list) }, ico('edit'), 'Editar lista'),
+      S.lists.length > 1
+        ? h('button.btn', { onclick: () => ctx.navigate('#/settings') }, ico('settings'), 'Trocar de lista')
+        : h('button.btn', { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar outra lista'),
+      h('button.btn.ghost', { onclick: remove }, ico('trash'), 'Excluir lista'))), 'IPTVKZ');
+  if (TV.on) setTimeout(() => focusEl(again), 30);
 }
 
 function showError() {
@@ -562,7 +718,7 @@ let showLoading = null;
 
 let lastLoad = null; // quanto a lista levou para carregar (modo de depuração)
 
-async function loadActive(force = false) {
+async function loadActive(force = false, { newList = false } = {}) {
   const list = activeList();
   checkListStatus();
   if (!list) {
@@ -573,24 +729,56 @@ async function loadActive(force = false) {
   appState = 'loading';
   renderNav();
   const token = ++loadToken;
+  // o texto acompanha o andamento que o servidor informa (baixando X MB, organizando)
+  const stText = h('span', `Carregando ${list.name}...`);
+  const stHint = h('span.faint', force ? 'Listas grandes podem levar alguns minutos.' : '');
+  const stBar = h('div.load-bar.hidden', h('i'));
   showLoading = () => {
     const posters = ['movies', 'series', 'mylist', 'favorites', 'history'].includes(parseHash().name);
     showState(h('div.page.sk-page',
-      h('div.sk-status', h('div.spinner.small'), h('span', `Carregando ${list.name}...`),
-        force ? h('span.faint', 'Listas grandes podem levar até um minuto.') : null),
+      h('div.sk-status', h('div.spinner.small'), stText, stHint), stBar,
       posters ? h('div.poster-grid', skPosters(18)) : h('div.ch-grid', skChannels(24))), 'IPTVKZ');
   };
   if (parseHash().name === 'settings') route();
   else showLoading();
+  const progTimer = setInterval(async () => {
+    let p = null;
+    try { p = (await catalogStatus(list.id)).progress; } catch {}
+    if (!p || token !== loadToken) return;
+    const mb = (n) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0).replace('.', ',');
+    if (p.phase === 'build') {
+      stText.textContent = `Organizando canais, filmes e séries de ${list.name}...`;
+      stBar.classList.add('hidden');
+    } else if (p.got > 0) {
+      // 'read': lista de arquivo, lida do aparelho; 'download': baixando do provedor
+      const verb = p.phase === 'read' ? 'Lendo' : 'Baixando';
+      stText.textContent = p.total ? `${verb} ${list.name}: ${mb(p.got)} de ${mb(p.total)} MB` : `${verb} ${list.name}: ${mb(p.got)} MB`;
+      if (p.total) {
+        stBar.classList.remove('hidden');
+        stBar.firstChild.style.transform = `scaleX(${Math.min(1, p.got / p.total)})`;
+      }
+    } else stText.textContent = `Conectando ao provedor de ${list.name}...`;
+    // demorou: é o provedor, e só a primeira vez é assim
+    if (p.secs >= 8) stHint.textContent = 'Listas grandes demoram na primeira vez; depois a lista abre na hora.';
+  }, 1000);
   try {
     const t0 = performance.now();
-    const r = await loadCatalog(list.id, { force });
+    let r;
+    try { r = await loadCatalog(list.id, { force, first: firstSection() }); } finally { clearInterval(progTimer); }
     lastLoad = { ms: Math.round(performance.now() - t0), at: Date.now() };
     if (token !== loadToken) return; // trocou ou excluiu a lista enquanto carregava
     appState = 'ready';
-    warmSearch();
+    // lista nova sem canais (só filmes e séries): abre em Filmes (ou Séries), não num Ao vivo vazio
+    if (newList && r.counts && !r.counts.live && parseHash().name === 'live') {
+      history.replaceState(null, '', r.counts.movies ? '#/movies' : r.counts.series ? '#/series' : '#/live');
+    }
+    // a busca e as contagens da barra esperam as outras seções, que continuam chegando por trás
+    r.rest.then(() => { if (token === loadToken) { warmSearch(); renderNav(); } }, () => {});
+    // não deu para atualizar: a versão guardada continua valendo
+    if (r.warning) toast(r.warning, 'error', 9000);
+    if (r.shrunk) askShrunk(list, r.shrunk);
     renderListSwitch();
-    if (current && current.name === 'settings') renderNav(); // quem está em Configurações não perde o lugar
+    if (current && current.name === 'settings' && parseHash().name === 'settings') renderNav(); // quem está em Configurações não perde o lugar
     else { current = null; route(); }
     if (r.refreshing) watchRefresh(list.id);
   } catch (e) {
@@ -599,6 +787,25 @@ async function loadActive(force = false) {
     lastError = e.message;
     renderNav();
     if (!current || current.name !== 'settings') route();
+  }
+}
+
+// A última atualização trouxe bem menos itens que antes: a nova já vale, mas a pessoa pode voltar à anterior.
+// Fechar sem escolher deixa para depois (pergunta de novo na próxima abertura).
+async function askShrunk(list, s) {
+  const n = (x) => Number(x).toLocaleString('pt-BR');
+  const v = await confirmDialog('A lista ficou bem menor',
+    `“${list.name}” veio com ${n(s.after)} itens; antes tinha ${n(s.before)}. Pode ser uma mudança do seu provedor (plano ou conteúdo) ou um problema passageiro dele.`,
+    'Voltar à anterior', false, 'Manter a nova');
+  if (v === null) return;
+  try {
+    await api(`/api/catalog/shrunk?list=${encodeURIComponent(list.id)}&back=${v ? 1 : 0}`, { method: 'POST' });
+  } catch (e) {
+    return toast(e.message, 'error');
+  }
+  if (v) {
+    await loadActive();
+    toast('A versão anterior da lista voltou.', 'ok');
   }
 }
 
@@ -611,7 +818,9 @@ function watchRefresh(listId) {
       clearInterval(pollTimer);
       pollTimer = null;
       if (C() && C().listId === listId && st.updatedAt && st.updatedAt > C().updatedAt) {
-        await loadCatalog(listId);
+        // com a pessoa usando a lista, só troca quando todas as seções chegarem
+        const nr = await loadCatalog(listId, { first: firstSection(), whole: true });
+        if (nr.shrunk && activeList()) askShrunk(activeList(), nr.shrunk);
         warmSearch();
         const playing = isOverlayOpen() || (current && current.name === 'live' && parseHash().params.get('ch'));
         if (!playing) { current = null; route(); }
@@ -650,8 +859,10 @@ async function onListSaved(list) {
   S.settings.activeList = list.id;
   await saveNow('settings').catch(() => {});
   renderListSwitch();
-  if (isNew && !location.hash.startsWith('#/settings')) history.replaceState(null, '', '#/live');
-  await loadActive(true);
+  // Lista nova (inclusive a que chegou pelo celular): sai de Configurações e vai para o conteúdo, que aparece
+  // assim que carregar. Editar a lista em uso deixa a pessoa onde estava.
+  if (isNew) history.replaceState(null, '', '#/live');
+  await loadActive(true, { newList: isNew });
 }
 
 async function deleteList(id) {
@@ -806,7 +1017,7 @@ document.addEventListener('keydown', (e) => {
     if (handleBack(e)) e.preventDefault();
     return;
   }
-  if (document.querySelector('.modal-back')) {
+  if (document.querySelector('.modal-back:not(.closing)')) {
     if ((TV.on || (KB.on && !typing)) && DIRS[ev.key] && !(typing && !t.readOnly && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight'))) {
       if (move(DIRS[ev.key])) e.preventDefault();
     }
@@ -846,9 +1057,15 @@ document.addEventListener('keydown', (e) => {
 
 window.addEventListener('hashchange', route);
 window.addEventListener('iptvkz:counts', debounce(() => renderNav(), 200));
+// uma seção da lista chegou por trás: as contagens da barra (favoritos, salvos) passam a incluir ela
+onSection(debounce(() => renderNav(), 200));
 window.addEventListener('pagehide', flushSaves);
 startLifeline();
 setInterval(() => { if (S.lists.length && !document.hidden) checkListStatus(); }, STATUS_EVERY);
+// as outras listas: uma por minuto no máximo, cada uma a cada 12 min (a primeira, um pouco depois de abrir)
+setTimeout(() => { checkOtherLists(); setInterval(checkOtherLists, 60 * 1000); }, 20 * 1000);
+// vídeo tocando: avisa o servidor que o app está em uso (ele não prepara outras listas enquanto isso)
+setInterval(() => { if (isPlaying()) fetch('/api/ping?uso=1', { cache: 'no-store' }).catch(() => {}); }, 60 * 1000);
 setInterval(() => { if (!document.hidden) checkNet(); }, NET_EVERY);
 window.addEventListener('focus', refreshIfStale);
 document.addEventListener('visibilitychange', refreshIfStale);
@@ -929,6 +1146,8 @@ async function waitForInternet() {
 }
 
 // Modo de depuração: o que importa na tela atual (lista, catálogo, quanto há desenhado)
+let diagInfo = null; // /api/diag: memória do servidor e a última leitura do catálogo a frio
+let diagAt = 0;
 debugSection('app', () => {
   const c = C();
   const rows = [];
@@ -941,9 +1160,25 @@ debugSection('app', () => {
     const t = c.timing;
     if (t && t.download != null) {
       const sec = (ms) => `${(ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`;
-      const slow = Object.entries(t).filter(([k, v]) => typeof v === 'number' && !['total', 'download', 'login'].includes(k)).sort((a, b) => b[1] - a[1])[0];
-      rows.push(['Baixar lista', `${sec(t.download)} do provedor${t.parallel ? '' : ' (pouca memória: em partes)'}`, tone(t.download, 8000, 25000),
+      const slow = Object.entries(t).filter(([k, v]) => typeof v === 'number' && !['total', 'download', 'login', 'MB', 'memMB', 'travadoMs', 'montar', 'converter'].includes(k)).sort((a, b) => b[1] - a[1])[0];
+      rows.push(['Baixar lista', `${sec(t.download)} do provedor${t.parallel === false ? ' (pouca memória: em partes)' : ''}${t.MB ? ` · ${n(t.MB)} MB` : ''}`, tone(t.download, 8000, 25000),
         slow ? `mais lento: ${slow[0].replace(/_/g, ' ')} ${sec(slow[1])}` : '', tone(slow && slow[1], 5000, 15000)]);
+    }
+    // a última montagem desta lista no aparelho: quanto levou, memória e quanto o servidor ficou sem responder
+    if (t && (t.montar != null || t.converter != null)) {
+      const sec = (ms) => `${(ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`;
+      rows.push(['Montar lista', [t.montar != null ? `${sec(t.montar)} montar` : '', t.converter != null ? `${sec(t.converter)} converter` : ''].filter(Boolean).join(' · '), tone((t.montar || 0) + (t.converter || 0), 5000, 20000),
+        t.memMB ? `pico ${n(t.memMB)} MB · servidor parado ${sec(t.travadoMs || 0)}` : '', tone(t.travadoMs, 1000, 4000)]);
+    }
+    // servidor agora (medido a cada 5 s com o modo de depuração aberto)
+    if (Date.now() - diagAt > 5000) {
+      diagAt = Date.now();
+      api('/api/diag').then((d) => { diagInfo = d; }, () => {});
+    }
+    if (diagInfo) {
+      const cold = diagInfo.coldRead && diagInfo.coldRead.listId === c.listId ? diagInfo.coldRead : null;
+      rows.push(['Servidor', `${n(diagInfo.memMB)} MB de memória`, tone(diagInfo.memMB, 500, 900),
+        cold ? `abrir com o app fechado: ${n(cold.ms)} ms` : '', tone(cold && cold.ms, 1000, 4000)]);
     }
   } else rows.push(['Lista', appState === 'loading' ? 'carregando...' : appState === 'error' ? 'erro ao carregar' : 'nenhuma', appState === 'error' ? 'bad' : '']);
   const nodes = document.getElementsByTagName('*').length;
@@ -957,6 +1192,8 @@ debugSection('app', () => {
 (async function boot() {
   setTimeout(hideSplash, 15000);
   detectTv();
+  // o atalho "/" da busca só existe com teclado: na TV (e no app Android, que liga o modo TV) e no celular, sem ele
+  if (TV.on || window.matchMedia('(hover: none) and (pointer: coarse)').matches) search.placeholder = 'Buscar canais, filmes e séries';
   initKeyDebug();
   document.addEventListener('focusin', () => { if (TV.on || KB.on) syncFocus(); });
   // PC: usar o mouse desliga o modo teclado (o pequeno limite ignora o "movimento" que a rolagem simula)
