@@ -1288,6 +1288,11 @@ async function getCatalog(list, { force = false, full = false } = {}) {
   return { catalog: await refresh(list), refreshing: false };
 }
 
+// Prepara uma lista por trás (warmup.js): o mesmo caminho do "Atualizar lista", sem tela esperando.
+function warm(list) {
+  return refresh(list);
+}
+
 function isRefreshing(id) {
   return inflight.has(id);
 }
@@ -1333,6 +1338,7 @@ module.exports = {
   getCatalog,
   speedTest,
   isRefreshing,
+  warm,
   progressOf,
   updatedAtOf,
   epgUrlOf,

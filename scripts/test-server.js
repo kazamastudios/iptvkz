@@ -656,6 +656,74 @@ test('pareamento: arquivo .m3u mandado pelo celular vira a lista de arquivo na T
   await request('DELETE', '/api/list?list=pf');
 });
 
+test('status de várias listas: cada uma verificada sem baixar a lista', async () => {
+  await addLists([
+    { id: 'st-ok', type: 'xtream', name: 'Ativa', server: FAKE, username: XT.user, password: XT.pass },
+    { id: 'st-ruim', type: 'xtream', name: 'Senha errada', server: FAKE, username: XT.user, password: 'errada' },
+    { id: 'st-m3u', type: 'm3u', name: 'M3U', url: `${FAKE}/lista.m3u` },
+    { id: 'st-fora', type: 'm3u', name: 'Fora', url: 'http://127.0.0.1:1/lista.m3u' },
+  ]);
+  const states = {};
+  for (const id of ['st-ok', 'st-ruim', 'st-m3u', 'st-fora']) states[id] = (await request('GET', `/api/list-status?list=${id}`)).json.state;
+  assert.deepStrictEqual(states, { 'st-ok': 'active', 'st-ruim': 'refused', 'st-m3u': 'active', 'st-fora': 'offline' });
+  for (const id of Object.keys(states)) assert.ok(!fs.existsSync(path.join(DATA, `catalog-${id}.meta.json`)), 'verificar não monta a lista');
+});
+
+test('outras listas prontas por trás: só com memória sobrando, app parado e sem vídeo', async () => {
+  const warmup = require('../src/server/warmup.js');
+  const catalogs = require('../src/server/catalog.js');
+  const GB = 1024 * 1024 * 1024;
+  const settings = (await request('GET', '/api/state')).json.settings;
+  await addLists([
+    { id: 'w-tela', type: 'm3u', name: 'Da tela', url: `${FAKE}/lista.m3u` },
+    { id: 'w-outra', type: 'm3u', name: 'Outra', url: `${FAKE}/lista.m3u?outra=1` },
+  ]);
+  await request('PUT', '/api/state/settings', { body: { ...settings, activeList: 'w-tela' }, headers: { 'Content-Type': 'application/json' } });
+  const longAgo = () => warmup.touch(Date.now() - 10 * 60 * 1000); // app parado há 10 min
+  const t = warmup._test;
+  t.reset();
+  t.setPlatform('linux');
+  t.setStreams(() => 0);
+  try {
+    t.setMemory(() => ({ total: 2 * GB, heap: 4 * GB })); // Mecool: 2 GB no aparelho
+    longAgo();
+    assert.strictEqual(warmup.tick(), null, 'pouca memória no aparelho');
+    t.setMemory(() => ({ total: 16 * GB, heap: 318 * 1024 * 1024 })); // TV LG: limite do serviço
+    longAgo();
+    assert.strictEqual(warmup.tick(), null, 'limite de memória da TV LG');
+    t.setMemory(() => ({ total: 16 * GB, heap: 4 * GB })); // PC
+    t.setStreams(() => 1);
+    longAgo();
+    assert.strictEqual(warmup.tick(), null, 'vídeo tocando');
+    t.setStreams(() => 0);
+    warmup.touch();
+    assert.strictEqual(warmup.tick(), null, 'app em uso agora');
+    t.setPlatform('android');
+    longAgo();
+    assert.strictEqual(warmup.tick(), null, 'Android: pode estar nos dados móveis');
+    t.setPlatform('linux');
+    longAgo();
+    // a lista da tela não entra (o app cuida dela); as outras sem catálogo, sim
+    const ids = [];
+    for (let id = warmup.tick(); id; id = warmup.tick()) { ids.push(id); await t.wait(); longAgo(); }
+    assert.ok(ids.includes('w-outra'), 'preparou a outra lista');
+    assert.ok(!ids.includes('w-tela'), 'não mexe na lista da tela');
+    assert.ok(catalogs.updatedAtOf('w-outra'), 'catálogo guardado');
+    await until(async () => (fs.existsSync(path.join(DATA, 'catalog-w-outra.meta.json')) ? true : null));
+    longAgo();
+    assert.strictEqual(warmup.tick(), null, 'no máximo uma vez a cada 12 h por lista');
+    // trocar para a lista preparada: vem do catálogo guardado, sem montar de novo
+    const r = await request('GET', '/api/catalog?list=w-outra&section=live');
+    assert.strictEqual(r.json.building, false);
+    assert.strictEqual(r.json.catalog.live.items.length, 10);
+  } finally {
+    t.setMemory(() => ({ total: 0, heap: 0 })); // o resto dos testes sem preparo por trás
+    warmup.touch();
+    await t.wait();
+    await request('PUT', '/api/state/settings', { body: settings, headers: { 'Content-Type': 'application/json' } });
+  }
+});
+
 test('lista grande: 60 mil entradas montam em poucos segundos', async () => {
   const text = m3u(60000, 'http://exemplo.invalid');
   const t0 = Date.now();

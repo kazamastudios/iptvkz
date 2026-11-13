@@ -15,6 +15,10 @@ const net = require('./network');
 const sessions = require('./sessions');
 const { sendText } = require('./compress');
 const pairing = require('./pairing');
+const warmup = require('./warmup');
+// Avisos periódicos da tela (internet, status, andamento): não contam como alguém usando o app. Com vídeo tocando,
+// a tela avisa com /api/ping?uso=1 (o player nativo nem sempre passa pelo /proxy).
+const BACKGROUND = new Set(['/api/ping', '/api/net', '/api/list-status', '/api/catalog/status']);
 const backup = require('./backup');
 const ffmpeg = require('./ffmpeg');
 const cast = require('./cast');
@@ -580,6 +584,7 @@ const server = http.createServer((req, res) => {
   }
   lastSeen = Date.now();
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (!BACKGROUND.has(url.pathname) || url.searchParams.get('uso') === '1') warmup.touch();
   if (url.pathname === '/proxy') {
     handleProxy(req, res, url.searchParams).catch((err) => {
       if (!res.headersSent) res.writeHead(500);
@@ -626,6 +631,8 @@ function start({ port = PORT, host = HOST, keepAlive = KEEPALIVE, portFallback =
       });
       server.listen(p, host, () => {
         PORT = p;
+        // outras listas prontas por trás, com o app parado (só com memória sobrando; ver warmup.js)
+        warmup.start(() => openStreams);
         if (idleMs > 0) {
           setInterval(() => {
             if (openStreams === 0 && Date.now() - lastSeen > idleMs) {
