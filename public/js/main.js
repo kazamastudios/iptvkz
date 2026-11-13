@@ -4,6 +4,11 @@
   'use strict';
 
   var root = document.documentElement;
+  var EN = /^en/i.test(root.getAttribute('lang') || '');
+  var T = function (pt, en) { return EN ? en : pt; };
+  // caminho até a raiz do site: '' na página em português, '../' em /en/
+  var me = document.querySelector('script[src$="js/main.js"]');
+  var BASE = me ? me.getAttribute('src').replace(/js\/main\.js$/, '') : '';
   var ua = navigator.userAgent;
   var $ = function (s, c) { return (c || document).querySelector(s); };
   var $$ = function (s, c) { return Array.prototype.slice.call((c || document).querySelectorAll(s)); };
@@ -14,12 +19,12 @@
   // ---------- aparelho de quem visita ----------
   var device = window.iptvkzDevice;
   var HERO = {
-    win: { label: 'Baixar grátis para Windows', direct: true },
-    linux: { label: 'Baixar grátis para Linux', direct: true },
-    android: { label: 'Baixar grátis para Android', direct: true },
-    atv: { label: 'Baixar grátis para Android TV', direct: true },
-    mac: { label: 'Baixar grátis para macOS' },
-    lg: { label: 'Instalar grátis na TV LG' },
+    win: { label: T('Baixar grátis para Windows', 'Download free for Windows'), direct: true },
+    linux: { label: T('Baixar grátis para Linux', 'Download free for Linux'), direct: true },
+    android: { label: T('Baixar grátis para Android', 'Download free for Android'), direct: true },
+    atv: { label: T('Baixar grátis para Android TV', 'Download free for Android TV'), direct: true },
+    mac: { label: T('Baixar grátis para macOS', 'Download free for macOS') },
+    lg: { label: T('Instalar grátis na TV LG', 'Install free on LG TV') },
   };
 
   var others = $('#outros');
@@ -46,7 +51,7 @@
 
   // ---------- Clássica ou Streaming ----------
   function swap(img, base, alt) {
-    var src = 'images/screens/' + base;
+    var src = BASE + 'images/screens/' + base;
     img.classList.add('is-swap');
     var next = new Image();
     next.onload = next.onerror = function () {
@@ -59,8 +64,8 @@
   }
 
   var ALT = {
-    classica: 'IPTVKZ na visualização Clássica: grade de filmes fictícios com capas e categorias',
-    streaming: 'IPTVKZ na visualização Streaming: um filme fictício em destaque, botões e a fileira Continuar assistindo',
+    classica: T('IPTVKZ na visualização Clássica: grade de filmes fictícios com capas e categorias', 'IPTVKZ in the Classic view: a grid of fictional movie posters and categories'),
+    streaming: T('IPTVKZ na visualização Streaming: um filme fictício em destaque, botões e a fileira Continuar assistindo', 'IPTVKZ in the Streaming view: a fictional movie in the spotlight, buttons and the Continue watching row'),
   };
   var views = $$('[data-view]');
   var heroImg = $('[data-hero-img]');
@@ -93,7 +98,7 @@
   function setPaused(p) {
     paused = p;
     pauseBtn.setAttribute('aria-pressed', p ? 'true' : 'false');
-    pauseBtn.textContent = p ? 'Continuar' : 'Pausar';
+    pauseBtn.textContent = p ? T('Continuar', 'Resume') : T('Pausar', 'Pause');
   }
   if (reduce) { pauseBtn.hidden = true; }
   tiles.forEach(function (t, i) {
@@ -125,7 +130,8 @@
   var KEY = 'iptvkz-github';
   function mb(bytes) {
     var v = bytes / 1e6;
-    return (v < 10 ? v.toFixed(1).replace('.', ',') : Math.round(v)) + ' MB';
+    var n = v < 10 ? v.toFixed(1) : String(Math.round(v));
+    return (EN ? n : n.replace('.', ',')) + ' MB';
   }
   function apply(d) {
     if (d.tag) {
@@ -199,7 +205,7 @@
     s.onerror = function () { root.classList.remove('motion'); };
     document.body.appendChild(s);
   }
-  if (!isTv && !reduce) loadAll(['js/vendor/gsap.min.js', 'js/vendor/ScrollTrigger.min.js', 'js/motion.js']);
+  if (!isTv && !reduce) loadAll([BASE + 'js/vendor/gsap.min.js', BASE + 'js/vendor/ScrollTrigger.min.js', BASE + 'js/motion.js']);
 
   if (!isTv) return;
 

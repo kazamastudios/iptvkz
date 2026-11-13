@@ -19,7 +19,7 @@
   gsap.to('.hero__stage .frame', { y: -36, ease: 'none', scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: 0.5 } });
 
   // ---------- fade in ao entrar, fade out ao sair ----------
-  var targets = gsap.utils.toArray('.promise, .head, .card, .free, .section--tight .h-small, .platform, .gallery, .rec, .others, .warn, .open, #duvidas .h-small, .faq details');
+  var targets = gsap.utils.toArray('.promise, .head, .card, .free, .section--tight .h-small, .platform, .gallery, .rec, .others, .warn, .open, #duvidas .h-small, #faq .h-small, .faq details');
   targets = targets.filter(function (el) { return !el.closest('.open') || el.classList.contains('open'); });
   gsap.set(targets, { opacity: 0, y: 26 });
   ScrollTrigger.batch(targets, {

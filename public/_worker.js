@@ -127,6 +127,7 @@ async function relato(request, env) {
     `**Quando:** ${momento}`,
     `**Aparelho:** ${aparelho}`,
     `**Versão do app:** ${versao || 'não informada'}`,
+    ...(d.lang === 'en' ? ['**Idioma:** inglês (responder em inglês)'] : []),
     '',
     '**O que aconteceu**',
     bloco(mensagem),
