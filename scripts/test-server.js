@@ -43,7 +43,9 @@ function xmltv() {
 }
 
 function xtreamApi(q, res) {
-  if (q.get('username') !== XT.user || q.get('password') !== XT.pass) {
+  // conta "lento": filmes e séries demoram, para testar a seção da tela chegando antes das outras
+  const slow = q.get('username') === 'lento';
+  if ((q.get('username') !== XT.user && !slow) || q.get('password') !== XT.pass) {
     return res.end(JSON.stringify({ user_info: { auth: 0 } }));
   }
   const action = q.get('action') || '';
@@ -58,7 +60,9 @@ function xtreamApi(q, res) {
     get_series_info: { info: { name: 'Série Teste' }, episodes: { 1: [{ id: 301, episode_num: 1, title: 'Ep 1', container_extension: 'mp4', season: 1 }] } },
   }[action];
   res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify(body == null ? [] : body));
+  const send = () => res.end(JSON.stringify(body == null ? [] : body));
+  if (slow && ['get_vod_streams', 'get_series'].includes(action)) return setTimeout(send, 1500);
+  send();
 }
 
 function startFake() {
@@ -262,6 +266,23 @@ test('Xtream: login, catálogo, série sob demanda e senha errada', async () => 
   assert.strictEqual(bad.status, 500);
   assert.match(bad.json.error, /inválidos/);
   assert.ok(!bad.text.includes('errada'), 'a mensagem de erro não mostra a senha');
+});
+
+test('Xtream: a seção da tela chega antes das outras, e as outras esperam a mesma carga', async () => {
+  await addLists([{ id: 'xtslow', type: 'xtream', name: 'XT lento', server: FAKE, username: 'lento', password: XT.pass }]);
+  const t0 = Date.now();
+  const live = await request('GET', '/api/catalog?list=xtslow&section=live');
+  assert.strictEqual(live.status, 200);
+  assert.ok(Date.now() - t0 < 1200, `canais chegaram em ${Date.now() - t0} ms, sem esperar filmes e séries`);
+  assert.strictEqual(live.json.building, true);
+  assert.strictEqual(live.json.catalog.live.items[0].name, 'Canal X');
+  assert.strictEqual(live.json.catalog.movies, undefined, 'só a seção pedida');
+  const movies = await request('GET', '/api/catalog?list=xtslow&section=movies&wait=1');
+  assert.strictEqual(movies.json.catalog.movies.items.length, 1);
+  assert.strictEqual(movies.json.catalog.updatedAt, live.json.catalog.updatedAt, 'mesma carga');
+  const series = await request('GET', '/api/catalog?list=xtslow&section=series');
+  assert.strictEqual(series.json.building, false, 'depois de pronta, vem da versão guardada');
+  assert.strictEqual(series.json.catalog.series.items[0].name, 'Série Teste');
 });
 
 test('EPG: guia .xml.gz da lista chega para o canal certo', async () => {

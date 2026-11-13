@@ -466,6 +466,11 @@ function tidyCatalog(c) {
   return c;
 }
 
+// id da categoria -> nome, para separar versões (DUB/LEG) pelo nome da categoria
+function catName(arr) {
+  return new Map((Array.isArray(arr) ? arr : []).map((c) => [String(c.category_id), c.category_name || '']));
+}
+
 function cats(arr) {
   return (Array.isArray(arr) ? arr : []).map((c) => ({ id: String(c.category_id), name: c.category_name || 'Sem nome' }));
 }
@@ -475,7 +480,7 @@ function num(v) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-async function buildFromXtream(list) {
+async function buildFromXtream(list, { first, onSection } = {}) {
   const x = xtream(list);
   const prog = progress.get(list.id);
   const sizes = {}; // bytes recebidos de cada pedido (vários ao mesmo tempo no PC)
@@ -503,87 +508,101 @@ async function buildFromXtream(list) {
       timing[action.replace(/^get_/, '')] = Date.now() - t;
     }
   };
-  // Os 6 pedidos são independentes. No PC saem em paralelo (a lista carrega no tempo do mais lento). Em aparelho
-  // com pouca memória (TV LG, TV Box) saem um de cada vez: as respostas grandes chegando juntas travavam a TV.
-  const actions = ['get_live_categories', 'get_live_streams', 'get_vod_categories', 'get_vod_streams', 'get_series_categories', 'get_series'];
-  let results;
-  if (require('os').totalmem() > 3 * 1024 ** 3) results = await Promise.all(actions.map(get));
-  else {
-    // pouca memória: as 3 listas de categorias (pequenas) juntas, e as 3 grandes uma de cada vez
-    const small = actions.filter((a) => a.endsWith('categories'));
-    const smallRes = await Promise.all(small.map(get));
-    const got = new Map(small.map((a, i) => [a, smallRes[i]]));
-    for (const a of actions) if (!got.has(a)) got.set(a, await get(a));
-    results = actions.map((a) => got.get(a));
+  // Cada seção (canais, filmes, séries) são 2 pedidos: as categorias e os itens. A seção fica pronta assim que os
+  // dois chegam e vai na hora para a tela (onSection), sem esperar as outras: quem está em Filmes vê os filmes
+  // enquanto as séries ainda baixam. A seção da tela atual (first) é pedida primeiro.
+  // No PC os 6 pedidos saem em paralelo. Em aparelho com pouca memória (TV LG, TV Box) as categorias (pequenas)
+  // saem juntas e as 3 listas grandes uma de cada vez: as respostas grandes chegando juntas travavam a TV.
+  const PAIRS = {
+    live: ['get_live_categories', 'get_live_streams'],
+    movies: ['get_vod_categories', 'get_vod_streams'],
+    series: ['get_series_categories', 'get_series'],
+  };
+  const order = [first, 'live', 'movies', 'series'].filter((k, i, a) => PAIRS[k] && a.indexOf(k) === i);
+  const make = {
+    live: (liveCats, liveStreams) => ({
+      cats: cats(liveCats),
+      items: (Array.isArray(liveStreams) ? liveStreams : []).map((s) => ({
+        id: 'l' + s.stream_id,
+        name: s.name || 'Canal',
+        logo: s.stream_icon || '',
+        cat: String(s.category_id),
+        epg: s.epg_channel_id || '',
+        url: x.live(s.stream_id, 'm3u8'),
+        alt: x.live(s.stream_id, 'ts'),
+      })),
+    }),
+    movies: (vodCats, vodStreams) => {
+      const vodCatName = catName(vodCats);
+      const movieRaw = (Array.isArray(vodStreams) ? vodStreams : []).map((s) => ({
+        name: s.name || 'Filme',
+        group: vodCatName.get(String(s.category_id)) || '',
+        poster: s.stream_icon || '',
+        cat: String(s.category_id),
+        url: x.movie(s.stream_id, s.container_extension),
+        xid: s.stream_id,
+        rating: num(s.rating),
+        added: Number(s.added) || 0,
+        year: num(s.year),
+      }));
+      return { cats: cats(vodCats), items: mergeMovies(movieRaw) };
+    },
+    // Séries: versões (DUB/LEG) do mesmo título viram um item só; episódios carregam sob demanda.
+    series: (serCats, serList) => {
+      const serCatName = catName(serCats);
+      const seriesMap = new Map();
+      for (const s of Array.isArray(serList) ? serList : []) {
+        const group = serCatName.get(String(s.category_id)) || '';
+        const { base, label } = splitVersion(s.name || 'Série', group);
+        const key = norm(base);
+        let g = seriesMap.get(key);
+        if (!g) {
+          g = {
+            id: 's' + hash(key),
+            name: base,
+            poster: s.cover || '',
+            cat: String(s.category_id),
+            year: num(String(s.releaseDate || s.release_date || '').slice(0, 4)) || yearOf(base),
+            rating: num(s.rating),
+            plot: s.plot || '',
+            genre: s.genre || '',
+            versions: [],
+          };
+          seriesMap.set(key, g);
+        }
+        if (!g.poster && s.cover) g.poster = s.cover;
+        addVersion(g.versions, { label, xid: s.series_id, group });
+      }
+      const series = [...seriesMap.values()];
+      for (const s of series) sortVersions(s.versions);
+      return { cats: cats(serCats), items: series };
+    },
+  };
+  const out = {};
+  const finish = (sec, catsRes, itemsRes) => {
+    const data = make[sec](catsRes, itemsRes);
+    data.cats = tidyCats(data.cats, sec);
+    out[sec] = data;
+    if (onSection) onSection(sec, data, { epgUrl: x.epg });
+  };
+  const parallel = require('os').totalmem() > 3 * 1024 ** 3;
+  if (parallel) {
+    await Promise.all(order.map(async (sec) => {
+      const [c, items] = await Promise.all(PAIRS[sec].map(get));
+      finish(sec, c, items);
+    }));
+  } else {
+    const catsRes = await Promise.all(order.map((sec) => get(PAIRS[sec][0])));
+    for (let i = 0; i < order.length; i++) finish(order[i], catsRes[i], await get(PAIRS[order[i]][1]));
   }
   timing.download = Date.now() - t0;
+  timing.parallel = parallel;
   if (prog) prog.phase = 'build';
-  timing.parallel = require('os').totalmem() > 3 * 1024 ** 3;
-  const [liveCats, liveStreams, vodCats, vodStreams, serCats, serList] = results;
-
-  const live = (Array.isArray(liveStreams) ? liveStreams : []).map((s) => ({
-    id: 'l' + s.stream_id,
-    name: s.name || 'Canal',
-    logo: s.stream_icon || '',
-    cat: String(s.category_id),
-    epg: s.epg_channel_id || '',
-    url: x.live(s.stream_id, 'm3u8'),
-    alt: x.live(s.stream_id, 'ts'),
-  }));
-
-  const catName = (arr) => new Map((Array.isArray(arr) ? arr : []).map((c) => [String(c.category_id), c.category_name || '']));
-  const vodCatName = catName(vodCats);
-  const serCatName = catName(serCats);
-  const movieRaw = (Array.isArray(vodStreams) ? vodStreams : []).map((s) => ({
-    name: s.name || 'Filme',
-    group: vodCatName.get(String(s.category_id)) || '',
-    poster: s.stream_icon || '',
-    cat: String(s.category_id),
-    url: x.movie(s.stream_id, s.container_extension),
-    xid: s.stream_id,
-    rating: num(s.rating),
-    added: Number(s.added) || 0,
-    year: num(s.year),
-  }));
-
-  // Séries: versões (DUB/LEG) do mesmo título viram um item só; episódios carregam sob demanda.
-  const seriesMap = new Map();
-  for (const s of Array.isArray(serList) ? serList : []) {
-    const group = serCatName.get(String(s.category_id)) || '';
-    const { base, label } = splitVersion(s.name || 'Série', group);
-    const key = norm(base);
-    let g = seriesMap.get(key);
-    if (!g) {
-      g = {
-        id: 's' + hash(key),
-        name: base,
-        poster: s.cover || '',
-        cat: String(s.category_id),
-        year: num(String(s.releaseDate || s.release_date || '').slice(0, 4)) || yearOf(base),
-        rating: num(s.rating),
-        plot: s.plot || '',
-        genre: s.genre || '',
-        versions: [],
-      };
-      seriesMap.set(key, g);
-    }
-    if (!g.poster && s.cover) g.poster = s.cover;
-    addVersion(g.versions, { label, xid: s.series_id, group });
-  }
-  if (!live.length && !movieRaw.length && !seriesMap.size) {
+  if (!out.live.items.length && !out.movies.items.length && !out.series.items.length) {
     throw new Error('O servidor não enviou nenhum canal, filme ou série. Tente de novo.');
   }
-  const series = [...seriesMap.values()];
-  for (const s of series) sortVersions(s.versions);
-
   timing.total = Date.now() - t0;
-  return {
-    timing,
-    epgUrl: x.epg,
-    live: { cats: cats(liveCats), items: live },
-    movies: { cats: cats(vodCats), items: mergeMovies(movieRaw) },
-    series: { cats: cats(serCats), items: series },
-  };
+  return { timing, epgUrl: x.epg, live: out.live, movies: out.movies, series: out.series };
 }
 
 function durToSec(v) {
@@ -774,18 +793,40 @@ const inflight = new Map(); // id -> Promise
 // Andamento do carregamento, para a tela mostrar que está andando: id -> { phase, got, total, at }
 // phase: 'download' (baixando do provedor) ou 'build' (organizando canais, filmes e séries)
 const progress = new Map();
-const texts = new Map(); // id -> { updatedAt, text }: o catálogo recém-montado já convertido em texto
+// Seções já prontas de uma lista ainda baixando (Xtream): id -> { meta, done: { live, movies, series }, waiters }
+const building = new Map();
+const SECTIONS = ['live', 'movies', 'series'];
 
-async function build(list) {
+// Catálogo em texto, por seção: a tela pede uma seção de cada vez (a da tela atual primeiro), e cada uma é
+// convertida uma vez só. meta: os outros campos, sem as chaves de fora. memo: gzip de cada resposta.
+const partsCache = new WeakMap();
+function partsOf(catalog) {
+  let parts = partsCache.get(catalog);
+  if (!parts) {
+    const meta = {};
+    for (const k of Object.keys(catalog)) if (!SECTIONS.includes(k)) meta[k] = catalog[k];
+    parts = { meta: JSON.stringify(meta).slice(1, -1), memo: {} };
+    for (const k of SECTIONS) parts[k] = JSON.stringify(catalog[k] || { cats: [], items: [] });
+    partsCache.set(catalog, parts);
+  }
+  return parts;
+}
+// o catálogo inteiro em texto (arquivo e resposta completa), montado das partes
+function fullText(catalog) {
+  const parts = partsOf(catalog);
+  return `{${parts.meta}${SECTIONS.map((k) => `,"${k}":${parts[k]}`).join('')}}`;
+}
+
+async function build(list, opts = {}) {
   progress.set(list.id, { phase: 'download', got: 0, total: 0, at: Date.now() });
   try {
-    return await buildNow(list);
+    return await buildNow(list, opts);
   } finally {
     progress.delete(list.id);
   }
 }
 
-async function buildNow(list) {
+async function buildNow(list, { first, onSection, stamp = Date.now() } = {}) {
   const prog = progress.get(list.id);
   let data;
   if (list.type === 'xtream') {
@@ -794,7 +835,8 @@ async function buildNow(list) {
     for (const s of serversOf(list)) {
       activeBase.set(list.id, s);
       try {
-        data = { ...(await buildFromXtream(list)), base: s };
+        const section = onSection && ((sec, d, meta) => onSection(sec, d, { v: 1, listId: list.id, updatedAt: stamp, base: s, ...meta }));
+        data = { ...(await buildFromXtream(list, { first, onSection: section })), base: s };
         break;
       } catch (e) {
         if (!firstErr) firstErr = e;
@@ -822,21 +864,57 @@ async function buildNow(list) {
     // quanto levou cada parte (aparece no modo de depuração, como no Xtream)
     data.timing = { download, montar: Date.now() - t1, MB: Math.round(text.length / 1048576) };
   }
-  const catalog = tidyCatalog({ v: 1, listId: list.id, updatedAt: Date.now(), ...data });
-  // converte uma vez só: o mesmo texto vai para o arquivo e para a resposta à tela (index.js, catalogText)
-  const text = JSON.stringify(catalog);
-  store.writeTextLater(`catalog-${list.id}.json`, text);
-  texts.set(list.id, { updatedAt: catalog.updatedAt, text });
+  // o Xtream já limpou os nomes das categorias seção por seção (e já mandou para a tela assim)
+  const catalog = { v: 1, listId: list.id, updatedAt: stamp, ...data };
+  if (list.type !== 'xtream') tidyCatalog(catalog);
+  // converte uma vez só: o mesmo texto vai para o arquivo e para as respostas à tela (partsOf)
+  store.writeTextLater(`catalog-${list.id}.json`, fullText(catalog));
   memory.set(list.id, catalog);
   return catalog;
 }
 
-function refresh(list) {
+// first: a seção que a tela vai mostrar primeiro (o Xtream a pede antes e a libera assim que chega)
+function refresh(list, first) {
   if (!inflight.has(list.id)) {
-    const p = build(list).finally(() => inflight.delete(list.id));
+    const b = { done: {}, meta: null, waiters: [] };
+    const wake = () => { b.waiters = b.waiters.filter((w) => !w()); };
+    const onSection = (sec, data, meta) => { b.done[sec] = data; b.meta = meta; wake(); };
+    building.set(list.id, b);
+    const p = build(list, { first, onSection }).finally(() => {
+      inflight.delete(list.id);
+      if (building.get(list.id) === b) building.delete(list.id);
+    });
     inflight.set(list.id, p);
   }
   return inflight.get(list.id);
+}
+
+// Uma seção de uma lista que está sendo montada: a parte pronta (Xtream), ou o catálogo inteiro quando terminar.
+function sectionFrom(list, sec) {
+  const p = inflight.get(list.id);
+  if (!p) return null;
+  const b = building.get(list.id);
+  return new Promise((resolve, reject) => {
+    const ready = () => b && b.done[sec] && (resolve({ partial: true, meta: b.meta, data: b.done[sec] }), true);
+    if (ready()) return;
+    if (b) b.waiters.push(ready);
+    p.then((catalog) => resolve({ catalog }), reject);
+  });
+}
+
+const hasCache = (id) => memory.has(id) || fs.existsSync(store.file(`catalog-${id}.json`));
+
+// Uma seção para a tela. force: baixa a lista de novo. wait: a tela já recebeu outra seção desta mesma carga
+// (então espera a montagem em andamento, em vez de pegar a versão guardada antiga).
+async function getSection(list, sec, { force = false, wait = false } = {}) {
+  if (force || !hasCache(list.id)) refresh(list, sec);
+  if (force || wait || !hasCache(list.id)) {
+    const r = await sectionFrom(list, sec);
+    if (r && r.partial) return { ...r, building: true };
+    if (r) return { catalog: r.catalog, refreshing: false, building: true };
+  }
+  const { catalog, refreshing } = await getCatalog(list);
+  return { catalog, refreshing, building: false };
 }
 
 async function getCatalog(list, { force = false } = {}) {
@@ -857,13 +935,6 @@ function isRefreshing(id) {
   return inflight.has(id);
 }
 
-// Texto do catálogo recém-montado (uma vez: depois quem guarda é o index.js)
-function takeText(catalog) {
-  const t = texts.get(catalog.listId);
-  texts.delete(catalog.listId);
-  return t && t.updatedAt === catalog.updatedAt ? t.text : null;
-}
-
 function progressOf(id) {
   const p = progress.get(id);
   return p ? { phase: p.phase, got: p.got, total: p.total, secs: Math.round((Date.now() - p.at) / 1000) } : null;
@@ -879,7 +950,6 @@ function updatedAtOf(id) {
 
 function forget(id) {
   memory.delete(id);
-  texts.delete(id);
 }
 
 module.exports = {
@@ -888,7 +958,10 @@ module.exports = {
   isRefreshing,
   progressOf,
   updatedAtOf,
-  takeText,
+  getSection,
+  partsOf,
+  fullText,
+  SECTIONS,
   forget,
   xtreamSeriesInfo,
   xtreamVodInfo,

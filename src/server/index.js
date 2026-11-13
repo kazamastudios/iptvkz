@@ -219,7 +219,7 @@ const catalogText = new Map(); // listId -> { updatedAt, text }
 function serializeCatalog(catalog) {
   const c = catalogText.get(catalog.listId);
   if (c && c.updatedAt === catalog.updatedAt) return c.text;
-  const text = catalogs.takeText(catalog) || JSON.stringify(catalog);
+  const text = catalogs.fullText(catalog);
   catalogText.set(catalog.listId, { updatedAt: catalog.updatedAt, text });
   return text;
 }
@@ -355,6 +355,25 @@ async function handleApi(req, res, url) {
     if (force) {
       catalogs.forget(list.id);
       epg.forget(list.id);
+    }
+    // Uma seção só (live, movies, series): a tela pede a que vai mostrar primeiro e as outras depois.
+    // Na primeira carga de uma lista Xtream, a seção vem assim que chega do provedor (partial).
+    const section = q.get('section');
+    if (catalogs.SECTIONS.includes(section)) {
+      const r = await catalogs.getSection(list, section, { force, wait: q.get('wait') === '1' });
+      const head = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+      if (force) {
+        const url = epg.sourceUrl(list, r.catalog || r.meta);
+        if (url) epg.refresh(list.id, url).catch(() => {});
+      }
+      if (r.partial) {
+        const body = `{"refreshing":false,"building":true,"catalog":${JSON.stringify({ ...r.meta, [section]: r.data })}}`;
+        return sendText(req, res, 200, head, body);
+      }
+      const parts = catalogs.partsOf(r.catalog);
+      const body = `{"refreshing":${r.refreshing},"building":${r.building},"catalog":{${parts.meta},"${section}":${parts[section]}}}`;
+      const memo = r.refreshing || r.building ? null : parts.memo[section] || (parts.memo[section] = {});
+      return sendText(req, res, 200, head, body, memo);
     }
     const { catalog, refreshing } = await catalogs.getCatalog(list, { force });
     const epgUrl = force && epg.sourceUrl(list, catalog);

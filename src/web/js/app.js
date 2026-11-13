@@ -5,6 +5,7 @@ import { TV, KB, setKbNav, detectTv, applyTv, move, DIRS, focusFirst, focusEl, i
 import { icon } from './core/icons.js';
 import {
   S, C, api, favItems, laterItems, watchHistory, loadState, loadCatalog, clearCatalog, catalogStatus, activeList, saveNow, save, flushSaves, setSetting, buildLabel,
+  sectionsLoaded, sectionsReady, onSection,
 } from './core/store.js';
 import { liveView } from './views/live.js';
 import { vodHome, movieView, serieView } from './views/vod.js';
@@ -38,6 +39,16 @@ const routes = {
   settings: settingsView,
 };
 const NAV_OF = { movie: 'movies', serie: 'series' };
+// Seções da lista que cada tela usa. A lista chega por seção (a da tela atual primeiro): a tela que precisa de
+// uma que ainda não chegou mostra o carregando até ela chegar. Configurações não precisa de nenhuma.
+const ALL_SECTIONS = ['live', 'movies', 'series'];
+const NEEDS = {
+  live: ['live'], guide: ['live'], movies: ['movies'], movie: ['movies'], series: ['series'], serie: ['series'],
+  history: ALL_SECTIONS, mylist: ALL_SECTIONS, favorites: ALL_SECTIONS, search: ALL_SECTIONS,
+};
+const SECTION_NAME = { live: 'canais', movies: 'filmes', series: 'séries' };
+// a seção que a tela atual mostra primeiro (as telas que misturam tudo começam pelos canais)
+const firstSection = () => (NEEDS[parseHash().name] || ['live'])[0];
 
 let current = null;
 let appState = 'boot'; // boot | welcome | loading | error | ready
@@ -511,6 +522,18 @@ function route() {
   }
   if (appState === 'error' && name !== 'settings') return showError();
   if (!C() && name !== 'settings') return;
+  const need = NEEDS[name] || NEEDS.live;
+  if (name !== 'settings' && !sectionsLoaded(need)) {
+    const hash = location.hash;
+    const missing = need.filter((sec) => !sectionsLoaded([sec])).map((sec) => SECTION_NAME[sec]);
+    const what = missing.length > 1 ? `${missing.slice(0, -1).join(', ')} e ${missing[missing.length - 1]}` : missing[0];
+    const posters = !need.includes('live') || need.length > 1;
+    showState(h('div.page.sk-page',
+      h('div.sk-status', h('div.spinner.small'), h('span', `Carregando ${what}...`)),
+      posters ? h('div.poster-grid', skPosters(18)) : h('div.ch-grid', skChannels(24))), 'IPTVKZ');
+    sectionsReady(need).then((ok) => { if (ok && location.hash === hash) route(); });
+    return;
+  }
 
   if (current && current.name === name && current.update && current.update(params)) return;
   unmount();
@@ -606,11 +629,12 @@ async function loadActive(force = false) {
   try {
     const t0 = performance.now();
     let r;
-    try { r = await loadCatalog(list.id, { force }); } finally { clearInterval(progTimer); }
+    try { r = await loadCatalog(list.id, { force, first: firstSection() }); } finally { clearInterval(progTimer); }
     lastLoad = { ms: Math.round(performance.now() - t0), at: Date.now() };
     if (token !== loadToken) return; // trocou ou excluiu a lista enquanto carregava
     appState = 'ready';
-    warmSearch();
+    // a busca e as contagens da barra esperam as outras seções, que continuam chegando por trás
+    r.rest.then(() => { if (token === loadToken) { warmSearch(); renderNav(); } }, () => {});
     renderListSwitch();
     if (current && current.name === 'settings') renderNav(); // quem está em Configurações não perde o lugar
     else { current = null; route(); }
@@ -633,7 +657,8 @@ function watchRefresh(listId) {
       clearInterval(pollTimer);
       pollTimer = null;
       if (C() && C().listId === listId && st.updatedAt && st.updatedAt > C().updatedAt) {
-        await loadCatalog(listId);
+        // com a pessoa usando a lista, só troca quando todas as seções chegarem
+        await loadCatalog(listId, { first: firstSection(), whole: true });
         warmSearch();
         const playing = isOverlayOpen() || (current && current.name === 'live' && parseHash().params.get('ch'));
         if (!playing) { current = null; route(); }
@@ -868,6 +893,8 @@ document.addEventListener('keydown', (e) => {
 
 window.addEventListener('hashchange', route);
 window.addEventListener('iptvkz:counts', debounce(() => renderNav(), 200));
+// uma seção da lista chegou por trás: as contagens da barra (favoritos, salvos) passam a incluir ela
+onSection(debounce(() => renderNav(), 200));
 window.addEventListener('pagehide', flushSaves);
 startLifeline();
 setInterval(() => { if (S.lists.length && !document.hidden) checkListStatus(); }, STATUS_EVERY);
