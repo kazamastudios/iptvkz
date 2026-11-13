@@ -216,7 +216,7 @@ function statusModel() {
   // Conectado, mas demorando a responder (o teste é um pedido pequeno: normal fica bem abaixo de 300 ms).
   // Aí os vídeos demoram e travam por causa da internet, não do app: a bolinha avisa em amarelo.
   if (net.state === 'online' && net.ms > SLOW_NET_MS) {
-    Object.assign(n, { tone: 'warn', label: 'Internet lenta', detail: `${net.ms} ms para responder. Vídeos podem demorar a abrir ou travar.` });
+    Object.assign(n, { tone: 'warn', label: 'Internet instável', detail: `${net.ms} ms para responder. Vídeos podem demorar a abrir ou travar.` });
   }
   let list = null;
   const al = activeList();

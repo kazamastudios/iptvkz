@@ -213,8 +213,8 @@ export class Player {
 
     this.flashEl = h('div.seek-flash');
     this.ppEl = h('div.pp-flash'); // ícone de play/pause no centro, só ao apertar
-    // Internet lenta: aviso discreto no canto, para não parecer defeito do player. Some quando o vídeo volta a fluir.
-    this.netTag = h('div.net-tag.hidden', h('i'), h('span', 'Internet lenta'));
+    // Internet instável: aviso discreto no canto, para não parecer defeito do player. Some quando o vídeo volta a fluir.
+    this.netTag = h('div.net-tag.hidden', h('i'), h('span', 'Internet instável'));
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
     this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
     this.root._player = this; // o Voltar do app acha o player em tela cheia por aqui
@@ -789,7 +789,7 @@ export class Player {
     this.center.classList.toggle('hidden', !on);
   }
 
-  // O vídeo parou esperando dados (ou demora a abrir): depois de um tempo, mostra "Internet lenta" no canto.
+  // O vídeo parou esperando dados (ou demora a abrir): depois de um tempo, mostra "Internet instável" no canto.
   // Sem internet nenhuma, o texto diz isso. Ao voltar a tocar, o aviso fica mais uns segundos e some.
   _netStall(waiting) {
     clearTimeout(this._netT);
@@ -799,9 +799,11 @@ export class Player {
         let offline = navigator.onLine === false;
         try { offline = offline || (await api('/api/net')).online === false; } catch {}
         if (this.destroyed) return;
-        this.netTag.lastChild.textContent = offline ? 'Sem internet' : 'Internet lenta';
+        this.netTag.lastChild.textContent = offline ? 'Sem internet' : 'Internet instável';
         this.netTag.classList.remove('hidden');
-      }, this.hadFrame ? 4000 : 12000); // folga: travadinhas curtas e servidores lentos para abrir não são internet ruim
+        // folga: travadinhas curtas, servidores lentos para abrir e o carregamento depois de mexer na barra
+        // (o provedor precisa achar o novo ponto do vídeo) não são internet ruim
+      }, !this.hadFrame || Date.now() - (this._seekAt || 0) < 15000 ? 12000 : 4000);
     } else if (!this.netTag.classList.contains('hidden')) {
       this._netT = setTimeout(() => this.netTag.classList.add('hidden'), 3000);
     }
@@ -860,7 +862,7 @@ export class Player {
     // a partir do que está na tela (vários toques seguidos somam, mesmo antes do vídeo chegar no anterior)
     const target = Math.max(0, Math.min(v.duration - 1, this._shownTime() + s));
     this.resumeAt = 0;
-    this._seekTo = { t: target, at: Date.now() };
+    this._seekTo = { t: target, at: Date.now() }; this._seekAt = Date.now();
     v.currentTime = target;
     this._updateSeek();
     this.timeEl.textContent = `${fmtTime(target)} / ${fmtTime(v.duration)}`;
@@ -951,7 +953,7 @@ export class Player {
       const ratio = e.type === 'pointercancel' ? lastRatio : ratioAt(e);
       const t = ratio * d;
       this.resumeAt = 0; // a escolha da pessoa vale mais que o "continuar de onde parou" que ainda não foi aplicado
-      this._seekTo = { t, at: Date.now() };
+      this._seekTo = { t, at: Date.now() }; this._seekAt = Date.now();
       show(t / d);
       this._scheduleHide(3000);
       setTimeout(() => { this.video.currentTime = t; }, 0); // o pedido segue depois do desenho
@@ -1485,7 +1487,7 @@ export class Player {
     clearTimeout(this._scrubT);
     if (!this.scrub) return;
     this.resumeAt = 0;
-    this._seekTo = { t: this.scrub.t, at: Date.now() };
+    this._seekTo = { t: this.scrub.t, at: Date.now() }; this._seekAt = Date.now();
     this.video.currentTime = this.scrub.t;
     this.scrub = null;
     this.seekTip.classList.remove('on');

@@ -418,7 +418,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* invisível mas tocável: o toque no vídeo mostra e esconde os controles (com visibility: hidden ele não recebia toques) */
 .player.native-video video { opacity: 0; }
 .player.pseudo-fs { position: fixed; z-index: 9000; }
-/* "Internet lenta" no canto de cima à direita: aparece mesmo com os controles escondidos */
+/* "Internet instável" no canto de cima à direita: aparece mesmo com os controles escondidos */
 .player .net-tag { position: absolute; top: 18px; right: 18px; z-index: 6; display: flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px; background: rgba(0, 0, 0, .66); border: 1px solid rgba(255, 181, 71, .45); color: #ffd38a; font-size: 13px; font-weight: 600; pointer-events: none; transition: opacity .3s; }
 .player .net-tag i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
 .player .net-tag.hidden { opacity: 0; }
