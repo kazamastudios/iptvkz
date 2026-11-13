@@ -280,6 +280,8 @@ test('Xtream: a seção da tela chega antes das outras, e as outras esperam a me
   const movies = await request('GET', '/api/catalog?list=xtslow&section=movies&wait=1');
   assert.strictEqual(movies.json.catalog.movies.items.length, 1);
   assert.strictEqual(movies.json.catalog.updatedAt, live.json.catalog.updatedAt, 'mesma carga');
+  // quando a carga termina, a seção vem da versão guardada (antes disso, ainda pode vir da carga em andamento)
+  await until(async () => !(await request('GET', '/api/catalog/status?list=xtslow')).json.refreshing || null);
   const series = await request('GET', '/api/catalog?list=xtslow&section=series');
   assert.strictEqual(series.json.building, false, 'depois de pronta, vem da versão guardada');
   assert.strictEqual(series.json.catalog.series.items[0].name, 'Série Teste');
