@@ -477,12 +477,12 @@ async function handleApi(req, res, url) {
 
   if (p === '/api/series' && m === 'GET') {
     const list = requireList(q.get('list'));
-    return sendJson(res, 200, await catalogs.xtreamSeriesInfo(list, q.get('xid')));
+    return sendJson(res, 200, await catalogs.xtreamSeriesInfo(catalogs.asXtream(list), q.get('xid')));
   }
 
   if (p === '/api/vod' && m === 'GET') {
     const list = requireList(q.get('list'));
-    return sendJson(res, 200, await catalogs.xtreamVodInfo(list, q.get('xid')));
+    return sendJson(res, 200, await catalogs.xtreamVodInfo(catalogs.asXtream(list), q.get('xid')));
   }
 
   if (p === '/api/epg' && m === 'POST') {

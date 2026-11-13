@@ -4,6 +4,7 @@ const fs = require('fs');
 const { hash, norm, fetchJson, fetchWithTimeout, streamLines, byteLines, streamJsonArray, safeHost } = require('./util');
 const store = require('./store');
 const diag = require('./diag');
+const idmap = require('./idmap');
 
 const STALE_MS = 12 * 60 * 60 * 1000;
 const VOD_EXT = new Set(['mp4', 'mkv', 'avi', 'm4v', 'mov', 'webm', 'wmv', 'flv', 'mpg', 'mpeg']);
@@ -796,6 +797,46 @@ function xtreamFromLink(url) {
   return null;
 }
 
+// Link get.php de um painel Xtream: a mesma lista pode ser lida pela API do painel (player_api.php), que chega
+// por seção e é mais rápida que o M3U inteiro. Devolve a lista "vista como Xtream" (mesmo id), ou null.
+function viaApi(list) {
+  if (!list || list.type === 'xtream' || list.source === 'file') return null;
+  const cfg = xtreamFromLink(list.url);
+  if (!cfg || !/get\.php/i.test(String(list.url))) return null;
+  return { id: list.id, type: 'xtream', ...cfg };
+}
+
+// Para os detalhes de série e filme (/api/series, /api/vod): a lista Xtream, ou a M3U do painel pela API.
+function asXtream(list) {
+  return list.type === 'xtream' ? list : viaApi(list) || list;
+}
+
+// Lê a lista M3U do painel pela API. null: a API não serve (conta recusada, painel sem API, alguma seção falhou)
+// e a lista segue pelo M3U, como sempre.
+async function buildViaApi(list, xl, { first, onSection, checkStop, stamp }) {
+  const st = await checkXtream(xl, 8000);
+  if (st.state !== 'active' && st.state !== 'expiring') return null;
+  const base = serversOf(xl)[0];
+  activeBase.set(list.id, base);
+  try {
+    const section = onSection && ((sec, d, meta) => onSection(sec, d, { v: 1, listId: list.id, updatedAt: stamp, base, via: 'xtream', ...meta }));
+    const data = await buildFromXtream(xl, { first, onSection: section, checkStop });
+    // seção que não veio inteira: melhor o M3U completo do que uma lista faltando pedaço
+    if (Object.keys(data.timing || {}).some((k) => k.startsWith('erro_'))) {
+      diag.last.api = { listId: list.id, at: Date.now(), falhou: data.timing };
+      return null;
+    }
+    data.timing.via = 'api';
+    return { ...data, via: 'xtream', base };
+  } catch (e) {
+    if (e.stopped) throw e;
+    diag.last.api = { listId: list.id, at: Date.now(), erro: String(e.message || e).slice(0, 160) };
+    return null;
+  } finally {
+    activeBase.delete(list.id);
+  }
+}
+
 async function checkXtream(cfg, timeout = STATUS_TIMEOUT) {
   const x = xtream(cfg);
   const q = `username=${encodeURIComponent(cfg.username || '')}&password=${encodeURIComponent(cfg.password || '')}`;
@@ -1050,7 +1091,10 @@ async function buildNow(list, { first, onSection, full = false, shouldStop, stam
     await new Promise((r) => setTimeout(r, 50));
     data = b.finish(reader, head);
     data.timing = { montar: Date.now() - t1, MB: Math.round(bytes / 1048576) };
-  } else {
+  } else if (viaApi(list)) {
+    data = await buildViaApi(list, viaApi(list), { first, onSection, checkStop, stamp });
+  }
+  if (!data && list.type !== 'xtream' && list.source !== 'file') {
     // Monta enquanto baixa: cada linha vai para a montagem assim que chega, sem guardar o texto da lista (60 MB a
     // menos na memória), e o download e a montagem acontecem ao mesmo tempo. No fim só falta fechar o catálogo.
     // Atualizando uma lista já guardada: pergunta antes se ela mudou (ETag / Last-Modified da última vez). Provedor
@@ -1091,7 +1135,7 @@ async function buildNow(list, { first, onSection, full = false, shouldStop, stam
   // o Xtream já limpou os nomes das categorias seção por seção (e já mandou para a tela assim)
   const catalog = { v: 1, listId: list.id, updatedAt: stamp, ...data };
   data = null;
-  if (list.type !== 'xtream') tidyCatalog(catalog);
+  if (list.type !== 'xtream' && catalog.via !== 'xtream') tidyCatalog(catalog);
   // o resumo (sem as seções), com as contagens
   const light = lightOf(catalog);
   // Encolheu muito em relação à versão anterior (menos de 30% dos itens)? Pode ser mudança do provedor (plano,
@@ -1106,6 +1150,22 @@ async function buildNow(list, { first, onSection, full = false, shouldStop, stam
     const { prev: _p, shrunk: _s, ...older } = prev;
     light.prev = older;
     light.shrunk = { before: total(prev), after: total(light) };
+  }
+  // A lista do painel trocou de jeito (M3U <-> API): canais, episódios e categorias mudam de id. Traduz os que a
+  // pessoa usa (favoritos, progresso...) no que está salvo, e o mapa vai junto para a tela fazer o mesmo (idmap.js).
+  const viaOf = (c) => c.via || 'm3u';
+  if (sameSource && prev.files && viaOf(prev) !== viaOf(catalog)) {
+    try {
+      const old = { via: viaOf(prev), text: (sec) => { try { return fs.readFileSync(store.file(secName(list.id, prev.files, sec)), 'utf8'); } catch { return null; } } };
+      const state = store.getState();
+      const map = idmap.buildMap(state, list.id, old, catalog);
+      if (map) {
+        for (const key of idmap.applyMap(state, list.id, map)) store.setState(key, state[key]);
+        light.idMap = map;
+      }
+    } catch (e) {
+      console.warn('[catalogo] traduzir ids', e && e.message);
+    }
   }
   // Converte e grava uma seção de cada vez, e cada uma sai da memória antes da próxima (itens e texto): converter
   // as três juntas e só depois gravar passava do limite de memória da TV LG com uma lista de 69 MB. A tela recebe
@@ -1423,6 +1483,7 @@ module.exports = {
   SECTIONS,
   forget,
   xtreamSeriesInfo,
+  asXtream,
   xtreamVodInfo,
   checkStatus,
   // exportados para testes

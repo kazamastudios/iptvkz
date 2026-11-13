@@ -103,6 +103,7 @@ Para a Play aceitar um AAB como atualização, só importam o **pacote**, a **ch
 - **Target API:** `targetSdk 36` e `compileSdk 36` (Android 16), exigência para celular desde 31/08/2026.
 - **16 KB:** as bibliotecas de 64 bits saem alinhadas em 16 KB. A `libnode.so` é compilada do código-fonte com o NDK r27c (`.github/workflows/libnode.yml`), o mesmo NDK do app (`ndkVersion '27.2.12479018'`), o que também deixa a `libc++_shared.so` em 16 KB.
 - **Dynamic Code Loading:** a versão da Play não baixa código; o `src/` vem dentro do AAB.
+- **Aviso de versão nova:** a versão da Play pergunta à própria Play se há atualização (biblioteca In-App Updates, `com.google.android.play:app-update`). Se houver, mostra "Nova versão do IPTVKZ"; "Atualizar" abre a atualização da Play, ou a página do app na loja quando o aparelho não abre a tela da Play. Quem baixa e instala é sempre a Play. Só dá para ver funcionando com o app instalado pela Play (teste interno), com um `versionCode` maior já publicado na mesma faixa.
 - **Permissões:** só `INTERNET` e `ACCESS_NETWORK_STATE`.
 
 ## 5. Chave de upload

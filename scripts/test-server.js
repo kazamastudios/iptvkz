@@ -45,7 +45,9 @@ function xmltv() {
 function xtreamApi(q, res) {
   // conta "lento": filmes e séries demoram, para testar a seção da tela chegando antes das outras
   const slow = q.get('username') === 'lento';
-  if ((q.get('username') !== XT.user && !slow) || q.get('password') !== XT.pass) {
+  // conta "painel": a mesma lista também sai pelo get.php (M3U); painelApi desliga a API dela
+  const painel = q.get('username') === 'painel' && painelApi;
+  if ((q.get('username') !== XT.user && !slow && !painel) || q.get('password') !== XT.pass) {
     return res.end(JSON.stringify({ user_info: { auth: 0 } }));
   }
   const action = q.get('action') || '';
@@ -66,6 +68,16 @@ function xtreamApi(q, res) {
 }
 
 let variant = 'full';
+let painelApi = true;
+// o get.php da conta "painel": o mesmo conteúdo da API, como o painel manda em M3U
+function painelM3u() {
+  const a = `${FAKE}/live/painel/${XT.pass}`;
+  return ['#EXTM3U',
+    '#EXTINF:-1 tvg-id="c1" tvg-name="Canal X" group-title="Notícias",Canal X', `${a}/10.ts`,
+    '#EXTINF:-1 tvg-name="Filme Teste (2020)" group-title="Filmes",Filme Teste (2020)', `${FAKE}/movie/painel/${XT.pass}/20.mp4`,
+    '#EXTINF:-1 tvg-name="Série Teste S01E01" group-title="Séries",Série Teste S01E01', `${FAKE}/series/painel/${XT.pass}/301.mp4`,
+  ].join('\n');
+}
 const revalida = [];
 const gzipPedidos = [];
 const PICADA = '\ufeff' + m3u(40, 'http://exemplo.invalid').replace(/Canal/g, 'Canal Ação São João').split('\n').join('\r\n');
@@ -123,6 +135,7 @@ function startFake() {
     if (u.pathname === '/grande.m3u') return res.end(m3u(Number(u.searchParams.get('n')), FAKE));
     if (u.pathname === '/guia.xml.gz') return res.end(zlib.gzipSync(xmltv()));
     if (u.pathname === '/player_api.php') return xtreamApi(u.searchParams, res);
+    if (u.pathname === '/get.php' && u.searchParams.get('username') === 'painel') return res.end(painelM3u());
     if (u.pathname.endsWith('.m3u8')) {
       res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
       return res.end('#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-KEY:METHOD=AES-128,URI="chave.bin"\n#EXTINF:4,\nseg1.ts\n#EXTINF:4,\nhttp://outro.invalid/seg2.ts\n');
@@ -596,6 +609,67 @@ test('EPG: guia .xml.gz da lista chega para o canal certo', async () => {
     return x.json.status === 'ok' && x.json.data.a ? x : null;
   });
   assert.strictEqual(r.json.data.a[0][2], 'Jornal de teste');
+});
+
+test('link get.php de painel Xtream: lido pela API, favoritos e progresso seguem nos dois sentidos', async () => {
+  const id = 'painel';
+  const built = async (refresh) => {
+    const r = await request('GET', `/api/catalog?list=${id}&section=live${refresh ? '&refresh=1' : ''}`);
+    assert.strictEqual(r.status, 200, r.text);
+    await until(async () => !(await request('GET', `/api/catalog/status?list=${id}`)).json.refreshing || null);
+    const all = {};
+    for (const sec of ['live', 'movies', 'series']) all[sec] = (await request('GET', `/api/catalog?list=${id}&section=${sec}`)).json.catalog;
+    return all;
+  };
+  const state = async () => (await request('GET', '/api/state')).json;
+  try {
+    // sem API: o get.php é lido como M3U
+    painelApi = false;
+    await addLists([{ id, type: 'm3u', source: 'url', name: 'Painel', url: `${FAKE}/get.php?username=painel&password=${XT.pass}&type=m3u_plus` }]);
+    const m = await built(false);
+    assert.notStrictEqual(m.live.via, 'xtream');
+    const lOld = m.live.live.items[0].id;
+    const movieId = m.movies.movies.items[0].id;
+    const serie = m.series.series.items[0];
+    const eOld = serie.seasons[0].eps[0].id;
+    const catOld = m.live.live.cats[0].id;
+    assert.ok(!/^l10$/.test(lOld));
+    await request('PUT', '/api/state/favorites', { body: { [id]: { live: [lOld], movies: [movieId], series: [serie.id] } } });
+    await request('PUT', '/api/state/progress', { body: { [id]: { [eOld]: { t: 100, d: 1000, at: 1 }, ['s:' + serie.id]: { kind: 'serie-last', ep: eOld, at: 1 } } } });
+    await request('PUT', '/api/state/catPrefs', { body: { [id]: { live: { hidden: [catOld], order: [] } } } });
+
+    // com API: a lista passa a vir pelo painel, e os ids que a pessoa usa são traduzidos
+    painelApi = true;
+    const x = await built(true);
+    assert.strictEqual(x.live.via, 'xtream');
+    assert.strictEqual(x.live.live.items[0].id, 'l10');
+    assert.strictEqual(x.movies.movies.items[0].id, movieId, 'filme: mesmo id nos dois jeitos');
+    assert.strictEqual(x.series.series.items[0].id, serie.id, 'série: mesmo id nos dois jeitos');
+    assert.deepStrictEqual(x.live.idMap.ids, { [lOld]: 'l10', [eOld]: 'e301' });
+    let st = await state();
+    assert.deepStrictEqual(st.favorites[id].live, ['l10']);
+    assert.deepStrictEqual(st.favorites[id].movies, [movieId]);
+    assert.strictEqual(st.progress[id].e301.t, 100);
+    assert.strictEqual(st.progress[id][eOld], undefined);
+    assert.strictEqual(st.progress[id]['s:' + serie.id].ep, 'e301');
+    assert.deepStrictEqual(st.catPrefs[id].live.hidden, ['1']);
+    // episódios e detalhes pela API, como numa lista Xtream
+    const ser = await request('GET', `/api/series?list=${id}&xid=30`);
+    assert.strictEqual(ser.status, 200);
+    assert.strictEqual(ser.json.seasons[0].eps[0].id, 'e301');
+
+    // a API parou: volta ao M3U e os ids voltam também
+    painelApi = false;
+    const back = await built(true);
+    assert.notStrictEqual(back.live.via, 'xtream');
+    st = await state();
+    assert.deepStrictEqual(st.favorites[id].live, [lOld]);
+    assert.strictEqual(st.progress[id][eOld].t, 100);
+    assert.strictEqual(st.progress[id]['s:' + serie.id].ep, eOld);
+    assert.deepStrictEqual(st.catPrefs[id].live.hidden, [catOld]);
+  } finally {
+    painelApi = true;
+  }
 });
 
 test('favoritos, progresso e controle parental ficam salvos', async () => {
