@@ -1066,6 +1066,15 @@ setInterval(() => { if (S.lists.length && !document.hidden) checkListStatus(); }
 setTimeout(() => { checkOtherLists(); setInterval(checkOtherLists, 60 * 1000); }, 20 * 1000);
 // vídeo tocando: avisa o servidor que o app está em uso (ele não prepara outras listas enquanto isso)
 setInterval(() => { if (isPlaying()) fetch('/api/ping?uso=1', { cache: 'no-store' }).catch(() => {}); }, 60 * 1000);
+// App Android: avisa o servidor se está no Wi-Fi (ele só prepara as outras listas por trás no Wi-Fi). Não conta
+// como uso do app.
+function sendNetwork() {
+  const n = window.IPTVKZAndroid;
+  let type = '';
+  try { type = n && n.networkType ? n.networkType() : ''; } catch {}
+  if (type) fetch(`/api/ping?rede=${type}`, { cache: 'no-store' }).catch(() => {});
+}
+if (window.IPTVKZAndroid) { sendNetwork(); setInterval(sendNetwork, 2 * 60 * 1000); }
 setInterval(() => { if (!document.hidden) checkNet(); }, NET_EVERY);
 window.addEventListener('focus', refreshIfStale);
 document.addEventListener('visibilitychange', refreshIfStale);

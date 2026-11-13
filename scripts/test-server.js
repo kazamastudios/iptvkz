@@ -724,6 +724,50 @@ test('outras listas prontas por trás: só com memória sobrando, app parado e s
   }
 });
 
+test('preparo por trás: no celular só no Wi-Fi, e para quando o app volta a ser usado', async () => {
+  const warmup = require('../src/server/warmup.js');
+  const catalogs = require('../src/server/catalog.js');
+  const GB = 1024 * 1024 * 1024;
+  const before = (await request('GET', '/api/state')).json;
+  const settings = before.settings;
+  // só as duas listas deste teste (as dos outros testes também seriam preparadas)
+  await request('PUT', '/api/state/lists', { body: [
+    { id: 'p-tela', type: 'm3u', name: 'Da tela', url: `${FAKE}/lista.m3u` },
+    { id: 'p-wifi', type: 'm3u', name: 'Wi-Fi', url: `${FAKE}/picada.m3u` },
+  ], headers: { 'Content-Type': 'application/json' } });
+  await request('PUT', '/api/state/settings', { body: { ...settings, activeList: 'p-tela' }, headers: { 'Content-Type': 'application/json' } });
+  const t = warmup._test;
+  const longAgo = () => warmup.touch(Date.now() - 10 * 60 * 1000);
+  t.reset();
+  t.setStreams(() => 0);
+  t.setMemory(() => ({ total: 8 * GB, heap: 4 * GB })); // celular grande
+  t.setPlatform('android');
+  try {
+    t.setNetwork({ type: 'dados', at: Date.now() });
+    longAgo();
+    assert.strictEqual(warmup.tick(), null, 'dados móveis: não baixa');
+    t.setNetwork({ type: 'wifi', at: Date.now() - 10 * 60 * 1000 });
+    longAgo();
+    assert.strictEqual(warmup.tick(), null, 'aviso de Wi-Fi antigo não vale');
+    // aviso de Wi-Fi pela tela (/api/ping?rede=wifi) libera; e voltar a usar o app no meio para a montagem
+    await request('GET', '/api/ping?rede=wifi');
+    longAgo();
+    assert.strictEqual(warmup.tick(), 'p-wifi', 'Wi-Fi recente: prepara');
+    warmup.touch(); // a pessoa voltou a usar o app (a lista da tela é outra)
+    await t.wait();
+    assert.ok(!catalogs.updatedAtOf('p-wifi'), 'parou no meio: nada guardado');
+    assert.ok(!catalogs.isRefreshing('p-wifi'));
+  } finally {
+    t.setPlatform(process.platform);
+    t.setMemory(() => ({ total: 0, heap: 0 }));
+    t.setNetwork({ type: null, at: 0 });
+    warmup.touch();
+    await t.wait();
+    await request('PUT', '/api/state/lists', { body: before.lists, headers: { 'Content-Type': 'application/json' } });
+    await request('PUT', '/api/state/settings', { body: settings, headers: { 'Content-Type': 'application/json' } });
+  }
+});
+
 test('lista grande: 60 mil entradas montam em poucos segundos', async () => {
   const text = m3u(60000, 'http://exemplo.invalid');
   const t0 = Date.now();

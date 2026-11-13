@@ -524,7 +524,7 @@ function num(v) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-async function buildFromXtream(list, { first, onSection } = {}) {
+async function buildFromXtream(list, { first, onSection, checkStop = () => {} } = {}) {
   const x = xtream(list);
   const prog = progress.get(list.id);
   const sizes = {}; // bytes recebidos de cada pedido (vários ao mesmo tempo no PC)
@@ -542,6 +542,7 @@ async function buildFromXtream(list, { first, onSection } = {}) {
   // Uma de cada vez: alivia aparelhos fracos e provedores que limitam conexões.
   // Seção indisponível fica vazia, mas prazo esgotado interrompe e mostra o erro.
   const get = async (action) => {
+    checkStop();
     const t = Date.now();
     try {
       return await x.api(action, '', { onProgress: onProgress(action) });
@@ -950,7 +951,11 @@ function keepUnchanged(list, prev, stamp, r) {
 }
 
 // full: baixa a lista inteira mesmo que o provedor diga que não mudou (sem If-None-Match / If-Modified-Since).
-async function buildNow(list, { first, onSection, full = false, stamp = Date.now() } = {}) {
+async function buildNow(list, { first, onSection, full = false, shouldStop, stamp = Date.now() } = {}) {
+  // montagem por trás (warmup.js) que deve parar: o app voltou a ser usado. A versão guardada continua.
+  const checkStop = () => {
+    if (shouldStop && shouldStop()) throw Object.assign(new Error('Preparação por trás interrompida: o app voltou a ser usado.'), { stopped: true });
+  };
   const prog = progress.get(list.id);
   // medições (modo de depuração): pico de memória e maior tempo com o servidor travado
   const mem = diag.memPeak();
@@ -963,9 +968,10 @@ async function buildNow(list, { first, onSection, full = false, stamp = Date.now
       activeBase.set(list.id, s);
       try {
         const section = onSection && ((sec, d, meta) => onSection(sec, d, { v: 1, listId: list.id, updatedAt: stamp, base: s, ...meta }));
-        data = { ...(await buildFromXtream(list, { first, onSection: section })), base: s };
+        data = { ...(await buildFromXtream(list, { first, onSection: section, checkStop })), base: s };
         break;
       } catch (e) {
+        if (e.stopped) throw e; // parou de propósito: não tenta os servidores reservas
         if (!firstErr) firstErr = e;
       }
     }
@@ -978,7 +984,7 @@ async function buildNow(list, { first, onSection, full = false, stamp = Date.now
     const b = m3uBuilder(list);
     const reader = m3uReader(b.entry);
     const t1 = Date.now();
-    const { head, bytes } = await fileLines(store.file(`m3u-${list.id}.m3u`), (line) => reader.line(line), (got, total) => Object.assign(prog, { got, total }));
+    const { head, bytes } = await fileLines(store.file(`m3u-${list.id}.m3u`), (line) => { checkStop(); reader.line(line); }, (got, total) => Object.assign(prog, { got, total }));
     prog.phase = 'build';
     await new Promise((r) => setTimeout(r, 50));
     data = b.finish(reader, head);
@@ -994,7 +1000,7 @@ async function buildNow(list, { first, onSection, full = false, stamp = Date.now
     const b = m3uBuilder(list);
     const reader = m3uReader(b.entry);
     let bytes = 0;
-    const r = await streamLines(list.url, (line) => reader.line(line), {
+    const r = await streamLines(list.url, (line) => { checkStop(); reader.line(line); }, {
       headers,
       onProgress: (got, total) => { bytes = got; Object.assign(prog, { got, total }); },
     });
@@ -1190,13 +1196,13 @@ function readMeta(id) {
 const failedAt = new Map();
 const RETRY_MS = 10 * 60 * 1000;
 
-function refresh(list, first, { full = false } = {}) {
+function refresh(list, first, { full = false, shouldStop } = {}) {
   if (!inflight.has(list.id)) {
     const b = { done: {}, meta: null, waiters: [] };
     const wake = () => { b.waiters = b.waiters.filter((w) => !w()); };
     const onSection = (sec, data, meta) => { b.done[sec] = data; b.meta = meta; wake(); };
     building.set(list.id, b);
-    const p = build(list, { first, onSection, full });
+    const p = build(list, { first, onSection, full, shouldStop });
     const done = () => {
       inflight.delete(list.id);
       if (building.get(list.id) === b) building.delete(list.id);
@@ -1289,8 +1295,9 @@ async function getCatalog(list, { force = false, full = false } = {}) {
 }
 
 // Prepara uma lista por trás (warmup.js): o mesmo caminho do "Atualizar lista", sem tela esperando.
-function warm(list) {
-  return refresh(list);
+// Monta uma lista por trás (warmup.js). shouldStop: a montagem para no meio quando devolver true.
+function warm(list, shouldStop) {
+  return refresh(list, undefined, { shouldStop });
 }
 
 function isRefreshing(id) {
