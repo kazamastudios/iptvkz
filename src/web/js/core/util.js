@@ -437,6 +437,8 @@ export function modal(title, body, { wide = false, cls = '', onClose, locked = f
     if (prevFocus && prevFocus.focus && document.contains(prevFocus)) prevFocus.focus({ preventScroll: true });
     document.removeEventListener('keydown', onKey, true);
     back.classList.remove('show');
+    // fica 200 ms na tela (o fade): quem procura a janela aberta ignora a que está fechando
+    back.classList.add('closing');
     setTimeout(() => back.remove(), 200);
     onClose && onClose();
   }

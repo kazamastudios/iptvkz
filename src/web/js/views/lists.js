@@ -352,6 +352,21 @@ export function openServers(list, onChanged, onClose) {
   setTimeout(() => focusEl(testBtn), 50);
 }
 
+// Link digitado ou colado: sem http (o mais comum nos provedores) ganha http://; espaços e aspas em volta saem.
+// Esquema digitado errado (htp://, http:/, http;//) é consertado como no campo do servidor Xtream.
+export function fixLink(text) {
+  let t = String(text || '').trim().replace(/^[<("']+/, '').replace(/[>)"']+$/, '');
+  const sch = t.match(/^h?t{1,2}p{1,2}(s?)(?:[:;.]+\/*|\/+)/i);
+  if (sch) t = `http${sch[1] ? 's' : ''}://` + t.slice(sch[0].length);
+  else if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]|$)|^localhost(:\d+)?([/?#]|$)/i.test(t)) t = 'http://' + t;
+  return t;
+}
+
+// Nome de uma lista sem nome: o servidor dela (sem "www.").
+function linkName(url) {
+  try { return new URL(url).hostname.replace(/^www\./, '') || 'Minha lista'; } catch { return 'Minha lista'; }
+}
+
 function xtreamFromUrl(url) {
   try {
     const u = new URL(url.trim());
@@ -539,7 +554,8 @@ export function openListForm(existing, onSaved, onDelete) {
     h('div.tabs', Object.values(tabBtns)),
     paneBox,
     extras,
-    h('p.faint', { style: { fontSize: '12px', margin: '0 0 8px' } }, 'Os dados ficam só neste computador, na pasta data/ do IPTVKZ.'),
+    // vale em todas as plataformas: no navegador da TV usando o PC, o "aparelho" é o computador
+    h('p.faint', { style: { fontSize: '12px', margin: '0 0 8px' } }, 'Os dados da lista ficam guardados só no aparelho onde o IPTVKZ está instalado.'),
     h('div.form-actions',
       existing && onDelete ? h('button.btn.danger', {
         type: 'button',
@@ -592,9 +608,11 @@ export function openListForm(existing, onSaved, onDelete) {
       if (!list.server || !list.username || !list.password) return showErr('Preencha servidor, usuário e senha.');
       if (!list.name) list.name = list.server.replace(/^https?:\/\//, '').split(/[:/]/)[0];
     } else if (tab === 'url') {
-      list.url = url.value.trim();
-      if (!/^https?:\/\//i.test(list.url)) return showErr('Informe um link começando com http:// ou https://');
-      if (!list.name) list.name = 'Minha lista';
+      list.url = fixLink(url.value);
+      url.value = list.url;
+      if (!/^https?:\/\/[^/\s]+/i.test(list.url)) return showErr('Informe o link da lista, como http://servidor.com/lista.m3u');
+      // sem nome: o do servidor (com várias listas, "Minha lista" repetido não diz qual é qual)
+      if (!list.name) list.name = linkName(list.url);
     } else {
       if (!pickedFile && ex.source !== 'file') return showErr('Escolha o arquivo .m3u da lista.');
       if (!list.name) list.name = 'Minha lista';

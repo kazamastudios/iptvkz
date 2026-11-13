@@ -194,6 +194,7 @@ const STATUS_DETAIL = {
   banned: 'O provedor bloqueou esta conta.',
   disabled: 'O provedor desativou esta conta.',
   refused: 'O servidor recusou o acesso: a lista pode ter expirado ou o usuário e a senha mudaram.',
+  refusedM3u: 'O provedor não entregou a lista: o link pode ter expirado ou mudado.',
   offline: 'O servidor da lista não respondeu. Pode ser temporário.',
   unknown: 'Sem conexão no momento: a lista será verificada quando a conexão voltar.',
   local: 'Lista de arquivo: não dá para saber se os links ainda funcionam.',
@@ -241,7 +242,7 @@ function statusModel() {
     }
     list = {
       tone, label, sub, name: al.name, state: d ? d.state : null,
-      detail: (d && STATUS_DETAIL[d.state]) || '',
+      detail: (d && STATUS_DETAIL[refusedKey(al, d.state)]) || '',
       cons: d && d.maxCons ? `${d.activeCons || 0} de ${d.maxCons} conexões em uso` : '',
     };
   }
@@ -384,7 +385,7 @@ async function checkListStatus() {
   status.at = Date.now();
   renderListStatus();
   const [tone] = STATUS_INFO[data.state] || ['idle'];
-  if (tone === 'bad' && prev !== data.state && isPlaying()) toast(`${list.name}: ${STATUS_DETAIL[data.state]}`, 'error', 9000);
+  if (tone === 'bad' && prev !== data.state && isPlaying()) toast(`${list.name}: ${STATUS_DETAIL[refusedKey(list, data.state)]}`, 'error', 9000);
   // a lista passou a ser bloqueada (ou foi liberada): a tela troca, a não ser que esteja vendo algo agora
   if (!!BLOCK_INFO[prev] !== !!BLOCK_INFO[data.state] && !isPlaying() && parseHash().name !== 'settings') {
     if (!BLOCK_INFO[data.state] && appState === 'error') loadActive();
@@ -570,7 +571,9 @@ function route() {
       const a = document.activeElement;
       if (a && a.dataset && a.dataset.native) return; // teclado da TV aberto: o foco não pode sair do campo
       const inContent = a && a !== document.body && document.contains(a) && view.contains(a);
-      if (!inContent && !document.querySelector('.modal-back, .vod-overlay, .tvkb')) focusFirst();
+      // janela fechando (.closing, sai em 200 ms) não conta: lista que carrega rápido chegava aqui antes dela sumir
+      // e a tela ficava sem foco nenhum
+      if (!inContent && !document.querySelector('.modal-back:not(.closing), .vod-overlay, .tvkb')) focusFirst();
     }, 30);
   }
 }
@@ -583,14 +586,20 @@ const BLOCK_INFO = {
   banned: ['O provedor bloqueou esta conta', 'Fale com o seu provedor para entender o motivo e liberar a conta.'],
   disabled: ['O provedor desativou esta conta', 'Fale com o seu provedor para reativar a conta.'],
   refused: ['O provedor recusou o acesso', 'A lista pode ter expirado, ou o usuário e a senha mudaram. Confira com o seu provedor e, se mudou algo, edite a lista.'],
+  // lista M3U por link: não há usuário e senha para conferir, e sim o link
+  refusedM3u: ['O provedor não entregou a lista', 'O link pode ter expirado ou mudado. Confira com o seu provedor e, se ele mandou um link novo, edite a lista.'],
 };
+// "recusado" de uma lista M3U por link tem texto próprio (fala do link, não de usuário e senha)
+function refusedKey(list, state) {
+  return state === 'refused' && list && list.type !== 'xtream' ? 'refusedM3u' : state;
+}
 function listBlocked() {
   const l = activeList();
   return l && status.listId === l.id && status.data && BLOCK_INFO[status.data.state] ? status.data.state : null;
 }
 function showBlocked(state) {
   const list = activeList();
-  const [title, text] = BLOCK_INFO[state];
+  const [title, text] = BLOCK_INFO[refusedKey(list, state)];
   const again = h('button.btn.primary', {
     onclick: async () => {
       again.disabled = true;
@@ -930,7 +939,7 @@ document.addEventListener('keydown', (e) => {
     if (handleBack(e)) e.preventDefault();
     return;
   }
-  if (document.querySelector('.modal-back')) {
+  if (document.querySelector('.modal-back:not(.closing)')) {
     if ((TV.on || (KB.on && !typing)) && DIRS[ev.key] && !(typing && !t.readOnly && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight'))) {
       if (move(DIRS[ev.key])) e.preventDefault();
     }
@@ -1101,6 +1110,8 @@ debugSection('app', () => {
 (async function boot() {
   setTimeout(hideSplash, 15000);
   detectTv();
+  // o atalho "/" da busca só existe com teclado: na TV (e no app Android, que liga o modo TV) e no celular, sem ele
+  if (TV.on || window.matchMedia('(hover: none) and (pointer: coarse)').matches) search.placeholder = 'Buscar canais, filmes e séries';
   initKeyDebug();
   document.addEventListener('focusin', () => { if (TV.on || KB.on) syncFocus(); });
   // PC: usar o mouse desliga o modo teclado (o pequeno limite ignora o "movimento" que a rolagem simula)

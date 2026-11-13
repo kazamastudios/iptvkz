@@ -91,7 +91,7 @@ export function exitApp() {
 // ---------- navegação espacial ----------
 
 const FOCUSABLE = [
-  'button:not([disabled])', 'a[href]', 'input', 'select', 'textarea',
+  'button:not([disabled])', 'a[href]', 'input', 'select', 'textarea', 'summary',
   '.ch-card', '.poster', '.cat-item', '.ep', '.g-prog', '.g-ch', '.switch', '[data-focus]',
 ].join(',');
 
@@ -106,7 +106,7 @@ export function navScope() {
     document.querySelector('.status-pop') ||
     document.querySelector('.list-menu:not(.hidden)') ||
     document.querySelector('.pmenu:not(.hidden)') ||
-    [...document.querySelectorAll('.modal-back .modal')].pop() ||
+    [...document.querySelectorAll('.modal-back:not(.closing) .modal')].pop() ||
     document.querySelector('.vod-overlay') ||
     document.querySelector('.live.tvfull.drawer .side-list') ||
     document.getElementById('app')
@@ -132,8 +132,18 @@ function farCheck() {
   };
 }
 
+// Dentro de um <details> fechado (ex.: "Guia de programação" no formulário da lista). O Chrome novo (Android TV,
+// webOS recente) ainda dá posição a esses campos escondidos: o ↓ escolhia um deles, o foco não entrava e ficava
+// preso no campo de cima, sem chegar aos botões. O <summary> do próprio bloco continua alcançável (OK abre).
+function collapsed(el) {
+  for (let d = el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) {
+    if (!d.open && !(el.tagName === 'SUMMARY' && el.parentElement === d)) return true;
+  }
+  return false;
+}
+
 function visible(el) {
-  if (el.closest('.hidden')) return false;
+  if (el.closest('.hidden') || collapsed(el)) return false;
   const r = el.getBoundingClientRect();
   return r.width > 2 && r.height > 2 && r.bottom > -2000 && r.top < window.innerHeight + 2000;
 }
@@ -518,7 +528,7 @@ export function move(dir) {
     const toTop = dir === 'up' && curRegion !== 'top' && region(el) === 'top';
     if (score >= (toTop ? topScore : bestScore)) continue;
     // as checagens que sobem pela árvore ficam por último: só para quem pode ganhar
-    if ((cur.contains(el) && !cur.matches(CARD)) || el.closest('.hidden') || !reachable(el, cur)) continue;
+    if ((cur.contains(el) && !cur.matches(CARD)) || el.closest('.hidden') || collapsed(el) || !reachable(el, cur)) continue;
     if (getComputedStyle(el).visibility === 'hidden') continue; // invisível mas no layout (ex.: textos no modo trailer)
     // cabeçalho de fileira: só se o foco já estiver nele (andar entre "Ver tudo" e as setas)
     if (!(curSkip && curSkip.contains(el)) && el.closest(NAV_SKIP)) continue;

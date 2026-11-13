@@ -19,6 +19,7 @@ function listType(l) {
 
 function host(l) {
   const raw = l.type === 'xtream' ? l.server : l.url;
+  if (!raw) return ''; // lista de arquivo: não tem endereço
   try { return new URL(/^https?:/.test(raw) ? raw : 'http://' + raw).host; } catch { return ''; }
 }
 
