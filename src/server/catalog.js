@@ -1,7 +1,7 @@
 // Baixa listas (M3U ou Xtream) e normaliza tudo num catálogo único:
 // { live, movies, series } cada um com { cats: [{id,name}], items: [...] }.
 const fs = require('fs');
-const { hash, norm, fetchJson, fetchWithTimeout, streamLines, byteLines, safeHost } = require('./util');
+const { hash, norm, fetchJson, fetchWithTimeout, streamLines, byteLines, streamJsonArray, safeHost } = require('./util');
 const store = require('./store');
 const diag = require('./diag');
 
@@ -108,7 +108,23 @@ function yearOf(name) {
 // Junta itens com o mesmo título-base em um só, com várias versões.
 function mergeMovies(raw) {
   const groups = new Map();
-  for (const r of raw) {
+  for (const r of raw) mergeOne(groups, r);
+  return closeMovies(groups);
+}
+
+// Igual a mergeMovies, com uma pausa a cada lote: com 80 mil filmes do Xtream, a TV Box ficava 13 s sem responder
+// (e a conexão com o provedor caía enquanto isso).
+async function mergeMoviesAsync(raw) {
+  const groups = new Map();
+  for (let i = 0; i < raw.length; i++) {
+    mergeOne(groups, raw[i]);
+    if (i % 5000 === 4999) await pause();
+  }
+  return closeMovies(groups);
+}
+
+function mergeOne(groups, r) {
+  {
     const { base, label } = splitVersion(r.name, r.group);
     const key = norm(base);
     let g = groups.get(key);
@@ -130,6 +146,9 @@ function mergeMovies(raw) {
     if (r.added > g.added) g.added = r.added;
     addVersion(g.versions, { label, url: r.url, xid: r.xid, group: r.group });
   }
+}
+
+function closeMovies(groups) {
   const items = [...groups.values()];
   for (const it of items) sortVersions(it.versions);
   return items;
@@ -448,6 +467,9 @@ function xtream(list) {
     base,
     api: (action, extra = '', opts) =>
       fetchJson(`${base}/player_api.php?username=${u}&password=${p}${action ? '&action=' + action : ''}${extra}`, opts),
+    // lista grande (canais, filmes, séries) lida item por item enquanto chega
+    list: (action, onItem, opts) =>
+      streamJsonArray(`${base}/player_api.php?username=${u}&password=${p}&action=${action}`, onItem, opts),
     live: (id, ext) => `${base}/live/${pathU}/${pathP}/${id}.${ext}`,
     movie: (id, ext) => `${base}/movie/${pathU}/${pathP}/${id}.${ext || 'mp4'}`,
     episode: (id, ext) => `${base}/series/${pathU}/${pathP}/${id}.${ext || 'mp4'}`,
@@ -541,13 +563,41 @@ async function buildFromXtream(list, { first, onSection, checkStop = () => {} } 
   }
   // Uma de cada vez: alivia aparelhos fracos e provedores que limitam conexões.
   // Seção indisponível fica vazia, mas prazo esgotado interrompe e mostra o erro.
+  // Só os campos que o app usa de cada item das listas grandes (o provedor manda uns 20 por item): menos memória.
+  const KEEP = {
+    get_live_streams: ['name', 'stream_icon', 'category_id', 'epg_channel_id', 'stream_id'],
+    get_vod_streams: ['name', 'category_id', 'stream_icon', 'stream_id', 'container_extension', 'rating', 'added', 'year'],
+    get_series: ['name', 'category_id', 'cover', 'series_id', 'releaseDate', 'release_date', 'rating', 'plot', 'genre'],
+  };
+  const big = async (action) => {
+    const keep = KEEP[action];
+    const read = async () => {
+      const out = [];
+      await x.list(action, (it) => {
+        const o = {};
+        for (const k of keep) if (it[k] !== undefined) o[k] = it[k];
+        out.push(o);
+      }, { onProgress: onProgress(action) });
+      return out;
+    };
+    try {
+      return await read();
+    } catch (err) {
+      // conexão caiu no meio (ou o provedor fechou a que estava parada): mais uma vez, do começo
+      if (err.timeout || err.status || err.handler) throw err;
+      return read();
+    }
+  };
   const get = async (action) => {
     checkStop();
     const t = Date.now();
     try {
+      if (KEEP[action]) return await big(action);
       return await x.api(action, '', { onProgress: onProgress(action) });
     } catch (err) {
       if (err.timeout) throw err;
+      // seção indisponível fica vazia; o motivo fica nas medições (modo de depuração e /api/diag)
+      timing[`erro_${action.replace(/^get_/, '')}`] = String(err.message || err).slice(0, 120);
       return [];
     } finally {
       timing[action.replace(/^get_/, '')] = Date.now() - t;
@@ -577,9 +627,16 @@ async function buildFromXtream(list, { first, onSection, checkStop = () => {} } 
         alt: x.live(s.stream_id, 'ts'),
       })),
     }),
-    movies: (vodCats, vodStreams) => {
+    // filmes e séries em lotes, com pausas: o servidor continua respondendo (andamento, outras telas, a conexão
+    // com o provedor) enquanto organiza dezenas de milhares de itens
+    movies: async (vodCats, vodStreams) => {
       const vodCatName = catName(vodCats);
-      const movieRaw = (Array.isArray(vodStreams) ? vodStreams : []).map((s) => ({
+      const list = Array.isArray(vodStreams) ? vodStreams : [];
+      const movieRaw = new Array(list.length);
+      for (let i = 0; i < list.length; i++) {
+        if (i % 5000 === 4999) await pause();
+        const s = list[i];
+        movieRaw[i] = {
         name: s.name || 'Filme',
         group: vodCatName.get(String(s.category_id)) || '',
         poster: s.stream_icon || '',
@@ -589,14 +646,17 @@ async function buildFromXtream(list, { first, onSection, checkStop = () => {} } 
         rating: num(s.rating),
         added: Number(s.added) || 0,
         year: num(s.year),
-      }));
-      return { cats: cats(vodCats), items: mergeMovies(movieRaw) };
+        };
+      }
+      return { cats: cats(vodCats), items: await mergeMoviesAsync(movieRaw) };
     },
     // Séries: versões (DUB/LEG) do mesmo título viram um item só; episódios carregam sob demanda.
-    series: (serCats, serList) => {
+    series: async (serCats, serList) => {
       const serCatName = catName(serCats);
       const seriesMap = new Map();
+      let n = 0;
       for (const s of Array.isArray(serList) ? serList : []) {
+        if (++n % 5000 === 0) await pause();
         const group = serCatName.get(String(s.category_id)) || '';
         const { base, label } = splitVersion(s.name || 'Série', group);
         const key = norm(base);
@@ -624,8 +684,8 @@ async function buildFromXtream(list, { first, onSection, checkStop = () => {} } 
     },
   };
   const out = {};
-  const finish = (sec, catsRes, itemsRes) => {
-    const data = make[sec](catsRes, itemsRes);
+  const finish = async (sec, catsRes, itemsRes) => {
+    const data = await make[sec](catsRes, itemsRes);
     data.cats = tidyCats(data.cats, sec);
     out[sec] = data;
     if (onSection) onSection(sec, data, { epgUrl: x.epg });
@@ -634,11 +694,11 @@ async function buildFromXtream(list, { first, onSection, checkStop = () => {} } 
   if (parallel) {
     await Promise.all(order.map(async (sec) => {
       const [c, items] = await Promise.all(PAIRS[sec].map(get));
-      finish(sec, c, items);
+      await finish(sec, c, items);
     }));
   } else {
     const catsRes = await Promise.all(order.map((sec) => get(PAIRS[sec][0])));
-    for (let i = 0; i < order.length; i++) finish(order[i], catsRes[i], await get(PAIRS[order[i]][1]));
+    for (let i = 0; i < order.length; i++) await finish(order[i], catsRes[i], await get(PAIRS[order[i]][1]));
   }
   timing.download = Date.now() - t0;
   timing.parallel = parallel;

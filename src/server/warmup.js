@@ -85,7 +85,7 @@ function tick(now) {
     const t = Date.now();
     if (t - checkedAt < 1000) return stop;
     checkedAt = t;
-    stop = (lastUse > startedAt || streams() > 0) && activeId() !== list.id;
+    stop = (lastUse >= startedAt || streams() > 0) && activeId() !== list.id;
     return stop;
   };
   running = catalogs.warm(list, shouldStop).then(() => {}, () => {}).then(() => { running = null; });
