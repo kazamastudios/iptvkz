@@ -57,7 +57,12 @@ const NET_ERRORS = [
 ];
 function netError(url, err) {
   const raw = [err && err.cause && err.cause.code, err && err.code, err && err.cause && err.cause.message, err && err.message].filter(Boolean).join(' ');
-  const hit = NET_ERRORS.find(([re]) => re.test(raw));
+  let hit = NET_ERRORS.find(([re]) => re.test(raw));
+  // Link http:// que deu erro de certificado: alguém no caminho desviou o pedido para uma página https que não é a
+  // do servidor (é o que redes e operadoras fazem com endereços bloqueados). Mandar "usar http://" não faz sentido.
+  if (hit && /certificado/.test(hit[1]) && /^http:/i.test(String(url))) {
+    hit = [null, 'a rede desviou o acesso para outra página (certificado de segurança que não é o do servidor). Isso costuma acontecer quando a rede ou a operadora bloqueia o endereço; no Wi-Fi ou em outra rede o resultado pode ser outro'];
+  }
   return new Error(`Não foi possível conectar a ${safeHost(url)}: ${hit ? hit[1] : raw || 'erro desconhecido'}.`);
 }
 
