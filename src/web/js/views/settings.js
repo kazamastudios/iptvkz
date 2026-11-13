@@ -45,7 +45,9 @@ export function settingsView(params, ctx) {
     }
     cards.append(h('div.list-card' + (isActive ? '.active' : ''),
       h('div.top', ico(t === 'xtream' ? 'server' : t === 'file' ? 'file' : 'link'),
-        h('div', { style: { minWidth: 0, flex: 1 } }, h('div.nm', l.name), h('div.ty', [TYPE[t], host(l)].filter(Boolean).join(' · '))),
+        h('div', { style: { minWidth: 0, flex: 1 } }, h('div.nm', l.name), h('div.ty', [TYPE[t], host(l)].filter(Boolean).join(' · ')),
+          // status verificado (ativa, vence em breve, vencida...), preenchido pelo app (paintListStatus)
+          h('div.lc-st', { 'data-lstat': l.id })),
         isActive ? h('span.badge.onair', 'EM USO') : null),
       stats,
       isActive && C() ? h('div.faint', { style: { fontSize: '12px' } }, `Atualizada ${fmtAgo(C().updatedAt)}`) : null,

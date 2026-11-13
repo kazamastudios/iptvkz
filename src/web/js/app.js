@@ -159,13 +159,17 @@ function renderListSwitch() {
     h('div.meta', h('div.name', cur.name), h('div.sub', cur.type === 'xtream' ? 'Xtream Codes' : 'Lista M3U')),
     ico('chevronDown'));
   for (const l of S.lists) {
+    // status de cada lista (a da tela e as outras, verificadas por trás): só indica, não impede a troca
     menu.append(h('button' + (l.id === cur.id ? '.cur' : ''), { onclick: () => { menu.classList.add('hidden'); if (l.id !== cur.id) useList(l.id); } },
-      l.id === cur.id ? ico('check') : h('span', { style: { width: '20px' } }), l.name));
+      l.id === cur.id ? ico('check') : h('span', { style: { width: '20px' } }),
+      // o status vai embaixo do nome: ao lado, num menu estreito, cortava o nome ("Cont...")
+      h('span.lm-name', h('span.lm-label', l.name), h('span.lm-st', { 'data-lstat': l.id }))));
   }
   menu.append(h('div.sep'),
     h('button', { onclick: () => { menu.classList.add('hidden'); ctx.addList(); } }, ico('plus'), 'Adicionar lista'),
     h('button', { onclick: () => { menu.classList.add('hidden'); ctx.navigate('#/settings'); } }, ico('settings'), 'Gerenciar listas'));
   box.append(btn, menu);
+  paintListStatus();
 }
 
 document.addEventListener('mousedown', (e) => {
@@ -362,7 +366,9 @@ function checkNet() {
 async function checkListStatus() {
   const list = activeList();
   if (!list) { status = { listId: null, data: null, checking: false, at: 0 }; return renderListStatus(); }
-  if (status.listId !== list.id) status = { listId: list.id, data: null, checking: false, at: 0 };
+  // lista que acabou de virar a da tela: começa com o que a verificação por trás já sabe (a tela de bloqueio de uma
+  // lista vencida aparece na hora); a verificação de agora confirma
+  if (status.listId !== list.id) status = { listId: list.id, data: (otherStatus.get(list.id) || {}).data || null, checking: false, at: 0 };
   else if (status.checking) return;
   const prev = status.data && status.data.state;
   status.checking = true;
@@ -384,6 +390,7 @@ async function checkListStatus() {
   status.checking = false;
   status.at = Date.now();
   renderListStatus();
+  paintListStatus();
   const [tone] = STATUS_INFO[data.state] || ['idle'];
   if (tone === 'bad' && prev !== data.state && isPlaying()) toast(`${list.name}: ${STATUS_DETAIL[refusedKey(list, data.state)]}`, 'error', 9000);
   // a lista passou a ser bloqueada (ou foi liberada): a tela troca, a não ser que esteja vendo algo agora
@@ -392,6 +399,58 @@ async function checkListStatus() {
     else { current = null; route(); }
   }
   if (data.state === 'offline' && net.state === 'online') suggestServer(list);
+}
+
+// ---------- status das outras listas ----------
+// Além da lista da tela (a cada 2 min), as outras são verificadas por trás, uma de cada vez e bem mais espaçado:
+// leve na TV (um pedido pequeno por vez, sem baixar a lista) e nunca com vídeo tocando. O resultado aparece no
+// seletor de listas e em Configurações; não impede a troca (a tela de bloqueio vale quando a lista fica ativa).
+const OTHERS_EVERY = 12 * 60 * 1000;
+const otherStatus = new Map(); // id da lista -> { data, at }
+let othersBusy = false;
+
+// Preenche os lugares que mostram o status de uma lista ([data-lstat="id"]: o seletor e os cartões de
+// Configurações). Só troca esses pedaços: a tela não redesenha nem perde a rolagem ou o foco.
+function paintListStatus() {
+  for (const el of document.querySelectorAll('[data-lstat]')) {
+    const st = listStatusOf(el.getAttribute('data-lstat'));
+    const sig = st ? st.state : '';
+    if (el.dataset.sig === sig) continue;
+    el.dataset.sig = sig;
+    el.title = st ? st.label : '';
+    // ativa: só o ponto verde; o resto (vence em breve, vencida, fora do ar...) com o texto
+    el.replaceChildren(...(st ? [h('span.status-dot.' + st.tone), st.tone === 'ok' ? '' : h('span', st.label)] : []));
+  }
+}
+
+// [tom, texto] do status conhecido de uma lista, ou null (ainda não verificada, ou sem como verificar)
+function listStatusOf(id) {
+  const a = activeList();
+  const data = a && a.id === id && status.listId === id ? status.data : (otherStatus.get(id) || {}).data;
+  if (!data || data.state === 'unknown' || data.state === 'local') return null;
+  const [tone, label] = STATUS_INFO[data.state] || [];
+  return tone ? { tone, label, state: data.state } : null;
+}
+
+async function checkOtherLists() {
+  if (othersBusy || document.hidden || isPlaying() || net.state !== 'online') return;
+  const a = activeList();
+  // a que está esperando há mais tempo (lista de arquivo não tem o que verificar)
+  const due = S.lists.filter((l) => (!a || l.id !== a.id) && !(l.type !== 'xtream' && l.source === 'file'))
+    .map((l) => ({ l, at: (otherStatus.get(l.id) || {}).at || 0 }))
+    .filter((x) => Date.now() - x.at > OTHERS_EVERY)
+    .sort((x, y) => x.at - y.at)[0];
+  if (!due) return;
+  othersBusy = true;
+  try {
+    const data = await api(`/api/list-status?list=${encodeURIComponent(due.l.id)}`);
+    otherStatus.set(due.l.id, { data, at: Date.now() });
+  } catch {
+    otherStatus.set(due.l.id, { data: null, at: Date.now() }); // tenta de novo na próxima rodada
+  } finally {
+    othersBusy = false;
+  }
+  paintListStatus();
 }
 
 // Servidor em uso fora do ar, com internet funcionando: testa os outros servidores da mesma conta e sugere
@@ -562,6 +621,7 @@ function route() {
   if (view.scrollTop) view.scrollTop = 0;
   if (TV.on) settleImages(350);
   view.replaceChildren(res.el);
+  paintListStatus(); // status das listas nos cartões de Configurações
   // voltando: a tela reaparece onde estava, em qualquer plataforma
   const mem = goingBack && focusMemory.get(location.hash);
   if (mem) setTimeout(() => restoreFocus(mem), 30);
@@ -992,6 +1052,10 @@ onSection(debounce(() => renderNav(), 200));
 window.addEventListener('pagehide', flushSaves);
 startLifeline();
 setInterval(() => { if (S.lists.length && !document.hidden) checkListStatus(); }, STATUS_EVERY);
+// as outras listas: uma por minuto no máximo, cada uma a cada 12 min (a primeira, um pouco depois de abrir)
+setTimeout(() => { checkOtherLists(); setInterval(checkOtherLists, 60 * 1000); }, 20 * 1000);
+// vídeo tocando: avisa o servidor que o app está em uso (ele não prepara outras listas enquanto isso)
+setInterval(() => { if (isPlaying()) fetch('/api/ping?uso=1', { cache: 'no-store' }).catch(() => {}); }, 60 * 1000);
 setInterval(() => { if (!document.hidden) checkNet(); }, NET_EVERY);
 window.addEventListener('focus', refreshIfStale);
 document.addEventListener('visibilitychange', refreshIfStale);
