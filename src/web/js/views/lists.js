@@ -412,6 +412,7 @@ export function openListForm(existing, onSaved, onDelete) {
   const ex = existing || {};
   let tab = ex.type === 'xtream' ? 'xtream' : ex.source === 'file' ? 'file' : existing ? 'url' : 'xtream';
   let pickedFile = null;
+  let pairFile = null; // arquivo .m3u que chegou pelo celular (QR Code): já está no aparelho, esperando o Salvar
   const listId = ex.id || uid(); // o mesmo id em novas tentativas, para não criar listas repetidas
 
   const err = h('div.error-box.hidden');
@@ -440,7 +441,7 @@ export function openListForm(existing, onSaved, onDelete) {
     loadFile = loadInput.files[0] || null;
     if (loadFile) loadLabel.textContent = loadFile.name;
   });
-  const fileLabel = h('span.muted', ex.source === 'file' ? 'Arquivo já enviado. Escolha outro só se quiser trocar.' : 'Nenhum arquivo escolhido');
+  const fileLabel = h('span.muted', ex.source === 'file' ? 'Arquivo já enviado. Escolha outro só se quiser trocar.' : nativeTvApp() ? '' : 'Nenhum arquivo escolhido');
   fileInput.addEventListener('change', () => {
     pickedFile = fileInput.files[0] || null;
     if (pickedFile) {
@@ -519,7 +520,9 @@ export function openListForm(existing, onSaved, onDelete) {
       h('div.row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass)))),
     url: h('div', field('Link da lista (M3U/M3U8)', url), xtHint),
     file: h('div', h('div.field', h('label', 'Arquivo da lista'),
-      h('div.row', h('button.btn', { type: 'button', onclick: () => fileInput.click() }, ico('upload'), 'Escolher arquivo'), fileLabel), fileInput)),
+      // os apps da TV (e o Android) não abrem seletor de arquivos: lá o arquivo vem pelo celular, no QR Code
+      nativeTvApp() ? fileLabel : h('div.row', h('button.btn', { type: 'button', onclick: () => fileInput.click() }, ico('upload'), 'Escolher arquivo'), fileLabel), fileInput,
+      nativeTvApp() ? h('div.hint', 'Este aparelho não abre arquivos: escaneie o QR Code acima com o celular e escolha “Arquivo M3U” por lá.') : null)),
     load: h('div', h('div.field', h('label', 'Arquivo da lista baixada'),
       // os apps da TV não abrem seletor de arquivos: lá o arquivo vem pelo celular
       nativeTvApp() ? null : h('div.row', h('button.btn', { type: 'button', onclick: () => loadInput.click() }, ico('upload'), 'Escolher arquivo'), loadLabel), loadInput,
@@ -550,7 +553,12 @@ export function openListForm(existing, onSaved, onDelete) {
     const x = list.type === 'm3u' ? xtreamFromUrl(list.url) : xtreamFromUrl(list.server);
     name.value = list.name;
     const fromPhone = list.type === 'xtream' ? parseServers(`${list.server}\n${list.servers || ''}`) : [];
-    if (x) { server.value = x.server; user.value = x.username; pass.value = x.password; setTab('xtream'); setServers(null, fromPhone); }
+    if (list.source === 'file' && list.pairFile) {
+      // arquivo .m3u mandado pelo celular: já está aqui, só falta salvar a lista
+      pairFile = list.pairFile;
+      fileLabel.textContent = `Arquivo recebido do celular${list.size ? ` (${(list.size / 1048576).toFixed(1)} MB)` : ''}`;
+      setTab('file');
+    } else if (x) { server.value = x.server; user.value = x.username; pass.value = x.password; setTab('xtream'); setServers(null, fromPhone); }
     else if (list.type === 'xtream') { setServers(fromPhone[0] || list.server, fromPhone.slice(1)); user.value = list.username; pass.value = list.password; setTab('xtream'); }
     else { url.value = list.url; setTab('url'); }
     form.dispatchEvent(new Event('submit', { cancelable: true }));
@@ -622,7 +630,7 @@ export function openListForm(existing, onSaved, onDelete) {
       // sem nome: o do servidor (com várias listas, "Minha lista" repetido não diz qual é qual)
       if (!list.name) list.name = freeName(linkName(list.url), list.id);
     } else {
-      if (!pickedFile && ex.source !== 'file') return showErr('Escolha o arquivo .m3u da lista.');
+      if (!pickedFile && !pairFile && ex.source !== 'file') return showErr(nativeTvApp() ? 'Escaneie o QR Code acima com o celular e mande o arquivo por “Arquivo M3U”.' : 'Escolha o arquivo .m3u da lista.');
       if (!list.name) list.name = freeName('Minha lista', list.id);
     }
 
@@ -634,6 +642,9 @@ export function openListForm(existing, onSaved, onDelete) {
     try {
       if (tab === 'file' && pickedFile) {
         await api(`/api/m3u?list=${encodeURIComponent(list.id)}`, { method: 'POST', body: pickedFile });
+      } else if (tab === 'file' && pairFile) {
+        await api(`/api/m3u-pair?list=${encodeURIComponent(list.id)}&file=${pairFile}`, { method: 'POST' });
+        pairFile = null;
       }
       const i = S.lists.findIndex((l) => l.id === list.id);
       if (i >= 0) S.lists[i] = list;

@@ -444,6 +444,14 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true, bytes: buf.length });
   }
 
+  // Lista de arquivo que veio pelo celular (QR Code): o arquivo já está na TV; vira o arquivo desta lista.
+  if (p === '/api/m3u-pair' && m === 'POST') {
+    const id = q.get('list');
+    if (!pairing.adoptFile(q.get('file'), id)) return sendJson(res, 410, { error: 'O arquivo do celular não está mais aqui. Mande de novo pelo QR Code.' });
+    catalogs.forget(id);
+    return sendJson(res, 200, { ok: true });
+  }
+
   if (p === '/api/list' && m === 'DELETE') {
     const id = q.get('list');
     if (!/^[\w-]+$/.test(id || '')) return sendJson(res, 400, { error: 'id inválido' });

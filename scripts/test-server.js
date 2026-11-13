@@ -598,6 +598,29 @@ test('pareamento: link sem http é consertado e o que falta é dito ao celular',
   }
 });
 
+test('pareamento: arquivo .m3u mandado pelo celular vira a lista de arquivo na TV', async () => {
+  const start = () => request('POST', '/api/pair/start', { body: { address: '192.168.0.50' } }).then((r) => r.json.token);
+  let token = await start();
+  const page = await request('POST', `/pair/${token}/m3u?nome=x.m3u`, { body: '<!doctype html><html>Conta suspensa</html>' });
+  assert.strictEqual(page.status, 400);
+  assert.match(page.json.error, /não é uma lista M3U/);
+  // recusado não gasta a chave
+  const sent = await request('POST', `/pair/${token}/m3u?nome=Do%20celular.m3u`, { body: m3u(12, 'http://exemplo.invalid') });
+  assert.strictEqual(sent.status, 200);
+  const got = (await request('GET', '/api/pair/status?token=' + token)).json.list;
+  assert.deepStrictEqual([got.type, got.source, got.name], ['m3u', 'file', 'Do celular']);
+  assert.match(got.pairFile, /^[0-9a-f]{16}$/);
+  // a TV salva a lista: o arquivo passa a ser o dela
+  assert.strictEqual((await request('POST', `/api/m3u-pair?list=pf&file=${got.pairFile}`)).status, 200);
+  assert.strictEqual((await request('POST', `/api/m3u-pair?list=pf&file=${got.pairFile}`)).status, 410, 'uma vez só');
+  assert.strictEqual((await request('POST', '/api/m3u-pair?list=pf&file=../../x')).status, 410);
+  await addLists([{ id: 'pf', type: 'm3u', source: 'file', name: 'Do celular' }]);
+  const c = await request('GET', '/api/catalog?list=pf&section=live');
+  assert.strictEqual(c.json.catalog.live.items.length, 4);
+  assert.ok(!fs.readdirSync(DATA).some((f) => f.startsWith('m3u-pair-')), 'nada sobrando do envio');
+  await request('DELETE', '/api/list?list=pf');
+});
+
 test('lista grande: 60 mil entradas montam em poucos segundos', async () => {
   const text = m3u(60000, 'http://exemplo.invalid');
   const t0 = Date.now();
