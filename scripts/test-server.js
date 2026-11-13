@@ -67,6 +67,7 @@ function xtreamApi(q, res) {
 
 let variant = 'full';
 const revalida = [];
+const gzipPedidos = [];
 const PICADA = '\ufeff' + m3u(40, 'http://exemplo.invalid').replace(/Canal/g, 'Canal Ação São João').split('\n').join('\r\n');
 
 function startFake() {
@@ -106,6 +107,16 @@ function startFake() {
       if (same) { res.writeHead(304, head); return res.end(); }
       res.writeHead(200, head);
       return res.end(m3u(30, FAKE));
+    }
+    // comprimida quando o pedido aceita gzip; ?cortada=1 corta a conexão no meio
+    if (u.pathname === '/gzip.m3u') {
+      const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+      gzipPedidos.push(gz);
+      const body = gz ? zlib.gzipSync(m3u(90, FAKE)) : Buffer.from(m3u(90, FAKE));
+      res.writeHead(200, gz ? { 'Content-Encoding': 'gzip', 'Content-Length': body.length } : { 'Content-Length': body.length });
+      if (!u.searchParams.get('cortada')) return res.end(body);
+      res.write(body.subarray(0, Math.floor(body.length / 2)));
+      return setTimeout(() => res.destroy(), 50);
     }
     if (u.pathname === '/grande.m3u') return res.end(m3u(Number(u.searchParams.get('n')), FAKE));
     if (u.pathname === '/guia.xml.gz') return res.end(zlib.gzipSync(xmltv()));
@@ -447,6 +458,23 @@ test('atualizar: provedor sem ETag nem Last-Modified baixa inteira, como antes',
   assert.ok(again.json.catalog.updatedAt > first.json.catalog.updatedAt);
   assert.deepStrictEqual(again.json.catalog.live, first.json.catalog.live);
   await request('DELETE', '/api/list?list=rev-nada');
+});
+
+test('M3U por link: pede a lista comprimida (gzip) e lê igual; comprimida e cortada mantém a anterior', async () => {
+  await addLists([{ id: 'gz', type: 'm3u', name: 'Gzip', url: `${FAKE}/gzip.m3u` }]);
+  const r = await request('GET', '/api/catalog?list=gz&section=live');
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual(gzipPedidos, [true], 'pediu gzip');
+  const whole = await buildFromM3U(m3u(90, FAKE), { id: 'gz' });
+  assert.deepStrictEqual(r.json.catalog.live, JSON.parse(JSON.stringify(whole.live)));
+  await until(async () => (fs.existsSync(path.join(DATA, 'catalog-gz.meta.json')) ? true : null));
+  await addLists([{ id: 'gz', type: 'm3u', name: 'Gzip', url: `${FAKE}/gzip.m3u?cortada=1` }]);
+  const cut = await request('GET', '/api/catalog?list=gz&section=live&refresh=1');
+  assert.strictEqual(cut.status, 200);
+  assert.ok(cut.json.warning, 'avisa que não atualizou');
+  assert.strictEqual(cut.json.catalog.updatedAt, r.json.catalog.updatedAt, 'a versão guardada continua');
+  assert.strictEqual(cut.json.catalog.live.items.length, r.json.catalog.live.items.length);
+  await request('DELETE', '/api/list?list=gz');
 });
 
 test('M3U por link monta enquanto baixa: igual a montar com o texto inteiro', async () => {

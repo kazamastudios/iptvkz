@@ -62,7 +62,10 @@ async function readBody(url, onText, { onProgress, headers, idleMs = 45000, maxM
   try {
     const res = await fetch(url, {
       redirect: 'follow',
-      headers: Object.assign({ 'User-Agent': UA, Accept: '*/*' }, headers),
+      // Lista comprimida chega bem menor (texto repetitivo: 60 MB viram poucos MB). O fetch do Node já pede isso
+      // sozinho; o da TV LG (shim.js) só manda o que recebe, mas descomprime a resposta: aqui pedimos sempre.
+      // Só neste download: o proxy de vídeo repassa a resposta como vem e não pode receber comprimido.
+      headers: Object.assign({ 'User-Agent': UA, Accept: '*/*', 'Accept-Encoding': 'gzip, deflate' }, headers),
       signal: ctrl.signal,
     });
     const etag = res.headers.get('etag') || null;
@@ -73,7 +76,8 @@ async function readBody(url, onText, { onProgress, headers, idleMs = 45000, maxM
       return { notModified: true, etag, lastModified, got: 0, total: 0 };
     }
     if (!res.ok) throw Object.assign(new Error(`O servidor respondeu ${res.status} (${safeHost(url)})`), { status: res.status });
-    // com compressão, o tamanho informado é o comprimido: não serve de total
+    // com compressão, o tamanho informado é o comprimido: não serve de total (nem para ver se chegou inteira; aí
+    // quem acusa a lista cortada é a descompressão, que falha sem o fim do arquivo)
     const total = res.headers.get('content-encoding') ? 0 : Number(res.headers.get('content-length')) || 0;
     // decodifica cada pedaço assim que chega (StringDecoder cuida de acento partido entre pedaços)
     const decoder = new StringDecoder('utf8');
