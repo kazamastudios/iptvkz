@@ -48,7 +48,10 @@ function safeHost(url) {
 // Baixa o corpo e entrega o texto em pedaços (onText) conforme chega. Lista grande em provedor lento pode levar
 // minutos: o prazo só vence se o provedor ficar idleMs sem mandar nada (parou no meio) ou passar de maxMs no total.
 // onProgress(recebido, total) a cada pedaço; total é 0 quando o provedor não informa o tamanho.
-async function readBody(url, onText, { onProgress, idleMs = 45000, maxMs = 15 * 60000 } = {}) {
+// headers: cabeçalhos a mais no pedido (If-None-Match / If-Modified-Since, para perguntar se a lista mudou).
+// Devolve também o ETag e o Last-Modified da resposta (null quando o provedor não manda). Com 304 (não mudou),
+// não lê nada e devolve notModified: true.
+async function readBody(url, onText, { onProgress, headers, idleMs = 45000, maxMs = 15 * 60000 } = {}) {
   const ctrl = new AbortController();
   let idle = setTimeout(() => ctrl.abort(), idleMs);
   const hard = setTimeout(() => ctrl.abort(), maxMs);
@@ -59,9 +62,16 @@ async function readBody(url, onText, { onProgress, idleMs = 45000, maxMs = 15 * 
   try {
     const res = await fetch(url, {
       redirect: 'follow',
-      headers: { 'User-Agent': UA, Accept: '*/*' },
+      headers: Object.assign({ 'User-Agent': UA, Accept: '*/*' }, headers),
       signal: ctrl.signal,
     });
+    const etag = res.headers.get('etag') || null;
+    const lastModified = res.headers.get('last-modified') || null;
+    if (res.status === 304) {
+      // sem corpo; fecha a resposta para não segurar a conexão
+      if (res.body && res.body.cancel) res.body.cancel().catch(() => {});
+      return { notModified: true, etag, lastModified, got: 0, total: 0 };
+    }
     if (!res.ok) throw Object.assign(new Error(`O servidor respondeu ${res.status} (${safeHost(url)})`), { status: res.status });
     // com compressão, o tamanho informado é o comprimido: não serve de total
     const total = res.headers.get('content-encoding') ? 0 : Number(res.headers.get('content-length')) || 0;
@@ -90,7 +100,7 @@ async function readBody(url, onText, { onProgress, idleMs = 45000, maxMs = 15 * 
     if (total && got < total) {
       throw Object.assign(new Error(`A lista chegou incompleta (${Math.round(got / 1048576)} de ${Math.round(total / 1048576)} MB). Tente de novo.`), { status: 'incomplete' });
     }
-    return { got, total };
+    return { got, total, etag, lastModified };
   } catch (err) {
     if (err.handler) throw err;
     if (ctrl.signal.aborted) throw Object.assign(new Error('Tempo esgotado ao baixar de ' + safeHost(url)), { timeout: true });
@@ -110,10 +120,11 @@ async function readText(url, opts) {
 }
 
 // Linha a linha, enquanto chega (sem guardar o texto inteiro). head: o começo do texto, para mensagens de erro.
+// Repassa o que readBody devolve (notModified, etag, lastModified).
 async function streamLines(url, onLine, opts) {
   let carry = '';
   let head = '';
-  await readBody(url, (t) => {
+  const r = await readBody(url, (t) => {
     if (head.length < 200) head += t.slice(0, 200 - head.length);
     let text = carry + t;
     let pos = 0;
@@ -124,8 +135,9 @@ async function streamLines(url, onLine, opts) {
     carry = text.slice(pos);
     text = null;
   }, opts);
+  if (r.notModified) return { head, notModified: true, etag: r.etag, lastModified: r.lastModified };
   if (carry) onLine(carry);
-  return { head };
+  return { head, etag: r.etag, lastModified: r.lastModified };
 }
 
 const fetchText = (url, opts) => readText(url, opts);

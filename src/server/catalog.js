@@ -1,7 +1,7 @@
 // Baixa listas (M3U ou Xtream) e normaliza tudo num catálogo único:
 // { live, movies, series } cada um com { cats: [{id,name}], items: [...] }.
 const fs = require('fs');
-const { hash, norm, fetchJson, fetchWithTimeout, streamLines } = require('./util');
+const { hash, norm, fetchJson, fetchWithTimeout, streamLines, safeHost } = require('./util');
 const store = require('./store');
 const diag = require('./diag');
 
@@ -898,7 +898,41 @@ async function build(list, opts = {}) {
   }
 }
 
-async function buildNow(list, { first, onSection, stamp = Date.now() } = {}) {
+// O que o provedor mandou para identificar a versão da lista (ETag, Last-Modified), guardado no resumo. src: de
+// qual endereço veio (hash), para não perguntar ao provedor por uma lista que foi trocada ao editar.
+function validatorsOf(list, r) {
+  if (!r.etag && !r.lastModified) return null;
+  return { src: hash(list.url), etag: r.etag || null, lastModified: r.lastModified || null };
+}
+
+// Cabeçalhos para perguntar ao provedor se a lista mudou desde a versão guardada (prev), ou null.
+function conditionalHeaders(list, prev) {
+  const v = prev && prev.files && prev.validators;
+  if (!v || v.src !== hash(list.url)) return null;
+  // as seções guardadas precisam estar inteiras no disco, senão não há o que manter
+  if (!SECTIONS.every((k) => fs.existsSync(store.file(secName(list.id, prev.files, k))))) return null;
+  const h = {};
+  if (v.etag) h['If-None-Match'] = v.etag;
+  if (v.lastModified) h['If-Modified-Since'] = v.lastModified;
+  return h;
+}
+
+// A lista não mudou (304): mantém as seções guardadas e só renova a data no resumo (troca atômica), para não
+// perguntar de novo logo. Devolve o resumo renovado, ou null se a lista foi excluída enquanto isso.
+function keepUnchanged(list, prev, stamp, r) {
+  if (!store.getList(list.id)) return null;
+  const light = Object.assign({}, prev, { updatedAt: stamp });
+  // o provedor pode mandar validadores novos junto com o 304
+  const v = validatorsOf(list, r);
+  if (v) light.validators = { src: v.src, etag: v.etag || prev.validators.etag, lastModified: v.lastModified || prev.validators.lastModified };
+  store.writeText(metaName(list.id), JSON.stringify(light));
+  partsCache.set(light, diskParts(list.id, light));
+  memory.set(list.id, light);
+  return light;
+}
+
+// full: baixa a lista inteira mesmo que o provedor diga que não mudou (sem If-None-Match / If-Modified-Since).
+async function buildNow(list, { first, onSection, full = false, stamp = Date.now() } = {}) {
   const prog = progress.get(list.id);
   // medições (modo de depuração): pico de memória e maior tempo com o servidor travado
   const mem = diag.memPeak();
@@ -930,13 +964,28 @@ async function buildNow(list, { first, onSection, stamp = Date.now() } = {}) {
   } else {
     // Monta enquanto baixa: cada linha vai para a montagem assim que chega, sem guardar o texto da lista (60 MB a
     // menos na memória), e o download e a montagem acontecem ao mesmo tempo. No fim só falta fechar o catálogo.
+    // Atualizando uma lista já guardada: pergunta antes se ela mudou (ETag / Last-Modified da última vez). Provedor
+    // que ignora esses cabeçalhos responde 200 com a lista inteira, e segue como sempre.
+    const prev = full ? null : memory.get(list.id) || readMeta(list.id);
+    const headers = conditionalHeaders(list, prev);
     const t0 = Date.now();
     const b = m3uBuilder(list);
     const reader = m3uReader(b.entry);
     let bytes = 0;
-    const { head } = await streamLines(list.url, (line) => reader.line(line), {
+    const r = await streamLines(list.url, (line) => reader.line(line), {
+      headers,
       onProgress: (got, total) => { bytes = got; Object.assign(prog, { got, total }); },
     });
+    if (r.notModified && headers) {
+      loop.stop();
+      diag.last.build = { listId: list.id, at: Date.now(), naoMudou: true, download: Date.now() - t0 };
+      const kept = keepUnchanged(list, prev, stamp, r);
+      if (kept) return kept;
+      throw new Error('A lista foi excluída');
+    }
+    // 304 sem termos perguntado: resposta estranha, não há lista para montar
+    if (r.notModified) throw new Error(`O servidor respondeu 304 sem lista (${safeHost(list.url)})`);
+    const { head } = r;
     const download = Date.now() - t0;
     mem.read();
     prog.phase = 'build';
@@ -946,6 +995,8 @@ async function buildNow(list, { first, onSection, stamp = Date.now() } = {}) {
     data = b.finish(reader, head);
     // download (já com a leitura dos itens) e o fechamento (aparece no modo de depuração, como no Xtream)
     data.timing = { download, montar: Date.now() - t1, MB: Math.round(bytes / 1048576) };
+    const validators = validatorsOf(list, r);
+    if (validators) data.validators = validators;
   }
   mem.read();
   // o Xtream já limpou os nomes das categorias seção por seção (e já mandou para a tela assim)
@@ -1068,13 +1119,13 @@ function readMeta(id) {
 const failedAt = new Map();
 const RETRY_MS = 10 * 60 * 1000;
 
-function refresh(list, first) {
+function refresh(list, first, { full = false } = {}) {
   if (!inflight.has(list.id)) {
     const b = { done: {}, meta: null, waiters: [] };
     const wake = () => { b.waiters = b.waiters.filter((w) => !w()); };
     const onSection = (sec, data, meta) => { b.done[sec] = data; b.meta = meta; wake(); };
     building.set(list.id, b);
-    const p = build(list, { first, onSection });
+    const p = build(list, { first, onSection, full });
     const done = () => {
       inflight.delete(list.id);
       if (building.get(list.id) === b) building.delete(list.id);
@@ -1102,8 +1153,9 @@ const hasCache = (id) => memory.has(id) || fs.existsSync(store.file(metaName(id)
 
 // Uma seção para a tela. force: baixa a lista de novo. wait: a tela já recebeu outra seção desta mesma carga
 // (então espera a montagem em andamento, em vez de pegar a versão guardada antiga).
-async function getSection(list, sec, { force = false, wait = false } = {}) {
-  if (force || !hasCache(list.id)) refresh(list, sec);
+// full: com force, baixa a lista inteira sem perguntar ao provedor se ela mudou.
+async function getSection(list, sec, { force = false, wait = false, full = false } = {}) {
+  if (force || !hasCache(list.id)) refresh(list, sec, { full });
   if (force || wait || !hasCache(list.id)) {
     let r;
     try {
@@ -1122,8 +1174,8 @@ async function getSection(list, sec, { force = false, wait = false } = {}) {
   return { catalog, refreshing, building: false };
 }
 
-async function getCatalog(list, { force = false } = {}) {
-  if (force) return { catalog: await refresh(list), refreshing: false };
+async function getCatalog(list, { force = false, full = false } = {}) {
+  if (force) return { catalog: await refresh(list, undefined, { full }), refreshing: false };
   let cached = memory.get(list.id);
   if (!cached) {
     // abrir com o app fechado: lê e interpreta o arquivo inteiro do catálogo (medido para o modo de depuração)

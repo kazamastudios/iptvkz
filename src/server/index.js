@@ -352,6 +352,8 @@ async function handleApi(req, res, url) {
   if (p === '/api/catalog' && m === 'GET') {
     const list = requireList(q.get('list'));
     const force = q.get('refresh') === '1';
+    // full=1 (com refresh=1): baixa a lista inteira, sem perguntar ao provedor se ela mudou
+    const full = force && q.get('full') === '1';
     if (force) {
       catalogs.forget(list.id);
       epg.forget(list.id);
@@ -360,7 +362,7 @@ async function handleApi(req, res, url) {
     // Na primeira carga de uma lista Xtream, a seção vem assim que chega do provedor (partial).
     const section = q.get('section');
     if (catalogs.SECTIONS.includes(section)) {
-      const r = await catalogs.getSection(list, section, { force, wait: q.get('wait') === '1' });
+      const r = await catalogs.getSection(list, section, { force, full, wait: q.get('wait') === '1' });
       const head = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
       if (force) {
         const url = epg.sourceUrl(list, r.catalog || r.meta);
@@ -376,7 +378,7 @@ async function handleApi(req, res, url) {
       const memo = r.refreshing || r.building || r.warning ? null : parts.memo[section] || (parts.memo[section] = {});
       return sendText(req, res, 200, head, body, memo);
     }
-    const { catalog, refreshing } = await catalogs.getCatalog(list, { force });
+    const { catalog, refreshing } = await catalogs.getCatalog(list, { force, full });
     const epgUrl = force && epg.sourceUrl(list, catalog);
     if (epgUrl) epg.refresh(list.id, epgUrl).catch(() => {});
     const body = `{"refreshing":${refreshing},"catalog":${serializeCatalog(catalog)}}`;

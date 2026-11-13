@@ -66,6 +66,7 @@ function xtreamApi(q, res) {
 }
 
 let variant = 'full';
+const revalida = [];
 const PICADA = '\ufeff' + m3u(40, 'http://exemplo.invalid').replace(/Canal/g, 'Canal Ação São João').split('\n').join('\r\n');
 
 function startFake() {
@@ -90,6 +91,21 @@ function startFake() {
       let i = 0;
       const next = () => { if (i >= buf.length) return res.end(); res.write(buf.subarray(i, i += 7)); setImmediate(next); };
       return next();
+    }
+    // revalidação: ?modo=etag (manda ETag), lm (manda Last-Modified) ou nada (não manda nenhum e ignora os pedidos
+    // condicionais). Cada pedido fica anotado em revalida, com os cabeçalhos recebidos e o código respondido.
+    if (u.pathname === '/revalida.m3u') {
+      const modo = u.searchParams.get('modo');
+      const inm = req.headers['if-none-match'] || null;
+      const ims = req.headers['if-modified-since'] || null;
+      const etag = '"lista-v1"';
+      const lm = 'Wed, 11 Nov 2026 10:00:00 GMT';
+      const same = (modo === 'etag' && inm === etag) || (modo === 'lm' && ims === lm);
+      revalida.push({ modo, inm, ims, status: same ? 304 : 200 });
+      const head = modo === 'etag' ? { ETag: etag } : modo === 'lm' ? { 'Last-Modified': lm } : {};
+      if (same) { res.writeHead(304, head); return res.end(); }
+      res.writeHead(200, head);
+      return res.end(m3u(30, FAKE));
     }
     if (u.pathname === '/grande.m3u') return res.end(m3u(Number(u.searchParams.get('n')), FAKE));
     if (u.pathname === '/guia.xml.gz') return res.end(zlib.gzipSync(xmltv()));
@@ -378,6 +394,59 @@ test('atualizar: lista bem menor vale, e dá para voltar à anterior', async () 
   assert.ok(after.json.catalog.live.items.length > r.json.catalog.live.items.length, 'a anterior voltou');
   await until(async () => (files().length === 3 ? true : null));
   variant = 'full';
+});
+
+// Atualizar a lista com o provedor dizendo que não mudou (304): não baixa nem monta, mantém as seções guardadas e
+// renova a data no resumo. full=1 baixa inteira mesmo assim.
+async function revalidates(id, modo, header, value) {
+  await addLists([{ id, type: 'm3u', name: 'Revalida', url: `${FAKE}/revalida.m3u?modo=${modo}` }]);
+  const meta = () => JSON.parse(fs.readFileSync(path.join(DATA, `catalog-${id}.meta.json`), 'utf8'));
+  const first = await request('GET', `/api/catalog?list=${id}&section=live`);
+  assert.strictEqual(first.status, 200);
+  await until(async () => (fs.existsSync(path.join(DATA, `catalog-${id}.meta.json`)) ? true : null));
+  assert.strictEqual(meta().validators[header], value, 'validador guardado no resumo');
+  const files = meta().files;
+  await new Promise((r) => setTimeout(r, 5));
+  const n = revalida.length;
+  const again = await request('GET', `/api/catalog?list=${id}&section=live&refresh=1`);
+  assert.strictEqual(again.status, 200);
+  assert.deepStrictEqual(revalida.slice(n).map((x) => x.status), [304], 'perguntou e o provedor disse que não mudou');
+  assert.strictEqual(revalida[n][header === 'etag' ? 'inm' : 'ims'], value);
+  assert.ok(!again.json.warning);
+  assert.deepStrictEqual(again.json.catalog.live, first.json.catalog.live, 'mesmo conteúdo');
+  assert.ok(again.json.catalog.updatedAt > first.json.catalog.updatedAt, 'data renovada');
+  assert.strictEqual(meta().updatedAt, again.json.catalog.updatedAt, 'data renovada no resumo guardado');
+  assert.strictEqual(meta().files, files, 'mesmas seções no disco');
+  // abre a frio: continua lendo as seções guardadas
+  require('../src/server/catalog.js').forget(id);
+  const cold = await request('GET', `/api/catalog?list=${id}&section=movies`);
+  assert.strictEqual(cold.json.catalog.movies.items.length, 10);
+  // full=1: baixa inteira, sem perguntar
+  const full = await request('GET', `/api/catalog?list=${id}&section=live&refresh=1&full=1`);
+  assert.strictEqual(full.status, 200);
+  const last = revalida[revalida.length - 1];
+  assert.deepStrictEqual([last.status, last.inm, last.ims], [200, null, null]);
+  await request('DELETE', `/api/list?list=${id}`);
+}
+
+test('atualizar: lista que não mudou (304 com ETag) não é baixada de novo', () => revalidates('rev-etag', 'etag', 'etag', '"lista-v1"'));
+
+test('atualizar: lista que não mudou (304 com Last-Modified) não é baixada de novo', () => revalidates('rev-lm', 'lm', 'lastModified', 'Wed, 11 Nov 2026 10:00:00 GMT'));
+
+test('atualizar: provedor sem ETag nem Last-Modified baixa inteira, como antes', async () => {
+  await addLists([{ id: 'rev-nada', type: 'm3u', name: 'Revalida', url: `${FAKE}/revalida.m3u?modo=nada` }]);
+  const first = await request('GET', '/api/catalog?list=rev-nada&section=live');
+  await until(async () => (fs.existsSync(path.join(DATA, 'catalog-rev-nada.meta.json')) ? true : null));
+  const meta = JSON.parse(fs.readFileSync(path.join(DATA, 'catalog-rev-nada.meta.json'), 'utf8'));
+  assert.strictEqual(meta.validators, undefined);
+  await new Promise((r) => setTimeout(r, 5));
+  const n = revalida.length;
+  const again = await request('GET', '/api/catalog?list=rev-nada&section=live&refresh=1');
+  assert.strictEqual(again.status, 200);
+  assert.deepStrictEqual(revalida.slice(n), [{ modo: 'nada', inm: null, ims: null, status: 200 }], 'sem pedido condicional');
+  assert.ok(again.json.catalog.updatedAt > first.json.catalog.updatedAt);
+  assert.deepStrictEqual(again.json.catalog.live, first.json.catalog.live);
+  await request('DELETE', '/api/list?list=rev-nada');
 });
 
 test('M3U por link monta enquanto baixa: igual a montar com o texto inteiro', async () => {
