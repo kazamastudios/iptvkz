@@ -220,6 +220,19 @@ input, select, textarea { font: inherit; color: inherit; }
   transform: translateY(10px) scale(.98); transition: transform .2s;
 }
 .modal.wide { width: 760px; }
+/* Celular: o formulário usa a largura da tela (menos margem e recuo), as abas viram uma grade 2x2 do mesmo
+   tamanho, usuário e senha ficam um embaixo do outro, e o nome do arquivo escolhido vai para baixo do botão. */
+@media (max-width: 760px) {
+  .modal-back { padding: 10px; }
+  .modal-head { padding: 14px 12px 2px 18px; }
+  .modal-body { padding: 10px 16px 18px; }
+  .modal .tabs { display: grid; grid-template-columns: 1fr 1fr; width: auto; border-radius: 14px; margin-bottom: 14px; }
+  .modal .tabs button { justify-content: center; padding: 10px 6px; border-radius: 10px; min-width: 0; white-space: nowrap; }
+  .modal .row.cred-row { flex-direction: column; align-items: stretch; gap: 0; }
+  .modal .row.file-row { flex-wrap: wrap; gap: 8px; }
+  .modal .row.file-row > .btn { flex: 1 1 100%; justify-content: center; }
+  .modal .form-actions .btn { flex: 1; justify-content: center; }
+}
 .modal-back.show .modal { transform: none; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 4px 24px; }
 .modal-head h2 { margin: 0; font: 650 20px var(--font-display); }

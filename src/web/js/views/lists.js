@@ -527,15 +527,15 @@ export function openListForm(existing, onSaved, onDelete) {
     xtream: h('div',
       serverSel ? field('Servidor', serverSel, 'O que está em uso. Escolha outro para trocar, ou “Adicionar servidor” para incluir mais.')
         : field('Servidor', server, 'Endereço com porta, como o provedor informou. Pode colar o link get.php inteiro.'),
-      h('div.row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass)))),
+      h('div.row.cred-row', field('Usuário', user), h('div.field', h('label', 'Senha'), h('div.row', { style: { gap: '4px' } }, pass, showPass)))),
     url: h('div', field('Link da lista (M3U/M3U8)', url), xtHint),
     file: h('div', h('div.field', h('label', 'Arquivo da lista'),
       // os apps da TV (e o Android) não abrem seletor de arquivos: lá o arquivo vem pelo celular, no QR Code
-      nativeTvApp() ? fileLabel : h('div.row', h('button.btn', { type: 'button', onclick: () => fileInput.click() }, ico('upload'), 'Escolher arquivo'), fileLabel), fileInput,
+      nativeTvApp() ? fileLabel : h('div.row.file-row', h('button.btn', { type: 'button', onclick: () => fileInput.click() }, ico('upload'), 'Escolher arquivo'), fileLabel), fileInput,
       nativeTvApp() ? h('div.hint', isPhoneDevice() ? OLD_APP : 'Este aparelho não abre arquivos: escaneie o QR Code acima com o celular e escolha “Arquivo M3U” por lá.') : null)),
     load: h('div', h('div.field', h('label', 'Arquivo da lista baixada'),
       // os apps da TV não abrem seletor de arquivos: lá o arquivo vem pelo celular
-      nativeTvApp() ? null : h('div.row', h('button.btn', { type: 'button', onclick: () => loadInput.click() }, ico('upload'), 'Escolher arquivo'), loadLabel), loadInput,
+      nativeTvApp() ? null : h('div.row.file-row', h('button.btn', { type: 'button', onclick: () => loadInput.click() }, ico('upload'), 'Escolher arquivo'), loadLabel), loadInput,
       phoneHint,
       h('div.hint', 'O arquivo começa com “iptvkz-lista” e é gerado pelo botão “Baixar lista”. A lista entra com favoritos e histórico; as outras continuam.'))),
   };
