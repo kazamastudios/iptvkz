@@ -1,7 +1,7 @@
 // Baixa listas (M3U ou Xtream) e normaliza tudo num catálogo único:
 // { live, movies, series } cada um com { cats: [{id,name}], items: [...] }.
 const fs = require('fs');
-const { hash, norm, fetchText, fetchJson, fetchWithTimeout } = require('./util');
+const { hash, norm, fetchJson, fetchWithTimeout, streamLines } = require('./util');
 const store = require('./store');
 const diag = require('./diag');
 
@@ -183,44 +183,63 @@ function parseExtinf(line) {
 // outras telas) enquanto monta, em vez de ficar travado do começo ao fim.
 const SCAN_BATCH = 20000;
 const pause = () => new Promise((r) => setImmediate(r));
-async function scanM3U(text, onEntry) {
+// Leitor de M3U que recebe uma linha de cada vez: serve tanto para o arquivo inteiro (scanM3U) quanto para o
+// download, que entrega as linhas enquanto chegam (a montagem anda junto com o download).
+function m3uReader(onEntry) {
   const header = {};
   let count = 0;
-  let lines = 0;
   let cur = null;
-  // linha a linha sem copiar o texto inteiro (tirar o BOM com replace ou dividir com split duplicava 60 MB)
-  let pos = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let first = true;
+  return {
+    header,
+    get count() { return count; },
+    line(raw) {
+      let line = raw;
+      if (first) {
+        first = false;
+        if (line.charCodeAt(0) === 0xfeff) line = line.slice(1);
+      }
+      line = line.trim();
+      if (!line) return;
+      if (line.startsWith('#EXTM3U')) {
+        Object.assign(header, parseAttrs(line));
+        return;
+      }
+      if (line.startsWith('#EXTINF')) {
+        cur = parseExtinf(line);
+        return;
+      }
+      if (line.startsWith('#EXTGRP:')) {
+        if (cur && !cur.group) cur.group = line.slice(8).trim();
+        return;
+      }
+      if (line.startsWith('#')) return;
+      if (cur) {
+        cur.url = line;
+        onEntry(cur);
+        count++;
+        cur = null;
+      } else if (/^https?:\/\//i.test(line)) {
+        onEntry({ name: line, attrs: {}, group: '', url: line });
+        count++;
+      }
+    },
+  };
+}
+
+// O texto inteiro (arquivo enviado): linha a linha sem copiar o texto (replace ou split duplicavam 60 MB).
+async function scanM3U(text, onEntry) {
+  const r = m3uReader(onEntry);
+  let pos = 0;
+  let lines = 0;
   while (pos < text.length) {
     let nl = text.indexOf('\n', pos);
     if (nl < 0) nl = text.length;
-    const line = text.slice(pos, nl).trim();
+    r.line(text.slice(pos, nl));
     pos = nl + 1;
     if (++lines % SCAN_BATCH === 0) await pause();
-    if (!line) continue;
-    if (line.startsWith('#EXTM3U')) {
-      Object.assign(header, parseAttrs(line));
-      continue;
-    }
-    if (line.startsWith('#EXTINF')) {
-      cur = parseExtinf(line);
-      continue;
-    }
-    if (line.startsWith('#EXTGRP:')) {
-      if (cur && !cur.group) cur.group = line.slice(8).trim();
-      continue;
-    }
-    if (line.startsWith('#')) continue;
-    if (cur) {
-      cur.url = line;
-      onEntry(cur);
-      count++;
-      cur = null;
-    } else if (/^https?:\/\//i.test(line)) {
-      onEntry({ name: line, attrs: {}, group: '', url: line });
-      count++;
-    }
   }
-  return { header, count };
+  return r;
 }
 
 function urlExt(url) {
@@ -264,7 +283,8 @@ function catCollector() {
 const NO_VERSION = { base: '', label: '' };
 const KIND_RE = /\/(series|movie)\//i;
 
-async function buildFromM3U(text, list) {
+// Monta canais, filmes e séries a partir dos itens do M3U, um de cada vez (entry); finish fecha o catálogo.
+function m3uBuilder() {
   const liveCats = catCollector();
   const movieCats = catCollector();
   const seriesCats = catCollector();
@@ -273,7 +293,7 @@ async function buildFromM3U(text, list) {
   const seriesMap = new Map();
   const liveSeen = new Set();
 
-  const { header, count } = await scanM3U(text, (e) => {
+  const entry = (e) => {
     const url = e.url;
     const logo = e.attrs['tvg-logo'] || '';
     const path = KIND_RE.exec(url);
@@ -335,30 +355,42 @@ async function buildFromM3U(text, list) {
       }
       addVersion(ep.versions, { label, url, group: e.group });
     }
-  });
-  if (!count) {
-    // o provedor às vezes responde uma página (aviso, login, erro) no lugar da lista
-    if (/^\s*</.test(text.slice(0, 200))) throw new Error('O provedor respondeu uma página, não uma lista M3U. Confira o link com o seu provedor.');
-    throw new Error('A lista está vazia ou não é um arquivo M3U válido.');
-  }
-
-  const series = [...seriesMap.values()].map((s) => ({
-    ...s,
-    seasons: [...s.seasons.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([num, eps]) => ({
-        num,
-        eps: [...eps.values()].sort((a, b) => a.num - b.num).map((ep) => ({ ...ep, versions: sortVersions(ep.versions) })),
-      })),
-  }));
-
-  const epgUrl = header['url-tvg'] || header['x-tvg-url'] || '';
-  return {
-    epgUrl: epgUrl.split(',')[0].trim(),
-    live: { cats: liveCats.cats, items: live },
-    movies: { cats: movieCats.cats, items: mergeMovies(movieRaw) },
-    series: { cats: seriesCats.cats, items: series },
   };
+  // reader: o leitor que entregou os itens (cabeçalho e quantidade); head: o começo do texto recebido
+  const finish = (reader, head) => {
+    const { header, count } = reader;
+    if (!count) {
+      // o provedor às vezes responde uma página (aviso, login, erro) no lugar da lista
+      if (/^\s*</.test(head)) throw new Error('O provedor respondeu uma página, não uma lista M3U. Confira o link com o seu provedor.');
+      throw new Error('A lista está vazia ou não é um arquivo M3U válido.');
+    }
+
+    const series = [...seriesMap.values()].map((s) => ({
+      ...s,
+      seasons: [...s.seasons.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([num, eps]) => ({
+          num,
+          eps: [...eps.values()].sort((a, b) => a.num - b.num).map((ep) => ({ ...ep, versions: sortVersions(ep.versions) })),
+        })),
+    }));
+
+    const epgUrl = header['url-tvg'] || header['x-tvg-url'] || '';
+    return {
+      epgUrl: epgUrl.split(',')[0].trim(),
+      live: { cats: liveCats.cats, items: live },
+      movies: { cats: movieCats.cats, items: mergeMovies(movieRaw) },
+      series: { cats: seriesCats.cats, items: series },
+    };
+  };
+  return { entry, finish };
+}
+
+// M3U já inteiro na memória (arquivo enviado pela pessoa).
+async function buildFromM3U(text, list) {
+  const b = m3uBuilder(list);
+  const reader = await scanM3U(text, b.entry);
+  return b.finish(reader, text.slice(0, 200));
 }
 
 // ---------- Xtream Codes ----------
@@ -896,17 +928,24 @@ async function buildNow(list, { first, onSection, stamp = Date.now() } = {}) {
     prog.phase = 'build';
     data = await buildFromM3U(text, list);
   } else {
+    // Monta enquanto baixa: cada linha vai para a montagem assim que chega, sem guardar o texto da lista (60 MB a
+    // menos na memória), e o download e a montagem acontecem ao mesmo tempo. No fim só falta fechar o catálogo.
     const t0 = Date.now();
-    const text = await fetchText(list.url, { onProgress: (got, total) => Object.assign(prog, { got, total }) });
+    const b = m3uBuilder(list);
+    const reader = m3uReader(b.entry);
+    let bytes = 0;
+    const { head } = await streamLines(list.url, (line) => reader.line(line), {
+      onProgress: (got, total) => { bytes = got; Object.assign(prog, { got, total }); },
+    });
     const download = Date.now() - t0;
     mem.read();
     prog.phase = 'build';
-    // deixa a tela receber o "organizando" antes de o servidor ficar ocupado montando o catálogo
+    // deixa a tela receber o "organizando" antes de fechar o catálogo
     await new Promise((r) => setTimeout(r, 50));
     const t1 = Date.now();
-    data = await buildFromM3U(text, list);
-    // quanto levou cada parte (aparece no modo de depuração, como no Xtream)
-    data.timing = { download, montar: Date.now() - t1, MB: Math.round(text.length / 1048576) };
+    data = b.finish(reader, head);
+    // download (já com a leitura dos itens) e o fechamento (aparece no modo de depuração, como no Xtream)
+    data.timing = { download, montar: Date.now() - t1, MB: Math.round(bytes / 1048576) };
   }
   mem.read();
   // o Xtream já limpou os nomes das categorias seção por seção (e já mandou para a tela assim)

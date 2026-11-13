@@ -45,13 +45,17 @@ function safeHost(url) {
   try { return new URL(url).host; } catch { return 'o servidor'; }
 }
 
-// Baixa o corpo inteiro. Lista grande em provedor lento pode levar minutos: o prazo só vence se o provedor
-// ficar idleMs sem mandar nada (parou no meio) ou passar de maxMs no total. onProgress(recebido, total) a cada
-// pedaço; total é 0 quando o provedor não informa o tamanho.
-async function readText(url, { onProgress, idleMs = 45000, maxMs = 15 * 60000 } = {}) {
+// Baixa o corpo e entrega o texto em pedaços (onText) conforme chega. Lista grande em provedor lento pode levar
+// minutos: o prazo só vence se o provedor ficar idleMs sem mandar nada (parou no meio) ou passar de maxMs no total.
+// onProgress(recebido, total) a cada pedaço; total é 0 quando o provedor não informa o tamanho.
+async function readBody(url, onText, { onProgress, idleMs = 45000, maxMs = 15 * 60000 } = {}) {
   const ctrl = new AbortController();
   let idle = setTimeout(() => ctrl.abort(), idleMs);
   const hard = setTimeout(() => ctrl.abort(), maxMs);
+  // erro de quem recebe o texto (a montagem da lista): sai como está, não como "não foi possível conectar"
+  const give = (t) => {
+    try { onText(t); } catch (e) { throw Object.assign(e, { handler: true }); }
+  };
   try {
     const res = await fetch(url, {
       redirect: 'follow',
@@ -61,10 +65,8 @@ async function readText(url, { onProgress, idleMs = 45000, maxMs = 15 * 60000 } 
     if (!res.ok) throw Object.assign(new Error(`O servidor respondeu ${res.status} (${safeHost(url)})`), { status: res.status });
     // com compressão, o tamanho informado é o comprimido: não serve de total
     const total = res.headers.get('content-encoding') ? 0 : Number(res.headers.get('content-length')) || 0;
-    // decodifica cada pedaço assim que chega (StringDecoder cuida de acento partido entre pedaços): juntar os
-    // pedaços e só depois converter mantinha a lista três vezes na memória
+    // decodifica cada pedaço assim que chega (StringDecoder cuida de acento partido entre pedaços)
     const decoder = new StringDecoder('utf8');
-    const texts = [];
     let got = 0;
     if (res.body) {
       // getReader funciona no fetch do Node e no da TV LG (platforms/webos/service/shim.js). Lá, cancelar o
@@ -78,18 +80,19 @@ async function readText(url, { onProgress, idleMs = 45000, maxMs = 15 * 60000 } 
         clearTimeout(idle);
         idle = setTimeout(() => ctrl.abort(), idleMs);
         const buf = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
-        texts.push(decoder.write(buf));
         got += buf.length;
+        give(decoder.write(buf));
         if (onProgress) onProgress(got, total);
       }
     }
-    texts.push(decoder.end());
+    give(decoder.end());
     // o provedor fechou a conexão antes do fim: a lista chegou pela metade e não pode substituir a anterior
     if (total && got < total) {
       throw Object.assign(new Error(`A lista chegou incompleta (${Math.round(got / 1048576)} de ${Math.round(total / 1048576)} MB). Tente de novo.`), { status: 'incomplete' });
     }
-    return texts.join('');
+    return { got, total };
   } catch (err) {
+    if (err.handler) throw err;
     if (ctrl.signal.aborted) throw Object.assign(new Error('Tempo esgotado ao baixar de ' + safeHost(url)), { timeout: true });
     if (err.status) throw err;
     throw new Error('Não foi possível conectar a ' + safeHost(url) + ' (' + (err.cause?.code || err.message) + ')');
@@ -97,6 +100,32 @@ async function readText(url, { onProgress, idleMs = 45000, maxMs = 15 * 60000 } 
     clearTimeout(idle);
     clearTimeout(hard);
   }
+}
+
+// O corpo inteiro como texto.
+async function readText(url, opts) {
+  const texts = [];
+  await readBody(url, (t) => texts.push(t), opts);
+  return texts.join('');
+}
+
+// Linha a linha, enquanto chega (sem guardar o texto inteiro). head: o começo do texto, para mensagens de erro.
+async function streamLines(url, onLine, opts) {
+  let carry = '';
+  let head = '';
+  await readBody(url, (t) => {
+    if (head.length < 200) head += t.slice(0, 200 - head.length);
+    let text = carry + t;
+    let pos = 0;
+    for (let nl = text.indexOf('\n'); nl >= 0; nl = text.indexOf('\n', pos)) {
+      onLine(text.slice(pos, nl));
+      pos = nl + 1;
+    }
+    carry = text.slice(pos);
+    text = null;
+  }, opts);
+  if (carry) onLine(carry);
+  return { head };
 }
 
 const fetchText = (url, opts) => readText(url, opts);
@@ -110,4 +139,4 @@ async function fetchJson(url, opts) {
   }
 }
 
-module.exports = { UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, safeHost };
+module.exports = { UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, safeHost };

@@ -66,6 +66,7 @@ function xtreamApi(q, res) {
 }
 
 let variant = 'full';
+const PICADA = '\ufeff' + m3u(40, 'http://exemplo.invalid').replace(/Canal/g, 'Canal Ação São João').split('\n').join('\r\n');
 
 function startFake() {
   fake = http.createServer((req, res) => {
@@ -81,6 +82,14 @@ function startFake() {
       }
       if (variant === 'html') return res.end('<!doctype html><html><body>Conta suspensa</body></html>');
       return res.end(variant === 'small' ? m3u(6, FAKE) : full);
+    }
+    // em pedaços de 7 bytes (acento partido entre pedaços), com BOM, quebras do Windows e sem quebra no fim
+    if (u.pathname === '/picada.m3u') {
+      const buf = Buffer.from(PICADA, 'utf8');
+      res.writeHead(200, { 'Content-Length': buf.length });
+      let i = 0;
+      const next = () => { if (i >= buf.length) return res.end(); res.write(buf.subarray(i, i += 7)); setImmediate(next); };
+      return next();
     }
     if (u.pathname === '/grande.m3u') return res.end(m3u(Number(u.searchParams.get('n')), FAKE));
     if (u.pathname === '/guia.xml.gz') return res.end(zlib.gzipSync(xmltv()));
@@ -369,6 +378,16 @@ test('atualizar: lista bem menor vale, e dá para voltar à anterior', async () 
   assert.ok(after.json.catalog.live.items.length > r.json.catalog.live.items.length, 'a anterior voltou');
   await until(async () => (files().length === 3 ? true : null));
   variant = 'full';
+});
+
+test('M3U por link monta enquanto baixa: igual a montar com o texto inteiro', async () => {
+  await addLists([{ id: 'pic', type: 'm3u', name: 'Picada', url: `${FAKE}/picada.m3u` }]);
+  const sections = {};
+  for (const sec of ['live', 'movies', 'series']) sections[sec] = (await request('GET', `/api/catalog?list=pic&section=${sec}`)).json.catalog[sec];
+  const whole = await buildFromM3U(PICADA, { id: 'pic' });
+  for (const sec of ['live', 'movies', 'series']) assert.deepStrictEqual(sections[sec], JSON.parse(JSON.stringify(whole[sec])), `seção ${sec} igual`);
+  assert.ok(sections.live.items.some((c) => c.name.includes('Ação São João')), 'acentos inteiros');
+  assert.ok(!sections.live.items.some((c) => /\r|\ufeff/.test(c.name + c.url)), 'sem quebra do Windows nem BOM nos nomes e links');
 });
 
 test('EPG: guia .xml.gz da lista chega para o canal certo', async () => {
