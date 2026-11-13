@@ -74,7 +74,29 @@ Com identificadores diferentes, o APK Developer e a versão da Play convivem no 
 - O `versionCode` é um só para todas as faixas e sempre cresce. Cada Beta enviado também consome um número.
 - O teste aberto fica de fora por enquanto: deixaria um beta instável visível na loja.
 
-**Pendente no código:** o flavor `play` ainda só gera a versão vermelha (`IS_BETA false`, nome "IPTVKZ"). Falta o modo Beta escolhido no próprio *Run workflow*, sempre assinado com `PLAY_UPLOAD_*` e sem envio automático.
+Para a Play aceitar um AAB como atualização, só importam o **pacote**, a **chave de upload** e um **`versionCode` maior**. Nome no aparelho, ícone, `versionName` e nome do arquivo podem mudar à vontade. A página da loja é uma só e vem da Play Console, não do AAB.
+
+### Como o Beta e a produção se diferenciam
+
+| | Beta | Produção |
+|---|---|---|
+| Como gerar | *Run workflow*, canal **beta**, de qualquer branch | *Run workflow*, canal **producao**, a partir da **tag** `v<versão>` |
+| Localmente | `PLAY_BETA=1 npm run android:play` | `npm run android:play` (assinado só com `GITHUB_REF=refs/tags/v<versão>`) |
+| Arquivo | `IPTVKZ-play-beta-1.2.0-5.aab` | `IPTVKZ-play-1.2.0-6.aab` |
+| Artefato do GitHub | `IPTVKZ-GooglePlay-Beta` | `IPTVKZ-GooglePlay-Producao` |
+| Nome no aparelho | IPTVKZ Beta | IPTVKZ |
+| `versionName` (aparece na Play Console) | `1.2.0-beta.5` | `1.2.0` |
+| Ícone, banner e tema | âmbar, com selo BETA | vermelho |
+| Faixa | teste interno ou fechado | produção |
+
+### Travas para o Beta não ir à produção
+
+1. **O workflow recusa produção fora de uma tag `v*`**, antes de compilar.
+2. **O script recusa assinar a produção** se `GITHUB_REF` não for exatamente `refs/tags/v<nativeName>`. Uma tag de outra versão também não serve.
+3. **O `bundletool` confere o canal**: o Beta precisa ter "IPTVKZ Beta" e `-beta.N` na versão; a produção não pode ter "beta" em nada. Se não bater, o build falha.
+4. **O resumo do workflow** mostra canal, arquivo, nome e `versionName`.
+5. **Na Play Console**, ao criar a versão de produção, confira o `versionName`: se tiver `-beta`, é o arquivo errado.
+6. **Publicação gerenciada ligada:** mesmo um envio errado passa pela revisão e só vai ao ar com *Publicar*.
 
 ## 4. Requisitos da Play conferidos
 
@@ -102,11 +124,14 @@ Os secrets do canal Developer (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASS
 
 ### Pelo GitHub (o normal)
 
-1. *Actions → Google Play → Run workflow*. Opcional: um `versionCode` diferente do de `version.properties`.
-2. O fluxo roda os testes, compila `bundlePlayRelease`, assina com a chave de upload, valida com o `bundletool` e mostra o tamanho de download.
-3. Baixe o artefato **IPTVKZ-GooglePlay** (`.aab` e `.sha256`), por exemplo com `gh run download <id> --repo kazamastudios/iptvkz -n IPTVKZ-GooglePlay`.
+1. *Actions → Google Play → Run workflow*.
+   - **Beta:** canal `beta`, em qualquer branch.
+   - **Produção:** em *Use workflow from*, escolha a **tag** da versão (ex.: `v1.2.0`) e o canal `producao`.
+   - Opcional: um `versionCode` diferente do de `version.properties`.
+2. O fluxo roda os testes, compila `bundlePlayRelease`, assina com a chave de upload, valida com o `bundletool` (incluindo o canal) e mostra o resumo e o tamanho de download.
+3. Baixe o artefato **IPTVKZ-GooglePlay-Beta** ou **IPTVKZ-GooglePlay-Producao** (`.aab` e `.sha256`), por exemplo com `gh run download <id> --repo kazamastudios/iptvkz -n IPTVKZ-GooglePlay-Beta`.
 
-Sem os secrets, o fluxo para com erro em vez de usar a chave de debug. Um AAB com `-UNSIGNED` no nome não pode ir para a Play.
+Sem os secrets, o fluxo para com erro em vez de usar a chave de debug. Um AAB com `-UNSIGNED` no nome não pode ir para a Play. Em pull requests sai um Beta sem assinatura, só para conferir.
 
 O fluxo não interfere no `build.yml`: se falhar, o APK Developer, os instaladores e a Release seguem normais.
 
@@ -195,6 +220,6 @@ Para refazer capturas: o app roda pelo código com dados isolados (`IPTVKZ_DATA`
 - [ ] Revisão da produção 1.1.0 (enviada em 12/11/2026). Depois da aprovação: clicar em *Publicar*.
 - [ ] Depois do primeiro lançamento: desligar o Android XR em *Configurações avançadas → Formatos*.
 - [ ] Trocar as capturas de celular pelas de `celular-1.1.0/`.
-- [ ] Modo Beta no flavor `play` e no `play.yml` (seção 3); primeiro AAB Beta no teste fechado.
+- [ ] Primeiro AAB Beta (código 2 ou maior) no teste fechado.
 - [ ] Teste no celular e na Android TV (Mecool) pelo teste interno, com o roteiro da seção 7.
 - [ ] Selo "Disponível no Google Play" na landing page depois do lançamento.
