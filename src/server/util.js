@@ -206,4 +206,23 @@ async function fetchJson(url, opts) {
   }
 }
 
-module.exports = { UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, safeHost };
+// Confere o começo de um arquivo de lista M3U (texto) antes de aceitar: o arquivo pode ser qualquer coisa que a pessoa
+// escolheu (um app .apk, um vídeo, uma página salva). Devolve a mensagem para a tela, ou null se parece uma lista.
+// Aceita .m3u, .m3u8, .txt e o get.php baixado do painel Xtream: o que vale é o conteúdo, não o nome.
+function m3uFileProblem(head) {
+  // o começo pode chegar como latin1 (bytes): a marca BOM do UTF-8 aparece como três caracteres
+  const h = String(head || '').replace(/^(\uFEFF|\u00EF\u00BB\u00BF)/, '');
+  if (!h.trim()) return 'O arquivo está vazio.';
+  // binário: byte zero, ou o começo de um app (.apk é um zip: PK), programa, PDF, imagem ou vídeo (ftyp)
+  if (/\u0000/.test(h) || /^(PK\u0003\u0004|MZ|%PDF|\u007FELF|\u0089PNG|GIF8|\u00FF\u00D8)/.test(h) || /^[^]{4}ftyp/.test(h)) {
+    return 'Esse arquivo não é uma lista: parece um app, um vídeo, uma imagem ou um documento. Escolha o arquivo .m3u que o provedor mandou.';
+  }
+  if (/^\s*</.test(h)) return 'Esse arquivo é uma página da internet, não uma lista M3U. Escolha o arquivo .m3u que o provedor mandou.';
+  // começo de lista, ou um #EXTINF logo adiante (algumas começam com outro comentário)
+  if (!/^\s*(#EXTM3U|#EXTINF|#EXTGRP|(https?|rtmp|rtsp|udp|rtp):\/\/)/i.test(h) && !/^#EXTINF/im.test(h)) {
+    return 'Esse arquivo não é uma lista M3U. Escolha o arquivo .m3u que o provedor mandou.';
+  }
+  return null;
+}
+
+module.exports = { UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, m3uFileProblem, safeHost };

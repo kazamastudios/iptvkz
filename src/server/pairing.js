@@ -7,6 +7,7 @@ const net = require('./network');
 const backup = require('./backup');
 const store = require('./store');
 const catalogs = require('./catalog');
+const { m3uFileProblem } = require('./util');
 
 const TTL = 15 * 60 * 1000;
 const MAX_BODY = 60 * 1024 * 1024; // o backup pode trazer arquivos .m3u inteiros
@@ -55,7 +56,7 @@ function receiveM3u(req) {
     };
     req.on('data', (c) => {
       size += c.length;
-      if (head.length < 1024) head += c.toString('utf8', 0, Math.min(c.length, 1024));
+      if (head.length < 1024) head += c.toString('latin1', 0, Math.min(c.length, 1024));
       if (size > MAX_M3U) { fail('O arquivo passa de 300 MB.'); req.destroy(); }
     });
     req.on('error', () => fail('O arquivo não chegou inteiro. Tente de novo.'));
@@ -64,9 +65,10 @@ function receiveM3u(req) {
     out.on('finish', () => {
       if (failed) return;
       if (!size) { fs.unlink(tmp, () => {}); return reject(new Error('O arquivo está vazio.')); }
-      if (!/^\uFEFF?\s*(#EXTM3U|#EXTINF|#EXTGRP|(https?|rtmp|rtsp|udp|rtp):\/\/)/i.test(head)) {
+      const problem = m3uFileProblem(head);
+      if (problem) {
         fs.unlink(tmp, () => {});
-        return reject(new Error('Esse arquivo não é uma lista M3U. Escolha o arquivo .m3u que o provedor mandou.'));
+        return reject(new Error(problem));
       }
       try { fs.renameSync(tmp, store.file(pairName(id))); } catch (e) { return fail('Não foi possível gravar o arquivo na TV.'); }
       resolve({ id, size });
@@ -197,7 +199,7 @@ textarea{width:100%;padding:10px 12px;margin:0 0 14px;border-radius:10px;border:
 <div id="ms" class="hidden"><label for="ss">Outros servidores do mesmo provedor</label><textarea id="ss" rows="4" autocapitalize="none" placeholder="Pode colar vários de uma vez, do jeito que vieram"></textarea></div>
 <label for="u">Usuário</label><input id="u" autocomplete="off" autocapitalize="none"><label for="w">Senha</label><input id="w" type="password" autocomplete="off"></div>
 <div id="pm" class="hidden"><label for="l">Link da lista</label><input id="l" autocomplete="off" autocapitalize="none" inputmode="url" placeholder="http://…/lista.m3u"></div>
-<div id="pf" class="hidden"><label for="mf">Arquivo da lista (.m3u)</label><input type="file" id="mf" accept=".m3u,.m3u8,.txt,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain"></div>
+<div id="pf" class="hidden"><label for="mf">Arquivo da lista (.m3u)</label><input type="file" id="mf" accept=".m3u,.m3u8,.txt,.php,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain"></div>
 <label for="n">Nome (opcional)</label><input id="n" autocomplete="off" placeholder="Minha lista">
 <div id="err"></div><button class="send" id="b">Enviar para a TV</button><div id="up" class="hidden"><i></i></div>
 </form>
@@ -230,16 +232,24 @@ function send(url,body,onp){return new Promise(function(ok,no){var x=new XMLHttp
 x.upload.onprogress=function(e){if(e.lengthComputable)onp(e.loaded/e.total)};
 x.onload=function(){ok({ok:x.status>=200&&x.status<300,status:x.status,json:function(){return Promise.resolve().then(function(){return JSON.parse(x.responseText)})}})};
 x.onerror=no;x.send(body)})}
+// confere o arquivo antes de enviar (um app ou um vídeo não sobem à toa): o servidor da TV confere de novo
+var BIN='Esse arquivo não é uma lista: parece um app, um vídeo, uma imagem ou um documento. Escolha o arquivo .m3u que o provedor mandou.';
+function headOf(f){return new Promise(function(ok){var r=new FileReader();r.onload=function(){ok(String(r.result||''))};r.onerror=function(){ok('')};r.readAsBinaryString(f.slice(0,2048))})}
+function m3uBad(h){var t=h.replace(/^ï»¿/,'');if(!t.trim())return 'O arquivo está vazio.';for(var i=0;i<t.length;i++)if(t.charCodeAt(i)===0)return BIN;
+if(t.slice(0,2)==='PK'||t.slice(0,2)==='MZ'||t.slice(0,4)==='%PDF'||t.slice(1,4)==='PNG'||t.slice(4,8)==='ftyp')return BIN;t=t.trim();
+if(t.charAt(0)==='<')return 'Esse arquivo é uma página da internet, não uma lista M3U. Escolha o arquivo .m3u que o provedor mandou.';
+if(!/^(#EXTM3U|#EXTINF|#EXTGRP|https?:|rtmp:|rtsp:|udp:|rtp:)/i.test(t)&&!/#EXTINF/i.test(t))return 'Esse arquivo não é uma lista M3U. Escolha o arquivo .m3u que o provedor mandou.';return ''}
 function lost(){$('up').className='hidden';$('err').textContent='Não foi possível falar com a TV. Confira se o celular está no mesmo Wi-Fi.';$('b').disabled=false;$('b').textContent='Enviar para a TV'}
 $('f').addEventListener('submit',function(e){e.preventDefault();$('err').textContent='';
 if(type==='file'){var mf=$('mf').files[0];if(!mf){$('err').textContent='Escolha o arquivo .m3u da lista.';return}
-$('b').disabled=true;$('b').textContent='Enviando... 0%';$('up').className='';
+headOf(mf).then(function(h){var bad=m3uBad(h);if(bad){$('err').textContent=bad;return}$('b').disabled=true;$('b').textContent='Enviando... 0%';$('up').className='';
 send(location.pathname.replace(/\\/$/,'')+'/m3u?nome='+encodeURIComponent($('n').value.trim()||mf.name),mf,function(p){var n=Math.round(p*100);
-$('b').textContent=n<100?'Enviando para a TV... '+n+'%':'Guardando na TV...';$('up').firstChild.style.transform='scaleX('+p+')'}).then(answer).catch(lost);return}
+$('b').textContent=n<100?'Enviando para a TV... '+n+'%':'Guardando na TV...';$('up').firstChild.style.transform='scaleX('+p+')'}).then(answer).catch(lost);});return}
 $('b').disabled=true;
 fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:type,name:$('n').value,server:$('s').value,servers:$('ss').value,username:$('u').value,password:$('w').value,url:$('l').value})}).then(answer).catch(lost)});
 $('rb').addEventListener('click',function(){$('berr').textContent='';var file=$('a').files[0];
 if(!file){$('berr').textContent='Escolha o arquivo da lista baixada (começa com “iptvkz-lista”).';return}
+if(file.size>50*1048576||!/[.]json$/i.test(file.name)){$('berr').textContent='Esse arquivo não é uma lista baixada do IPTVKZ. O certo começa com “iptvkz-lista” e termina em .json.';return}
 $('rb').disabled=true;file.text().then(function(t){return fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:t})})
 .then(function(r){return r.json().catch(function(){return {}}).then(function(j){
 if(r.ok){finish('Lista enviada. Confirme na TV.');return}

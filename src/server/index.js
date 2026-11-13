@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { Readable } = require('stream');
 
-const { UA } = require('./util');
+const { UA, m3uFileProblem } = require('./util');
 const store = require('./store');
 const catalogs = require('./catalog');
 const epg = require('./epg');
@@ -445,6 +445,9 @@ async function handleApi(req, res, url) {
     const id = q.get('list');
     if (!/^[\w-]+$/.test(id || '')) return sendJson(res, 400, { error: 'id inválido' });
     const buf = await readBody(req, 300 * 1024 * 1024);
+    // só lista M3U entra (um .apk ou um vídeo escolhido por engano não vira o arquivo da lista)
+    const problem = m3uFileProblem(buf.toString('latin1', 0, Math.min(buf.length, 4096)));
+    if (problem) return sendJson(res, 400, { error: problem });
     fs.writeFileSync(store.file(`m3u-${id}.m3u`), buf);
     catalogs.forget(id);
     return sendJson(res, 200, { ok: true, bytes: buf.length });

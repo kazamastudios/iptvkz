@@ -546,6 +546,26 @@ test('lista que derrubou o app ao montar não é montada de novo sozinha', async
   assert.ok(!fs.existsSync(mark), 'a marca sai quando termina');
 });
 
+test('arquivo de lista: app, vídeo ou página não entram, com mensagem para a tela', async () => {
+  const apk = Buffer.concat([Buffer.from([0x50, 0x4b, 3, 4]), Buffer.alloc(200, 7)]);
+  const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from('ftypisom'), Buffer.alloc(200)]);
+  for (const [nome, body, msg] of [['apk', apk, /app/], ['mp4', mp4, /vídeo/], ['html', '<html>oi</html>', /página/], ['texto', 'oi', /não é uma lista M3U/]]) {
+    // pelo app (PC e celular)
+    const r = await request('POST', '/api/m3u?list=arq', { body });
+    assert.strictEqual(r.status, 400, `${nome} recusado`);
+    assert.match(r.json.error, msg);
+    // pelo QR Code do celular
+    const token = (await request('POST', '/api/pair/start', { body: { address: '192.168.0.50' } })).json.token;
+    const p = await request('POST', `/pair/${token}/m3u?nome=${nome}`, { body });
+    assert.strictEqual(p.status, 400, `${nome} recusado no QR Code`);
+    assert.match(p.json.error, msg);
+  }
+  assert.ok(!fs.existsSync(path.join(DATA, 'm3u-arq.m3u')), 'nada gravado');
+  // o get.php baixado do painel Xtream (sem .m3u no nome) é texto de lista: entra
+  const ok = await request('POST', '/api/m3u?list=arq', { body: ['#EXTM3U', '#EXTINF:-1,Canal', 'http://x/1.ts', ''].join(String.fromCharCode(10)) });
+  assert.strictEqual(ok.status, 200);
+});
+
 test('EPG: guia .xml.gz da lista chega para o canal certo', async () => {
   const body = { list: 'm3uurl', chans: [{ k: 'a', e: 'c1', n: 'Canal 1' }] };
   const r = await until(async () => {
@@ -618,7 +638,7 @@ test('pareamento: arquivo .m3u mandado pelo celular vira a lista de arquivo na T
   let token = await start();
   const page = await request('POST', `/pair/${token}/m3u?nome=x.m3u`, { body: '<!doctype html><html>Conta suspensa</html>' });
   assert.strictEqual(page.status, 400);
-  assert.match(page.json.error, /não é uma lista M3U/);
+  assert.match(page.json.error, /página da internet/);
   // recusado não gasta a chave
   const sent = await request('POST', `/pair/${token}/m3u?nome=Do%20celular.m3u`, { body: m3u(12, 'http://exemplo.invalid') });
   assert.strictEqual(sent.status, 200);

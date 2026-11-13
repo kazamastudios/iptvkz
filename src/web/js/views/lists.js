@@ -55,6 +55,30 @@ function pairingBox(onList, onRestore, onReady) {
 }
 
 // App da TV (Android TV ou LG): sem seletor de arquivos nem downloads.
+// Começo de um arquivo escolhido (2 KB), como texto latin1 (bytes), para conferir o tipo antes de enviar.
+function headOf(file) {
+  return new Promise((resolve) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ''));
+    r.onerror = () => resolve('');
+    r.readAsBinaryString(file.slice(0, 2048));
+  });
+}
+
+// Igual a m3uFileProblem do servidor (src/server/util.js): o erro aparece na hora em que o arquivo é escolhido.
+function m3uFileProblem(head) {
+  const h = String(head || '').replace(/^(\uFEFF|\u00EF\u00BB\u00BF)/, '');
+  if (!h.trim()) return 'O arquivo está vazio.';
+  if (/\u0000/.test(h) || /^(PK\u0003\u0004|MZ|%PDF|\u007FELF|\u0089PNG|GIF8|\u00FF\u00D8)/.test(h) || /^[^]{4}ftyp/.test(h)) {
+    return 'Esse arquivo não é uma lista: parece um app, um vídeo, uma imagem ou um documento. Escolha o arquivo .m3u que o provedor mandou.';
+  }
+  if (/^\s*</.test(h)) return 'Esse arquivo é uma página da internet, não uma lista M3U. Escolha o arquivo .m3u que o provedor mandou.';
+  if (!/^\s*(#EXTM3U|#EXTINF|#EXTGRP|(https?|rtmp|rtsp|udp|rtp):\/\/)/i.test(h) && !/^#EXTINF/im.test(h)) {
+    return 'Esse arquivo não é uma lista M3U. Escolha o arquivo .m3u que o provedor mandou.';
+  }
+  return null;
+}
+
 // App do celular Android: o mesmo app da Android TV, que lá se identifica com "SmartTV" no navegador.
 const androidApp = () => !!window.IPTVKZAndroid;
 const androidPhoneApp = () => androidApp() && !/SmartTV/.test(navigator.userAgent);
@@ -440,24 +464,40 @@ export function openListForm(existing, onSaved, onDelete) {
   const epgUrl = h('input.input', { value: ex.epgUrl || '', placeholder: 'Opcional: http://.../guia.xml(.gz)' });
   const tz = h('select.input');
   for (let i = -12; i <= 12; i++) tz.append(h('option', { value: i, selected: Number(ex.tzOffset || 0) === i }, i === 0 ? 'Sem ajuste' : `${i > 0 ? '+' : ''}${i} h`));
-  const fileInput = h('input', { type: 'file', accept: '.m3u,.m3u8,.txt', style: { display: 'none' } });
+  // .php: o get.php baixado do painel Xtream também é uma lista (o que vale é o conteúdo, conferido ao escolher)
+  const fileInput = h('input', { type: 'file', accept: '.m3u,.m3u8,.txt,.php', style: { display: 'none' } });
   // só aparece quando o QR Code do celular estiver na tela
   const phoneHint = h('div.hint.hidden', 'Pelo celular: escaneie o QR Code acima e escolha “Lista IPTVKZ”.');
   // Carregar lista: arquivo baixado pelo botão “Baixar lista” (aqui ou em outro aparelho)
   let loadFile = null;
   const loadInput = h('input', { type: 'file', accept: '.json,application/json', style: { display: 'none' } });
   const loadLabel = h('span.muted', 'Nenhum arquivo escolhido');
+  // Confere o arquivo assim que é escolhido (um app, um vídeo ou uma página não viram lista): o erro aparece na hora,
+  // antes de enviar. O servidor confere de novo ao receber.
+  const pickError = (label, msg) => { label.textContent = msg; label.classList.add('err-text'); };
+  const pickOk = (label, text) => { label.textContent = text; label.classList.remove('err-text'); };
   loadInput.addEventListener('change', () => {
     loadFile = loadInput.files[0] || null;
-    if (loadFile) loadLabel.textContent = loadFile.name;
+    if (!loadFile) return;
+    pickOk(loadLabel, loadFile.name);
+    const f = loadFile;
+    headOf(f).then((head) => {
+      if (loadFile !== f) return;
+      if (!/^\s*\{/.test(head.replace(/^(\uFEFF|\u00EF\u00BB\u00BF)/, ''))) { loadFile = null; pickError(loadLabel, 'Esse arquivo não é uma lista baixada do IPTVKZ. O certo começa com “iptvkz-lista” e termina em .json.'); }
+    });
   });
   const fileLabel = h('span.muted', ex.source === 'file' ? 'Arquivo já enviado. Escolha outro só se quiser trocar.' : nativeTvApp() ? '' : 'Nenhum arquivo escolhido');
   fileInput.addEventListener('change', () => {
     pickedFile = fileInput.files[0] || null;
-    if (pickedFile) {
-      fileLabel.textContent = `${pickedFile.name} (${(pickedFile.size / 1048576).toFixed(1)} MB)`;
-      if (!name.value) name.value = pickedFile.name.replace(/\.(m3u8?|txt)$/i, '');
-    }
+    if (!pickedFile) return;
+    const f = pickedFile;
+    pickOk(fileLabel, `${f.name} (${(f.size / 1048576).toFixed(1)} MB)`);
+    headOf(f).then((head) => {
+      if (pickedFile !== f) return;
+      const problem = m3uFileProblem(head);
+      if (problem) { pickedFile = null; return pickError(fileLabel, problem); }
+      if (!name.value) name.value = f.name.replace(/\.(m3u8?|txt|php)$/i, '');
+    });
   });
 
   const xtHint = h('div.hidden', { style: { marginTop: '-6px', marginBottom: '14px' } });
