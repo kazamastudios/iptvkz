@@ -35,6 +35,7 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -48,11 +49,59 @@ import android.widget.TextView;
 
 import java.io.File;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.net.Inet4Address;
 import java.util.concurrent.atomic.AtomicLong;
 
 /** Inicia o servidor embutido e mostra a interface do IPTVKZ em tela cheia. */
 public class MainActivity extends Activity {
+    // seletor de arquivos aberto pelo WebView (onShowFileChooser) esperando a resposta
+    private static final int REQ_FILE = 4711;
+    private ValueCallback<Uri[]> filePick;
+    // "Baixar lista": o WebView não salva downloads; o app pergunta onde salvar e copia o arquivo do servidor interno
+    private static final int REQ_SAVE = 4712;
+    private String saveUrl;
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_SAVE) {
+            String url = saveUrl;
+            saveUrl = null;
+            Uri dest = resultCode == RESULT_OK && data != null ? data.getData() : null;
+            if (dest == null || url == null) { savedFile(null); return; }
+            new Thread(() -> {
+                boolean ok = false;
+                HttpURLConnection con = null;
+                try {
+                    con = (HttpURLConnection) new URL(url).openConnection();
+                    try (InputStream in = con.getInputStream(); OutputStream out = getContentResolver().openOutputStream(dest)) {
+                        byte[] buf = new byte[64 * 1024];
+                        for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+                    }
+                    ok = con.getResponseCode() == 200;
+                } catch (Exception e) {
+                    Log.e(TAG, "Salvar arquivo: " + e);
+                } finally {
+                    if (con != null) con.disconnect();
+                }
+                savedFile(ok);
+            }, "salvar").start();
+            return;
+        }
+        if (requestCode == REQ_FILE) {
+            ValueCallback<Uri[]> cb = filePick;
+            filePick = null;
+            if (cb != null) {
+                Uri uri = resultCode == RESULT_OK && data != null ? data.getData() : null;
+                cb.onReceiveValue(uri != null ? new Uri[]{uri} : null);
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
     private static final String TAG = "IPTVKZ";
     private static final long START_TIMEOUT_MS = 45000;
     private static final long CHECK_LIMIT_MS = 8000;
@@ -338,6 +387,31 @@ public class MainActivity extends Activity {
             @JavascriptInterface
             public String lanAddress() { return MainActivity.this.lanAddress(); }
 
+            // a página só mostra "Escolher arquivo" quando o app sabe abrir o seletor (onShowFileChooser);
+            // APKs antigos, que recebem a interface nova pela atualização, não têm este método
+            @JavascriptInterface
+            public boolean canPickFiles() { return true; }
+
+            // "Baixar lista" no celular: abre o "Salvar como" do Android e grava o arquivo que o servidor interno
+            // gera (só endereços do próprio app). A página fica sabendo do resultado por window.__iptvkzSaved.
+            @JavascriptInterface
+            public void saveFile(String url, String name) {
+                main.post(() -> {
+                    if (url == null || !url.startsWith("http://127.0.0.1:")) { savedFile(false); return; }
+                    saveUrl = url;
+                    Intent save = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    save.addCategory(Intent.CATEGORY_OPENABLE);
+                    save.setType("application/json");
+                    save.putExtra(Intent.EXTRA_TITLE, name);
+                    try {
+                        startActivityForResult(save, REQ_SAVE);
+                    } catch (Exception e) {
+                        saveUrl = null;
+                        savedFile(false);
+                    }
+                });
+            }
+
             // Espera o foco do campo chegar ao WebView antes de pedir o teclado.
             @JavascriptInterface
             public void showKeyboard() { main.postDelayed(MainActivity.this::showKeyboard, 150); }
@@ -383,9 +457,36 @@ public class MainActivity extends Activity {
                 if (fullscreen != null) root.removeView(fullscreen);
                 fullscreen = null;
             }
+
+            // "Escolher arquivo" (Arquivo M3U, Lista IPTVKZ): sem isto, o WebView ignora o botão no celular.
+            // Abre o seletor de arquivos do Android; a resposta chega em onActivityResult.
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (filePick != null) filePick.onReceiveValue(null);
+                filePick = callback;
+                Intent pick = new Intent(Intent.ACTION_GET_CONTENT);
+                pick.addCategory(Intent.CATEGORY_OPENABLE);
+                // listas .m3u e arquivos de lista baixada (.json) não têm um tipo único nos aparelhos: aceita todos
+                pick.setType("*/*");
+                try {
+                    startActivityForResult(Intent.createChooser(pick, "Escolher arquivo"), REQ_FILE);
+                } catch (Exception e) {
+                    filePick = null;
+                    callback.onReceiveValue(null);
+                    return false;
+                }
+                return true;
+            }
         });
         root.addView(web, new ViewGroup.LayoutParams(-1, -1));
         web.requestFocus();
+    }
+
+    /** Avisa a página como terminou o "Salvar como": true, false (falhou) ou null (a pessoa cancelou). */
+    private void savedFile(Boolean ok) {
+        main.post(() -> {
+            if (web != null) web.evaluateJavascript("window.__iptvkzSaved && window.__iptvkzSaved(" + ok + ")", null);
+        });
     }
 
     /** Endereço do próprio servidor embutido (http://127.0.0.1:porta). */

@@ -92,11 +92,14 @@ async function probe([url, code]) {
   return Date.now() - started;
 }
 
-function checkInternet() {
+// isBusy: o servidor está ocupado (montando uma lista)? O tempo medido inclui a espera do próprio servidor para
+// ouvir a resposta, então com ele ocupado a medição não diz nada sobre a internet (busy: true, a tela ignora o tempo).
+function checkInternet(isBusy = () => false) {
   if (netCache.value && Date.now() - netCache.at < NET_TTL) return Promise.resolve(netCache.value);
   if (!netInflight) {
+    const busyAtStart = isBusy();
     netInflight = Promise.any(PROBES.map(probe))
-      .then((ms) => ({ online: true, ms }), () => ({ online: false }))
+      .then((ms) => ({ online: true, ms, busy: busyAtStart || isBusy() }), () => ({ online: false }))
       .then((value) => {
         netCache = { at: Date.now(), value };
         netInflight = null;

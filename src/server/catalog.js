@@ -1,8 +1,9 @@
 // Baixa listas (M3U ou Xtream) e normaliza tudo num catálogo único:
 // { live, movies, series } cada um com { cats: [{id,name}], items: [...] }.
 const fs = require('fs');
-const { hash, norm, fetchText, fetchJson, fetchWithTimeout } = require('./util');
+const { hash, norm, fetchJson, fetchWithTimeout, streamLines, byteLines, safeHost } = require('./util');
 const store = require('./store');
+const diag = require('./diag');
 
 const STALE_MS = 12 * 60 * 60 * 1000;
 const VOD_EXT = new Set(['mp4', 'mkv', 'avi', 'm4v', 'mov', 'webm', 'wmv', 'flv', 'mpg', 'mpeg']);
@@ -144,6 +145,24 @@ function parseAttrs(s) {
   return attrs;
 }
 
+// Só os atributos que o app usa, achados com indexOf: numa lista de 60 MB, ler todos com expressão regular
+// pesava segundos no celular e na TV. Sem nenhum deles (nomes em maiúsculas, raro), cai no jeito completo.
+const EXTINF_KEYS = ['tvg-logo', 'group-title', 'tvg-id', 'tvg-name'];
+function quickAttrs(head) {
+  const attrs = {};
+  let found = false;
+  for (const k of EXTINF_KEYS) {
+    let at = head.indexOf(k + '="');
+    // precisa ser o nome inteiro ("tvg-id" não pode casar dentro de "x-tvg-id")
+    while (at > 0 && !/\s/.test(head[at - 1])) at = head.indexOf(k + '="', at + 1);
+    if (at < 0) continue;
+    const from = at + k.length + 2;
+    const end = head.indexOf('"', from);
+    if (end >= 0) { attrs[k] = head.slice(from, end); found = true; }
+  }
+  return found || head.indexOf('="') < 0 ? attrs : parseAttrs(head);
+}
+
 function parseExtinf(line) {
   const body = line.slice(line.indexOf(':') + 1);
   let inQuote = false;
@@ -155,40 +174,72 @@ function parseExtinf(line) {
   }
   const head = commaAt >= 0 ? body.slice(0, commaAt) : body;
   const name = commaAt >= 0 ? body.slice(commaAt + 1).trim() : '';
-  const attrs = parseAttrs(head);
+  const attrs = quickAttrs(head);
   return { name: name || attrs['tvg-name'] || 'Sem nome', attrs, group: attrs['group-title'] || '' };
 }
 
-function parseM3U(text) {
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+// Lê o M3U linha a linha e entrega cada item a onEntry, sem montar uma lista com todos (numa lista de 60 MB eram
+// 268 mil objetos a mais na memória). A cada lote de linhas dá uma pausa: o servidor continua respondendo (andamento,
+// outras telas) enquanto monta, em vez de ficar travado do começo ao fim.
+const SCAN_BATCH = 20000;
+const pause = () => new Promise((r) => setImmediate(r));
+// Leitor de M3U que recebe uma linha de cada vez: serve tanto para o arquivo inteiro (scanM3U) quanto para o
+// download, que entrega as linhas enquanto chegam (a montagem anda junto com o download).
+function m3uReader(onEntry) {
   const header = {};
-  const entries = [];
+  let count = 0;
   let cur = null;
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-    if (line.startsWith('#EXTM3U')) {
-      Object.assign(header, parseAttrs(line));
-      continue;
-    }
-    if (line.startsWith('#EXTINF')) {
-      cur = parseExtinf(line);
-      continue;
-    }
-    if (line.startsWith('#EXTGRP:')) {
-      if (cur && !cur.group) cur.group = line.slice(8).trim();
-      continue;
-    }
-    if (line.startsWith('#')) continue;
-    if (cur) {
-      cur.url = line;
-      entries.push(cur);
-      cur = null;
-    } else if (/^https?:\/\//i.test(line)) {
-      entries.push({ name: line, attrs: {}, group: '', url: line });
-    }
+  let first = true;
+  return {
+    header,
+    get count() { return count; },
+    line(raw) {
+      let line = raw;
+      if (first) {
+        first = false;
+        if (line.charCodeAt(0) === 0xfeff) line = line.slice(1);
+      }
+      line = line.trim();
+      if (!line) return;
+      if (line.startsWith('#EXTM3U')) {
+        Object.assign(header, parseAttrs(line));
+        return;
+      }
+      if (line.startsWith('#EXTINF')) {
+        cur = parseExtinf(line);
+        return;
+      }
+      if (line.startsWith('#EXTGRP:')) {
+        if (cur && !cur.group) cur.group = line.slice(8).trim();
+        return;
+      }
+      if (line.startsWith('#')) return;
+      if (cur) {
+        cur.url = line;
+        onEntry(cur);
+        count++;
+        cur = null;
+      } else if (/^https?:\/\//i.test(line)) {
+        onEntry({ name: line, attrs: {}, group: '', url: line });
+        count++;
+      }
+    },
+  };
+}
+
+// O texto inteiro (arquivo enviado): linha a linha sem copiar o texto (replace ou split duplicavam 60 MB).
+async function scanM3U(text, onEntry) {
+  const r = m3uReader(onEntry);
+  let pos = 0;
+  let lines = 0;
+  while (pos < text.length) {
+    let nl = text.indexOf('\n', pos);
+    if (nl < 0) nl = text.length;
+    r.line(text.slice(pos, nl));
+    pos = nl + 1;
+    if (++lines % SCAN_BATCH === 0) await pause();
   }
-  return { header, entries };
+  return r;
 }
 
 function urlExt(url) {
@@ -229,10 +280,11 @@ function catCollector() {
   };
 }
 
-function buildFromM3U(text, list) {
-  const { header, entries } = parseM3U(text);
-  if (!entries.length) throw new Error('A lista está vazia ou não é um arquivo M3U válido.');
+const NO_VERSION = { base: '', label: '' };
+const KIND_RE = /\/(series|movie)\//i;
 
+// Monta canais, filmes e séries a partir dos itens do M3U, um de cada vez (entry); finish fecha o catálogo.
+function m3uBuilder() {
   const liveCats = catCollector();
   const movieCats = catCollector();
   const seriesCats = catCollector();
@@ -241,23 +293,22 @@ function buildFromM3U(text, list) {
   const seriesMap = new Map();
   const liveSeen = new Set();
 
-  for (const e of entries) {
+  const entry = (e) => {
     const url = e.url;
-    const lower = url.toLowerCase();
-    const ext = urlExt(url);
     const logo = e.attrs['tvg-logo'] || '';
+    const path = KIND_RE.exec(url);
     let kind = 'live';
-    if (lower.includes('/series/')) kind = 'series';
-    else if (lower.includes('/movie/')) kind = 'movie';
-    else if (VOD_EXT.has(ext)) kind = 'vod';
+    if (path) kind = path[1].toLowerCase() === 'series' ? 'series' : 'movie';
+    else if (VOD_EXT.has(urlExt(url))) kind = 'vod';
 
-    const { base, label } = splitVersion(e.name, e.group);
+    // canal não tem versões, e filme separa as versões depois (mergeMovies): só série e vídeo solto precisam aqui
+    const { base, label } = kind === 'live' || kind === 'movie' ? NO_VERSION : splitVersion(e.name, e.group);
     const epInfo = kind === 'live' || kind === 'movie' ? null : parseEpisode(base);
     if (kind === 'vod') kind = epInfo ? 'series' : 'movie';
 
     if (kind === 'live') {
       let id = 'l' + hash(url + '|' + e.name);
-      if (liveSeen.has(id)) continue;
+      if (liveSeen.has(id)) return;
       liveSeen.add(id);
       live.push({
         id,
@@ -304,25 +355,42 @@ function buildFromM3U(text, list) {
       }
       addVersion(ep.versions, { label, url, group: e.group });
     }
-  }
-
-  const series = [...seriesMap.values()].map((s) => ({
-    ...s,
-    seasons: [...s.seasons.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([num, eps]) => ({
-        num,
-        eps: [...eps.values()].sort((a, b) => a.num - b.num).map((ep) => ({ ...ep, versions: sortVersions(ep.versions) })),
-      })),
-  }));
-
-  const epgUrl = header['url-tvg'] || header['x-tvg-url'] || '';
-  return {
-    epgUrl: epgUrl.split(',')[0].trim(),
-    live: { cats: liveCats.cats, items: live },
-    movies: { cats: movieCats.cats, items: mergeMovies(movieRaw) },
-    series: { cats: seriesCats.cats, items: series },
   };
+  // reader: o leitor que entregou os itens (cabeçalho e quantidade); head: o começo do texto recebido
+  const finish = (reader, head) => {
+    const { header, count } = reader;
+    if (!count) {
+      // o provedor às vezes responde uma página (aviso, login, erro) no lugar da lista
+      if (/^\s*</.test(head)) throw new Error('O provedor respondeu uma página, não uma lista M3U. Confira o link com o seu provedor.');
+      throw new Error('A lista está vazia ou não é um arquivo M3U válido.');
+    }
+
+    const series = [...seriesMap.values()].map((s) => ({
+      ...s,
+      seasons: [...s.seasons.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([num, eps]) => ({
+          num,
+          eps: [...eps.values()].sort((a, b) => a.num - b.num).map((ep) => ({ ...ep, versions: sortVersions(ep.versions) })),
+        })),
+    }));
+
+    const epgUrl = header['url-tvg'] || header['x-tvg-url'] || '';
+    return {
+      epgUrl: epgUrl.split(',')[0].trim(),
+      live: { cats: liveCats.cats, items: live },
+      movies: { cats: movieCats.cats, items: mergeMovies(movieRaw) },
+      series: { cats: seriesCats.cats, items: series },
+    };
+  };
+  return { entry, finish };
+}
+
+// M3U já inteiro na memória (arquivo enviado pela pessoa).
+async function buildFromM3U(text, list) {
+  const b = m3uBuilder(list);
+  const reader = await scanM3U(text, b.entry);
+  return b.finish(reader, text.slice(0, 200));
 }
 
 // ---------- Xtream Codes ----------
@@ -378,8 +446,8 @@ function xtream(list) {
   const pathP = encodeURIComponent(list.password || '');
   return {
     base,
-    api: (action, extra = '') =>
-      fetchJson(`${base}/player_api.php?username=${u}&password=${p}${action ? '&action=' + action : ''}${extra}`),
+    api: (action, extra = '', opts) =>
+      fetchJson(`${base}/player_api.php?username=${u}&password=${p}${action ? '&action=' + action : ''}${extra}`, opts),
     live: (id, ext) => `${base}/live/${pathU}/${pathP}/${id}.${ext}`,
     movie: (id, ext) => `${base}/movie/${pathU}/${pathP}/${id}.${ext || 'mp4'}`,
     episode: (id, ext) => `${base}/series/${pathU}/${pathP}/${id}.${ext || 'mp4'}`,
@@ -442,6 +510,11 @@ function tidyCatalog(c) {
   return c;
 }
 
+// id da categoria -> nome, para separar versões (DUB/LEG) pelo nome da categoria
+function catName(arr) {
+  return new Map((Array.isArray(arr) ? arr : []).map((c) => [String(c.category_id), c.category_name || '']));
+}
+
 function cats(arr) {
   return (Array.isArray(arr) ? arr : []).map((c) => ({ id: String(c.category_id), name: c.category_name || 'Sem nome' }));
 }
@@ -451,8 +524,14 @@ function num(v) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-async function buildFromXtream(list) {
+async function buildFromXtream(list, { first, onSection } = {}) {
   const x = xtream(list);
+  const prog = progress.get(list.id);
+  const sizes = {}; // bytes recebidos de cada pedido (vários ao mesmo tempo no PC)
+  const onProgress = (action) => (got) => {
+    sizes[action] = got;
+    if (prog) prog.got = Object.values(sizes).reduce((a, b) => a + b, 0);
+  };
   const t0 = Date.now();
   const timing = {}; // quanto levou cada pedido (aparece no modo de depuração)
   const auth = await x.api('');
@@ -465,7 +544,7 @@ async function buildFromXtream(list) {
   const get = async (action) => {
     const t = Date.now();
     try {
-      return await x.api(action);
+      return await x.api(action, '', { onProgress: onProgress(action) });
     } catch (err) {
       if (err.timeout) throw err;
       return [];
@@ -473,86 +552,101 @@ async function buildFromXtream(list) {
       timing[action.replace(/^get_/, '')] = Date.now() - t;
     }
   };
-  // Os 6 pedidos são independentes. No PC saem em paralelo (a lista carrega no tempo do mais lento). Em aparelho
-  // com pouca memória (TV LG, TV Box) saem um de cada vez: as respostas grandes chegando juntas travavam a TV.
-  const actions = ['get_live_categories', 'get_live_streams', 'get_vod_categories', 'get_vod_streams', 'get_series_categories', 'get_series'];
-  let results;
-  if (require('os').totalmem() > 3 * 1024 ** 3) results = await Promise.all(actions.map(get));
-  else {
-    // pouca memória: as 3 listas de categorias (pequenas) juntas, e as 3 grandes uma de cada vez
-    const small = actions.filter((a) => a.endsWith('categories'));
-    const smallRes = await Promise.all(small.map(get));
-    const got = new Map(small.map((a, i) => [a, smallRes[i]]));
-    for (const a of actions) if (!got.has(a)) got.set(a, await get(a));
-    results = actions.map((a) => got.get(a));
+  // Cada seção (canais, filmes, séries) são 2 pedidos: as categorias e os itens. A seção fica pronta assim que os
+  // dois chegam e vai na hora para a tela (onSection), sem esperar as outras: quem está em Filmes vê os filmes
+  // enquanto as séries ainda baixam. A seção da tela atual (first) é pedida primeiro.
+  // No PC os 6 pedidos saem em paralelo. Em aparelho com pouca memória (TV LG, TV Box) as categorias (pequenas)
+  // saem juntas e as 3 listas grandes uma de cada vez: as respostas grandes chegando juntas travavam a TV.
+  const PAIRS = {
+    live: ['get_live_categories', 'get_live_streams'],
+    movies: ['get_vod_categories', 'get_vod_streams'],
+    series: ['get_series_categories', 'get_series'],
+  };
+  const order = [first, 'live', 'movies', 'series'].filter((k, i, a) => PAIRS[k] && a.indexOf(k) === i);
+  const make = {
+    live: (liveCats, liveStreams) => ({
+      cats: cats(liveCats),
+      items: (Array.isArray(liveStreams) ? liveStreams : []).map((s) => ({
+        id: 'l' + s.stream_id,
+        name: s.name || 'Canal',
+        logo: s.stream_icon || '',
+        cat: String(s.category_id),
+        epg: s.epg_channel_id || '',
+        url: x.live(s.stream_id, 'm3u8'),
+        alt: x.live(s.stream_id, 'ts'),
+      })),
+    }),
+    movies: (vodCats, vodStreams) => {
+      const vodCatName = catName(vodCats);
+      const movieRaw = (Array.isArray(vodStreams) ? vodStreams : []).map((s) => ({
+        name: s.name || 'Filme',
+        group: vodCatName.get(String(s.category_id)) || '',
+        poster: s.stream_icon || '',
+        cat: String(s.category_id),
+        url: x.movie(s.stream_id, s.container_extension),
+        xid: s.stream_id,
+        rating: num(s.rating),
+        added: Number(s.added) || 0,
+        year: num(s.year),
+      }));
+      return { cats: cats(vodCats), items: mergeMovies(movieRaw) };
+    },
+    // Séries: versões (DUB/LEG) do mesmo título viram um item só; episódios carregam sob demanda.
+    series: (serCats, serList) => {
+      const serCatName = catName(serCats);
+      const seriesMap = new Map();
+      for (const s of Array.isArray(serList) ? serList : []) {
+        const group = serCatName.get(String(s.category_id)) || '';
+        const { base, label } = splitVersion(s.name || 'Série', group);
+        const key = norm(base);
+        let g = seriesMap.get(key);
+        if (!g) {
+          g = {
+            id: 's' + hash(key),
+            name: base,
+            poster: s.cover || '',
+            cat: String(s.category_id),
+            year: num(String(s.releaseDate || s.release_date || '').slice(0, 4)) || yearOf(base),
+            rating: num(s.rating),
+            plot: s.plot || '',
+            genre: s.genre || '',
+            versions: [],
+          };
+          seriesMap.set(key, g);
+        }
+        if (!g.poster && s.cover) g.poster = s.cover;
+        addVersion(g.versions, { label, xid: s.series_id, group });
+      }
+      const series = [...seriesMap.values()];
+      for (const s of series) sortVersions(s.versions);
+      return { cats: cats(serCats), items: series };
+    },
+  };
+  const out = {};
+  const finish = (sec, catsRes, itemsRes) => {
+    const data = make[sec](catsRes, itemsRes);
+    data.cats = tidyCats(data.cats, sec);
+    out[sec] = data;
+    if (onSection) onSection(sec, data, { epgUrl: x.epg });
+  };
+  const parallel = require('os').totalmem() > 3 * 1024 ** 3;
+  if (parallel) {
+    await Promise.all(order.map(async (sec) => {
+      const [c, items] = await Promise.all(PAIRS[sec].map(get));
+      finish(sec, c, items);
+    }));
+  } else {
+    const catsRes = await Promise.all(order.map((sec) => get(PAIRS[sec][0])));
+    for (let i = 0; i < order.length; i++) finish(order[i], catsRes[i], await get(PAIRS[order[i]][1]));
   }
   timing.download = Date.now() - t0;
-  timing.parallel = require('os').totalmem() > 3 * 1024 ** 3;
-  const [liveCats, liveStreams, vodCats, vodStreams, serCats, serList] = results;
-
-  const live = (Array.isArray(liveStreams) ? liveStreams : []).map((s) => ({
-    id: 'l' + s.stream_id,
-    name: s.name || 'Canal',
-    logo: s.stream_icon || '',
-    cat: String(s.category_id),
-    epg: s.epg_channel_id || '',
-    url: x.live(s.stream_id, 'm3u8'),
-    alt: x.live(s.stream_id, 'ts'),
-  }));
-
-  const catName = (arr) => new Map((Array.isArray(arr) ? arr : []).map((c) => [String(c.category_id), c.category_name || '']));
-  const vodCatName = catName(vodCats);
-  const serCatName = catName(serCats);
-  const movieRaw = (Array.isArray(vodStreams) ? vodStreams : []).map((s) => ({
-    name: s.name || 'Filme',
-    group: vodCatName.get(String(s.category_id)) || '',
-    poster: s.stream_icon || '',
-    cat: String(s.category_id),
-    url: x.movie(s.stream_id, s.container_extension),
-    xid: s.stream_id,
-    rating: num(s.rating),
-    added: Number(s.added) || 0,
-    year: num(s.year),
-  }));
-
-  // Séries: versões (DUB/LEG) do mesmo título viram um item só; episódios carregam sob demanda.
-  const seriesMap = new Map();
-  for (const s of Array.isArray(serList) ? serList : []) {
-    const group = serCatName.get(String(s.category_id)) || '';
-    const { base, label } = splitVersion(s.name || 'Série', group);
-    const key = norm(base);
-    let g = seriesMap.get(key);
-    if (!g) {
-      g = {
-        id: 's' + hash(key),
-        name: base,
-        poster: s.cover || '',
-        cat: String(s.category_id),
-        year: num(String(s.releaseDate || s.release_date || '').slice(0, 4)) || yearOf(base),
-        rating: num(s.rating),
-        plot: s.plot || '',
-        genre: s.genre || '',
-        versions: [],
-      };
-      seriesMap.set(key, g);
-    }
-    if (!g.poster && s.cover) g.poster = s.cover;
-    addVersion(g.versions, { label, xid: s.series_id, group });
-  }
-  if (!live.length && !movieRaw.length && !seriesMap.size) {
+  timing.parallel = parallel;
+  if (prog) prog.phase = 'build';
+  if (!out.live.items.length && !out.movies.items.length && !out.series.items.length) {
     throw new Error('O servidor não enviou nenhum canal, filme ou série. Tente de novo.');
   }
-  const series = [...seriesMap.values()];
-  for (const s of series) sortVersions(s.versions);
-
   timing.total = Date.now() - t0;
-  return {
-    timing,
-    epgUrl: x.epg,
-    live: { cats: cats(liveCats), items: live },
-    movies: { cats: cats(vodCats), items: mergeMovies(movieRaw) },
-    series: { cats: cats(serCats), items: series },
-  };
+  return { timing, epgUrl: x.epg, live: out.live, movies: out.movies, series: out.series };
 }
 
 function durToSec(v) {
@@ -677,6 +771,7 @@ async function checkXtream(cfg, timeout = STATUS_TIMEOUT) {
 }
 
 // Link M3U: basta ver se o servidor ainda entrega uma playlist (não baixa a lista inteira).
+const M3U_START = /^\uFEFF?\s*(#EXTM3U|#EXTINF|#EXTGRP|(https?|rtmp|rtsp|udp|rtp):\/\/)/i;
 async function checkM3uLink(url) {
   let res;
   try {
@@ -700,7 +795,9 @@ async function checkM3uLink(url) {
   } finally {
     reader.cancel().catch(() => {});
   }
-  return /^\uFEFF?\s*#EXTM3U/i.test(head) ? { state: 'active' } : { state: 'refused' };
+  // Muitos provedores mandam a lista sem o cabeçalho #EXTM3U (começa direto no #EXTINF, ou só com os links), e a
+  // montagem aceita: aqui também. Página, texto de aviso ou resposta vazia contam como recusa.
+  return M3U_START.test(head) ? { state: 'active' } : { state: 'refused' };
 }
 
 // Teste de velocidade dos servidores da mesma conta: um de cada vez (leve para a TV e para o provedor),
@@ -740,8 +837,124 @@ async function checkStatus(list) {
 
 const memory = new Map(); // id -> catalog
 const inflight = new Map(); // id -> Promise
+// Andamento do carregamento, para a tela mostrar que está andando: id -> { phase, got, total, at }
+// phase: 'download' (baixando do provedor) ou 'build' (organizando canais, filmes e séries)
+const progress = new Map();
+// Seções já prontas de uma lista ainda baixando (Xtream): id -> { meta, done: { live, movies, series }, waiters }
+const building = new Map();
+const SECTIONS = ['live', 'movies', 'series'];
 
-async function build(list) {
+// Catálogo em texto, por seção: a tela pede uma seção de cada vez (a da tela atual primeiro), e cada uma é
+// convertida uma vez só. meta: os outros campos, sem as chaves de fora. memo: gzip de cada resposta.
+const partsCache = new WeakMap();
+function partsOf(catalog) {
+  let parts = partsCache.get(catalog);
+  if (!parts) {
+    const meta = {};
+    for (const k of Object.keys(catalog)) if (!SECTIONS.includes(k)) meta[k] = catalog[k];
+    parts = { meta: JSON.stringify(meta).slice(1, -1), memo: {} };
+    for (const k of SECTIONS) parts[k] = JSON.stringify(catalog[k] || { cats: [], items: [] });
+    partsCache.set(catalog, parts);
+  }
+  return parts;
+}
+// Converte uma seção em texto aos poucos (lotes de itens), com pausas: o servidor continua respondendo. O resultado
+// é igual ao JSON.stringify da seção inteira de uma vez.
+async function sectionText(sec) {
+  if (!sec) return '{"cats":[],"items":[]}';
+  const out = [];
+  for (const k of Object.keys(sec)) {
+    if (sec[k] === undefined) continue;
+    if (k !== 'items' || !Array.isArray(sec.items)) { out.push(`${JSON.stringify(k)}:${JSON.stringify(sec[k])}`); continue; }
+    const pieces = [];
+    for (let i = 0; i < sec.items.length; i += 2000) {
+      pieces.push(sec.items.slice(i, i + 2000).map((x) => JSON.stringify(x)).join(','));
+      await pause();
+    }
+    out.push(`"items":[${pieces.join(',')}]`);
+  }
+  return `{${out.join(',')}}`;
+}
+
+// Igual a partsOf, mas aos poucos (usado logo depois de montar a lista).
+async function prepareParts(catalog) {
+  const meta = {};
+  for (const k of Object.keys(catalog)) if (!SECTIONS.includes(k)) meta[k] = catalog[k];
+  const parts = { meta: JSON.stringify(meta).slice(1, -1), memo: {} };
+  for (const k of SECTIONS) parts[k] = await sectionText(catalog[k] || { cats: [], items: [] });
+  partsCache.set(catalog, parts);
+  return parts;
+}
+
+// o catálogo inteiro em texto (arquivo e resposta completa), montado das partes
+function fullText(catalog) {
+  const parts = partsOf(catalog);
+  return `{${parts.meta}${SECTIONS.map((k) => `,"${k}":${parts[k]}`).join('')}}`;
+}
+
+// Marca no disco que a lista está sendo montada. Se o app fechar no meio (lista grande demais para a memória do
+// aparelho: o sistema derruba o serviço), a marca fica, e na próxima abertura o app não tenta de novo sozinho, o
+// que derrubaria outra vez, em loop. "Tentar de novo" (refresh=1) tenta mesmo assim.
+const buildingMark = (id) => store.file(`building-${id}.mark`);
+function crashedBuilding(id) {
+  try {
+    // marca de outro processo (de antes desta abertura do app)
+    return fs.statSync(buildingMark(id)).mtimeMs < Date.now() - process.uptime() * 1000;
+  } catch {
+    return false;
+  }
+}
+
+async function build(list, opts = {}) {
+  progress.set(list.id, { phase: 'download', got: 0, total: 0, at: Date.now() });
+  try { fs.writeFileSync(buildingMark(list.id), String(Date.now())); } catch {}
+  try {
+    return await buildNow(list, opts);
+  } finally {
+    progress.delete(list.id);
+    try { fs.unlinkSync(buildingMark(list.id)); } catch {}
+  }
+}
+
+// O que o provedor mandou para identificar a versão da lista (ETag, Last-Modified), guardado no resumo. src: de
+// qual endereço veio (hash), para não perguntar ao provedor por uma lista que foi trocada ao editar.
+function validatorsOf(list, r) {
+  if (!r.etag && !r.lastModified) return null;
+  return { src: hash(list.url), etag: r.etag || null, lastModified: r.lastModified || null };
+}
+
+// Cabeçalhos para perguntar ao provedor se a lista mudou desde a versão guardada (prev), ou null.
+function conditionalHeaders(list, prev) {
+  const v = prev && prev.files && prev.validators;
+  if (!v || v.src !== hash(list.url)) return null;
+  // as seções guardadas precisam estar inteiras no disco, senão não há o que manter
+  if (!SECTIONS.every((k) => fs.existsSync(store.file(secName(list.id, prev.files, k))))) return null;
+  const h = {};
+  if (v.etag) h['If-None-Match'] = v.etag;
+  if (v.lastModified) h['If-Modified-Since'] = v.lastModified;
+  return h;
+}
+
+// A lista não mudou (304): mantém as seções guardadas e só renova a data no resumo (troca atômica), para não
+// perguntar de novo logo. Devolve o resumo renovado, ou null se a lista foi excluída enquanto isso.
+function keepUnchanged(list, prev, stamp, r) {
+  if (!store.getList(list.id)) return null;
+  const light = Object.assign({}, prev, { updatedAt: stamp });
+  // o provedor pode mandar validadores novos junto com o 304
+  const v = validatorsOf(list, r);
+  if (v) light.validators = { src: v.src, etag: v.etag || prev.validators.etag, lastModified: v.lastModified || prev.validators.lastModified };
+  store.writeText(metaName(list.id), JSON.stringify(light));
+  partsCache.set(light, diskParts(list.id, light));
+  memory.set(list.id, light);
+  return light;
+}
+
+// full: baixa a lista inteira mesmo que o provedor diga que não mudou (sem If-None-Match / If-Modified-Since).
+async function buildNow(list, { first, onSection, full = false, stamp = Date.now() } = {}) {
+  const prog = progress.get(list.id);
+  // medições (modo de depuração): pico de memória e maior tempo com o servidor travado
+  const mem = diag.memPeak();
+  const loop = diag.loopWatch();
   let data;
   if (list.type === 'xtream') {
     // Fora do ar? tenta os servidores reservas da mesma conta, na ordem
@@ -749,7 +962,8 @@ async function build(list) {
     for (const s of serversOf(list)) {
       activeBase.set(list.id, s);
       try {
-        data = { ...(await buildFromXtream(list)), base: s };
+        const section = onSection && ((sec, d, meta) => onSection(sec, d, { v: 1, listId: list.id, updatedAt: stamp, base: s, ...meta }));
+        data = { ...(await buildFromXtream(list, { first, onSection: section })), base: s };
         break;
       } catch (e) {
         if (!firstErr) firstErr = e;
@@ -757,46 +971,368 @@ async function build(list) {
     }
     if (!data) { activeBase.delete(list.id); throw firstErr || new Error('Servidor não respondeu'); }
   } else if (list.source === 'file') {
-    let text;
-    try {
-      text = fs.readFileSync(store.file(`m3u-${list.id}.m3u`), 'utf8');
-    } catch {
-      throw new Error('O arquivo desta lista não foi encontrado. Edite a lista e envie o arquivo de novo.');
-    }
-    data = buildFromM3U(text, list);
+    // Lê o arquivo do disco aos poucos, como no download: ler tudo de uma vez punha a lista inteira na memória
+    // (com acentos, o dobro do tamanho do arquivo), e na TV LG o serviço do app tem só ~320 MB.
+    // andamento: 'read' (lendo o arquivo, com barra), depois 'build' (fechando o catálogo)
+    prog.phase = 'read';
+    const b = m3uBuilder(list);
+    const reader = m3uReader(b.entry);
+    const t1 = Date.now();
+    const { head, bytes } = await fileLines(store.file(`m3u-${list.id}.m3u`), (line) => reader.line(line), (got, total) => Object.assign(prog, { got, total }));
+    prog.phase = 'build';
+    await new Promise((r) => setTimeout(r, 50));
+    data = b.finish(reader, head);
+    data.timing = { montar: Date.now() - t1, MB: Math.round(bytes / 1048576) };
   } else {
-    data = buildFromM3U(await fetchText(list.url), list);
+    // Monta enquanto baixa: cada linha vai para a montagem assim que chega, sem guardar o texto da lista (60 MB a
+    // menos na memória), e o download e a montagem acontecem ao mesmo tempo. No fim só falta fechar o catálogo.
+    // Atualizando uma lista já guardada: pergunta antes se ela mudou (ETag / Last-Modified da última vez). Provedor
+    // que ignora esses cabeçalhos responde 200 com a lista inteira, e segue como sempre.
+    const prev = full ? null : memory.get(list.id) || readMeta(list.id);
+    const headers = conditionalHeaders(list, prev);
+    const t0 = Date.now();
+    const b = m3uBuilder(list);
+    const reader = m3uReader(b.entry);
+    let bytes = 0;
+    const r = await streamLines(list.url, (line) => reader.line(line), {
+      headers,
+      onProgress: (got, total) => { bytes = got; Object.assign(prog, { got, total }); },
+    });
+    if (r.notModified && headers) {
+      loop.stop();
+      diag.last.build = { listId: list.id, at: Date.now(), naoMudou: true, download: Date.now() - t0 };
+      const kept = keepUnchanged(list, prev, stamp, r);
+      if (kept) return kept;
+      throw new Error('A lista foi excluída');
+    }
+    // 304 sem termos perguntado: resposta estranha, não há lista para montar
+    if (r.notModified) throw new Error(`O servidor respondeu 304 sem lista (${safeHost(list.url)})`);
+    const { head } = r;
+    const download = Date.now() - t0;
+    mem.read();
+    prog.phase = 'build';
+    // deixa a tela receber o "organizando" antes de fechar o catálogo
+    await new Promise((r) => setTimeout(r, 50));
+    const t1 = Date.now();
+    data = b.finish(reader, head);
+    // download (já com a leitura dos itens) e o fechamento (aparece no modo de depuração, como no Xtream)
+    data.timing = { download, montar: Date.now() - t1, MB: Math.round(bytes / 1048576) };
+    const validators = validatorsOf(list, r);
+    if (validators) data.validators = validators;
   }
-  const catalog = tidyCatalog({ v: 1, listId: list.id, updatedAt: Date.now(), ...data });
-  store.writeJson(`catalog-${list.id}.json`, catalog);
-  memory.set(list.id, catalog);
-  return catalog;
+  mem.read();
+  // o Xtream já limpou os nomes das categorias seção por seção (e já mandou para a tela assim)
+  const catalog = { v: 1, listId: list.id, updatedAt: stamp, ...data };
+  data = null;
+  if (list.type !== 'xtream') tidyCatalog(catalog);
+  // o resumo (sem as seções), com as contagens
+  const light = lightOf(catalog);
+  // Encolheu muito em relação à versão anterior (menos de 30% dos itens)? Pode ser mudança do provedor (plano,
+  // conteúdo) ou um problema dele. A nova vale, mas a anterior fica guardada e a tela oferece voltar a ela.
+  // Só compara com a anterior se veio do mesmo lugar: trocar o link (ou a conta) ao editar é outra lista, e
+  // perguntar "voltar à anterior" traria o conteúdo do link antigo para a lista com o link novo.
+  const prev = memory.get(list.id) || readMeta(list.id);
+  light.src = sourceKey(list);
+  const sameSource = prev && light.src && (prev.src === undefined || prev.src === light.src); // sem src: versão antiga
+  const total = (c) => (c && c.counts ? c.counts.live + c.counts.movies + c.counts.series : 0);
+  if (sameSource && prev.files && total(prev) >= 50 && total(light) < total(prev) * 0.3) {
+    const { prev: _p, shrunk: _s, ...older } = prev;
+    light.prev = older;
+    light.shrunk = { before: total(prev), after: total(light) };
+  }
+  // Converte e grava uma seção de cada vez, e cada uma sai da memória antes da próxima (itens e texto): converter
+  // as três juntas e só depois gravar passava do limite de memória da TV LG com uma lista de 69 MB. A tela recebe
+  // as seções do disco, como ao abrir com o app fechado.
+  const t2 = Date.now();
+  const files = `${stamp}-${++saveSeq}`;
+  for (const k of SECTIONS) {
+    let text = await sectionText(catalog[k] || { cats: [], items: [] });
+    catalog[k] = null;
+    mem.read();
+    await fsCall(fs.writeFile, store.file(secName(list.id, files, k)), text);
+    text = null;
+  }
+  const converter = Date.now() - t2;
+  const travado = loop.stop();
+  // light.timing é o mesmo objeto de catalog.timing
+  if (light.timing) Object.assign(light.timing, { converter, memMB: mem.peak(), travadoMs: travado });
+  diag.last.build = { listId: list.id, at: Date.now(), ...(light.timing || {}), converter, memMB: mem.peak(), travadoMs: travado };
+  commitFiles(list.id, light, files);
+  return light;
 }
 
-function refresh(list) {
+// De onde a lista vem, para saber se uma carga nova é a mesma lista: o link (M3U) ou a conta (Xtream; o servidor
+// pode mudar entre os reservas). Arquivo enviado: null (quem escolhe o arquivo novo é a própria pessoa).
+function sourceKey(list) {
+  if (list.type === 'xtream') return 'x' + hash(String(list.username || ''));
+  if (list.source === 'file') return null;
+  return 'u' + hash(String(list.url || ''));
+}
+
+// o resumo do catálogo: tudo menos as seções
+function lightOf(catalog) {
+  const light = {};
+  for (const k of Object.keys(catalog)) if (!SECTIONS.includes(k)) light[k] = catalog[k];
+  const n = (k) => (catalog[k] && Array.isArray(catalog[k].items) ? catalog[k].items.length : 0);
+  light.counts = { live: n('live'), movies: n('movies'), series: n('series') };
+  return light;
+}
+
+// ---------- Catálogo no disco: um arquivo por seção ----------
+// catalog-<id>.meta.json: o resumo (data, guia, servidor, medições) e o carimbo das seções em uso (files).
+// catalog-<id>.<carimbo>.<seção>.json: o texto de cada seção, entregue à tela como está (sem interpretar).
+// Ao abrir com o app fechado, o servidor lê só o resumo e, quando a tela pede, só o arquivo daquela seção: antes lia
+// e interpretava o catálogo inteiro (5,5 s travado no Mecool com uma lista de 60 MB).
+// Uma carga nova grava as seções com outro carimbo e só no fim troca o resumo (gravação atômica): quem abrir no
+// meio vê o conjunto anterior inteiro. Depois apaga os conjuntos antigos e o arquivo do formato antigo
+// (catalog-<id>.json, com tudo junto).
+const metaName = (id) => `catalog-${id}.meta.json`;
+const secName = (id, files, sec) => `catalog-${id}.${files}.${sec}.json`;
+const legacyName = (id) => `catalog-${id}.json`;
+const fsCall = (fn, ...args) => new Promise((resolve, reject) => fn(...args, (e, r) => (e ? reject(e) : resolve(r))));
+let saveSeq = 0;
+
+async function saveFiles(id, light, parts) {
+  const files = `${light.updatedAt}-${++saveSeq}`;
+  for (const k of SECTIONS) await fsCall(fs.writeFile, store.file(secName(id, files, k)), parts[k]);
+  // outra carga já trocou a lista enquanto gravava: esta sai
+  if (memory.get(id) !== light) return SECTIONS.forEach((k) => fs.unlink(store.file(secName(id, files, k)), () => {}));
+  commitFiles(id, light, files);
+}
+
+// As seções já estão no disco com o carimbo files: troca o resumo (atômico) e apaga o que sobrou de antes.
+function commitFiles(id, light, files) {
+  // a lista foi excluída enquanto montava ou gravava: não deixa arquivos para trás
+  if (!store.getList(id)) {
+    SECTIONS.forEach((k) => fs.unlink(store.file(secName(id, files, k)), () => {}));
+    return;
+  }
+  store.writeText(metaName(id), JSON.stringify({ ...light, files }));
+  light.files = files;
+  // as seções vêm do disco quando a tela pede
+  partsCache.set(light, diskParts(id, light));
+  memory.set(id, light);
+  // conjuntos antigos, temporários e o formato antigo (menos a versão anterior, se a tela vai oferecer voltar)
+  const keep = new Set([metaName(id), ...SECTIONS.map((k) => secName(id, files, k))]);
+  if (light.prev) SECTIONS.forEach((k) => keep.add(secName(id, light.prev.files, k)));
+  for (const f of fs.readdirSync(store.DATA)) {
+    if (f.startsWith(`catalog-${id}.`) && !keep.has(f)) fs.unlink(store.file(f), () => {});
+  }
+}
+
+// Arquivo M3U guardado, linha a linha, sem ler o arquivo inteiro de uma vez (streams do Node, também no Node 8).
+// onProgress(lido, total) para a barra de andamento.
+function fileLines(file, onLine, onProgress) {
+  return new Promise((resolve, reject) => {
+    let total = 0;
+    try { total = fs.statSync(file).size; } catch (e) {
+      return reject(e.code === 'ENOENT' ? new Error('O arquivo desta lista não foi encontrado. Edite a lista e envie o arquivo de novo.') : e);
+    }
+    const stream = fs.createReadStream(file, { highWaterMark: 64 * 1024 });
+    const lines = byteLines(onLine);
+    let bytes = 0;
+    stream.on('data', (buf) => {
+      bytes += buf.length;
+      try { lines.push(buf); } catch (e) { stream.destroy(); return reject(e); }
+      if (onProgress) onProgress(bytes, total);
+    });
+    stream.on('error', reject);
+    stream.on('end', () => {
+      try {
+        lines.end();
+        resolve({ head: lines.head, bytes });
+      } catch (e) { reject(e); }
+    });
+  });
+}
+
+// Partes lidas do disco quando a tela pede (o texto da seção vai como está, sem interpretar).
+function diskParts(id, light) {
+  const meta = JSON.stringify(light).slice(1, -1);
+  const parts = { meta, memo: {} };
+  for (const k of SECTIONS) {
+    Object.defineProperty(parts, k, {
+      enumerable: true,
+      get: () => {
+        try { return fs.readFileSync(store.file(secName(id, light.files, k)), 'utf8'); } catch { return '{"cats":[],"items":[]}'; }
+      },
+    });
+  }
+  return parts;
+}
+
+// Depois de uma lista que encolheu muito: volta para a versão anterior (back) ou fica com a nova (keep).
+// Troca o resumo de uma vez (atômico) e apaga os arquivos do conjunto que sai.
+function settleShrunk(list, back) {
+  const id = list.id;
+  const meta = readMeta(id);
+  if (!meta || !meta.prev) return false;
+  const stay = back ? meta.prev : (({ prev, shrunk, ...rest }) => rest)(meta);
+  const gone = back ? meta.files : meta.prev.files;
+  store.writeText(metaName(id), JSON.stringify(stay));
+  SECTIONS.forEach((k) => fs.unlink(store.file(secName(id, gone, k)), () => {}));
+  partsCache.set(stay, diskParts(id, stay));
+  memory.set(id, stay);
+  // voltou para a anterior: não atualiza sozinho de novo tão cedo (encolheria outra vez e perguntaria de novo);
+  // "Atualizar lista" continua funcionando na hora
+  if (back) failedAt.set(id, Date.now() + STALE_MS);
+  return true;
+}
+
+// Resumo guardado no formato novo, ou null.
+function readMeta(id) {
+  const meta = store.readJson(metaName(id), null);
+  return meta && meta.files ? meta : null;
+}
+
+// first: a seção que a tela vai mostrar primeiro (o Xtream a pede antes e a libera assim que chega)
+// última atualização que falhou: a versão guardada continua, sem tentar de novo a cada pedido da tela
+const failedAt = new Map();
+const RETRY_MS = 10 * 60 * 1000;
+
+function refresh(list, first, { full = false } = {}) {
   if (!inflight.has(list.id)) {
-    const p = build(list).finally(() => inflight.delete(list.id));
+    const b = { done: {}, meta: null, waiters: [] };
+    const wake = () => { b.waiters = b.waiters.filter((w) => !w()); };
+    const onSection = (sec, data, meta) => { b.done[sec] = data; b.meta = meta; wake(); };
+    building.set(list.id, b);
+    const p = build(list, { first, onSection, full });
+    const done = () => {
+      inflight.delete(list.id);
+      if (building.get(list.id) === b) building.delete(list.id);
+    };
+    p.then(() => { failedAt.delete(list.id); done(); }, () => { failedAt.set(list.id, Date.now()); done(); });
     inflight.set(list.id, p);
   }
   return inflight.get(list.id);
 }
 
-async function getCatalog(list, { force = false } = {}) {
-  if (force) return { catalog: await refresh(list), refreshing: false };
-  let cached = memory.get(list.id) || store.readJson(`catalog-${list.id}.json`, null);
+// Uma seção de uma lista que está sendo montada: a parte pronta (Xtream), ou o catálogo inteiro quando terminar.
+function sectionFrom(list, sec) {
+  const p = inflight.get(list.id);
+  if (!p) return null;
+  const b = building.get(list.id);
+  return new Promise((resolve, reject) => {
+    const ready = () => b && b.done[sec] && (resolve({ partial: true, meta: b.meta, data: b.done[sec] }), true);
+    if (ready()) return;
+    if (b) b.waiters.push(ready);
+    p.then((catalog) => resolve({ catalog }), reject);
+  });
+}
+
+const hasCache = (id) => memory.has(id) || fs.existsSync(store.file(metaName(id))) || fs.existsSync(store.file(legacyName(id)));
+
+// Uma seção para a tela. force: baixa a lista de novo. wait: a tela já recebeu outra seção desta mesma carga
+// (então espera a montagem em andamento, em vez de pegar a versão guardada antiga).
+// full: com force, baixa a lista inteira sem perguntar ao provedor se ela mudou.
+async function getSection(list, sec, { force = false, wait = false, full = false } = {}) {
+  // sem versão guardada e o app caiu montando da última vez: não tenta sozinho (cairia de novo, em loop)
+  if (!force && !inflight.has(list.id) && !hasCache(list.id) && crashedBuilding(list.id)) {
+    throw new Error('O app fechou da última vez enquanto montava esta lista: ela pode ser grande demais para a memória deste aparelho. Toque em "Tentar de novo" para tentar mesmo assim, ou use uma lista menor.');
+  }
+  if (force || !hasCache(list.id)) refresh(list, sec, { full });
+  if (force || wait || !hasCache(list.id)) {
+    let r;
+    try {
+      r = await sectionFrom(list, sec);
+    } catch (err) {
+      // Não deu para atualizar (provedor fora, lista incompleta, página no lugar da lista): se há uma versão
+      // guardada, ela continua valendo e a tela avisa. Sem versão guardada, o erro vai para a tela.
+      if (!hasCache(list.id)) throw err;
+      const { catalog } = await getCatalog(list);
+      return { catalog, refreshing: false, building: false, warning: `Não foi possível atualizar a lista: ${err.message}` };
+    }
+    if (r && r.partial) return { ...r, building: true };
+    if (r) return { catalog: r.catalog, refreshing: false, building: true };
+  }
+  const { catalog, refreshing } = await getCatalog(list);
+  return { catalog, refreshing, building: false };
+}
+
+async function getCatalog(list, { force = false, full = false } = {}) {
+  if (force) return { catalog: await refresh(list, undefined, { full }), refreshing: false };
+  let cached = memory.get(list.id);
+  if (!cached) {
+    // abrir com o app fechado: lê e interpreta o arquivo inteiro do catálogo (medido para o modo de depuração)
+    const t0 = Date.now();
+    const loop = diag.loopWatch();
+    const meta = readMeta(list.id);
+    if (meta) {
+      // formato novo: só o resumo agora; cada seção é lida do disco quando a tela pedir
+      cached = meta;
+      partsCache.set(cached, diskParts(list.id, cached));
+    } else {
+      // formato antigo (tudo num arquivo): lê uma vez e já grava no formato novo
+      cached = store.readJson(legacyName(list.id), null);
+      if (cached) {
+        tidyCatalog(cached); // listas baixadas antes da limpeza dos nomes
+        const parts = partsOf(cached);
+        cached = lightOf(cached);
+        partsCache.set(cached, parts);
+        const light = cached;
+        memory.set(list.id, light);
+        saveFiles(list.id, light, parts).catch((e) => console.error('gravar catálogo', list.id, e.message));
+      }
+    }
+    if (cached) {
+      diag.last.coldRead = { listId: list.id, ms: Date.now() - t0, travadoMs: loop.stop(), memMB: Math.round(process.memoryUsage().rss / 1048576) };
+    } else loop.stop();
+  }
   if (cached) {
-    tidyCatalog(cached); // listas baixadas antes da limpeza dos nomes
     memory.set(list.id, cached);
     if (cached.base && !activeBase.has(list.id)) activeBase.set(list.id, cached.base);
     const stale = Date.now() - cached.updatedAt > STALE_MS;
-    if (stale) refresh(list).catch(() => {});
+    if (stale && Date.now() - (failedAt.get(list.id) || 0) > RETRY_MS) refresh(list).catch(() => {});
     return { catalog: cached, refreshing: stale || inflight.has(list.id) };
   }
   return { catalog: await refresh(list), refreshing: false };
 }
 
+// Prepara uma lista por trás (warmup.js): o mesmo caminho do "Atualizar lista", sem tela esperando.
+function warm(list) {
+  return refresh(list);
+}
+
 function isRefreshing(id) {
   return inflight.has(id);
+}
+
+// alguma lista sendo montada agora (o servidor fica ocupado: medições de tempo não valem)
+function anyBuilding() {
+  return inflight.size > 0;
+}
+
+function progressOf(id) {
+  const p = progress.get(id);
+  return p ? { phase: p.phase, got: p.got, total: p.total, secs: Math.round((Date.now() - p.at) / 1000) } : null;
+}
+
+// data da versão guardada, sem ler o arquivo do catálogo (dezenas de MB) só para isso
+// (consultado a cada segundo enquanto a lista carrega). O arquivo começa pelos dados gerais: basta o começo dele.
+function headOf(id) {
+  let fd = null;
+  try {
+    fd = fs.openSync(store.file(legacyName(id)), 'r');
+    const buf = Buffer.alloc(8192);
+    return buf.toString('utf8', 0, fs.readSync(fd, buf, 0, buf.length, 0));
+  } catch {
+    return '';
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+function updatedAtOf(id) {
+  const m = memory.get(id) || readMeta(id);
+  if (m) return m.updatedAt;
+  const at = /"updatedAt":(\d+)/.exec(headOf(id));
+  return at ? Number(at[1]) : null;
+}
+// Endereço do guia de programação que veio na lista (o guia é consultado o tempo todo na tela Ao vivo).
+function epgUrlOf(id) {
+  const m = memory.get(id) || readMeta(id);
+  if (m) return m.epgUrl || '';
+  const at = /"epgUrl":("(?:[^"\\]|\\.)*")/.exec(headOf(id));
+  try { return at ? JSON.parse(at[1]) : ''; } catch { return ''; }
 }
 
 function forget(id) {
@@ -807,11 +1343,22 @@ module.exports = {
   getCatalog,
   speedTest,
   isRefreshing,
+  anyBuilding,
+  warm,
+  progressOf,
+  updatedAtOf,
+  epgUrlOf,
+  getSection,
+  settleShrunk,
+  partsOf,
+  fullText,
+  SECTIONS,
   forget,
   xtreamSeriesInfo,
   xtreamVodInfo,
   checkStatus,
   // exportados para testes
+  prepareParts,
   splitVersion,
   parseEpisode,
   buildFromM3U,

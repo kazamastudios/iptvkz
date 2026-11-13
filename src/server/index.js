@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { Readable } = require('stream');
 
-const { UA } = require('./util');
+const { UA, m3uFileProblem } = require('./util');
 const store = require('./store');
 const catalogs = require('./catalog');
 const epg = require('./epg');
@@ -15,6 +15,10 @@ const net = require('./network');
 const sessions = require('./sessions');
 const { sendText } = require('./compress');
 const pairing = require('./pairing');
+const warmup = require('./warmup');
+// Avisos periódicos da tela (internet, status, andamento): não contam como alguém usando o app. Com vídeo tocando,
+// a tela avisa com /api/ping?uso=1 (o player nativo nem sempre passa pelo /proxy).
+const BACKGROUND = new Set(['/api/ping', '/api/net', '/api/list-status', '/api/catalog/status']);
 const backup = require('./backup');
 const ffmpeg = require('./ffmpeg');
 const cast = require('./cast');
@@ -219,7 +223,7 @@ const catalogText = new Map(); // listId -> { updatedAt, text }
 function serializeCatalog(catalog) {
   const c = catalogText.get(catalog.listId);
   if (c && c.updatedAt === catalog.updatedAt) return c.text;
-  const text = JSON.stringify(catalog);
+  const text = catalogs.fullText(catalog);
   catalogText.set(catalog.listId, { updatedAt: catalog.updatedAt, text });
   return text;
 }
@@ -352,11 +356,33 @@ async function handleApi(req, res, url) {
   if (p === '/api/catalog' && m === 'GET') {
     const list = requireList(q.get('list'));
     const force = q.get('refresh') === '1';
+    // full=1 (com refresh=1): baixa a lista inteira, sem perguntar ao provedor se ela mudou
+    const full = force && q.get('full') === '1';
     if (force) {
       catalogs.forget(list.id);
       epg.forget(list.id);
     }
-    const { catalog, refreshing } = await catalogs.getCatalog(list, { force });
+    // Uma seção só (live, movies, series): a tela pede a que vai mostrar primeiro e as outras depois.
+    // Na primeira carga de uma lista Xtream, a seção vem assim que chega do provedor (partial).
+    const section = q.get('section');
+    if (catalogs.SECTIONS.includes(section)) {
+      const r = await catalogs.getSection(list, section, { force, full, wait: q.get('wait') === '1' });
+      const head = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+      if (force) {
+        const url = epg.sourceUrl(list, r.catalog || r.meta);
+        if (url) epg.refresh(list.id, url).catch(() => {});
+      }
+      if (r.partial) {
+        const body = `{"refreshing":false,"building":true,"catalog":${JSON.stringify({ ...r.meta, [section]: r.data })}}`;
+        return sendText(req, res, 200, head, body);
+      }
+      const parts = catalogs.partsOf(r.catalog);
+      const warn = r.warning ? `"warning":${JSON.stringify(r.warning)},` : '';
+      const body = `{${warn}"refreshing":${r.refreshing},"building":${r.building},"catalog":{${parts.meta},"${section}":${parts[section]}}}`;
+      const memo = r.refreshing || r.building || r.warning ? null : parts.memo[section] || (parts.memo[section] = {});
+      return sendText(req, res, 200, head, body, memo);
+    }
+    const { catalog, refreshing } = await catalogs.getCatalog(list, { force, full });
     const epgUrl = force && epg.sourceUrl(list, catalog);
     if (epgUrl) epg.refresh(list.id, epgUrl).catch(() => {});
     const body = `{"refreshing":${refreshing},"catalog":${serializeCatalog(catalog)}}`;
@@ -381,7 +407,7 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/sessions/gone' && m === 'GET') return sendJson(res, 200, { gone: sessions.isGone(q.get('target')) });
 
-  if (p === '/api/net' && m === 'GET') return sendJson(res, 200, await net.checkInternet());
+  if (p === '/api/net' && m === 'GET') return sendJson(res, 200, await net.checkInternet(catalogs.anyBuilding));
 
   if (p === '/api/list-speed' && m === 'POST') {
     const b = await readJsonBody(req);
@@ -396,19 +422,47 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, await catalogs.checkStatus(requireList(q.get('list'))));
   }
 
+  // medições do carregamento das listas (modo de depuração e testes de desempenho), só no próprio aparelho
+  if (p === '/api/diag' && m === 'GET') {
+    if (!req.isLocal) return sendJson(res, 403, { error: 'Só no próprio aparelho' });
+    // limite de memória do JavaScript neste aparelho (a TV LG limita o serviço) e os arquivos M3U guardados
+    const heapMB = Math.round(require('v8').getHeapStatistics().heap_size_limit / 1048576);
+    const m3uMB = {};
+    try {
+      for (const f of fs.readdirSync(store.DATA)) if (/^m3u-.*\.m3u$/.test(f)) m3uMB[f] = Math.round(fs.statSync(store.file(f)).size / 1048576);
+    } catch {}
+    return sendJson(res, 200, { ...require('./diag').last, memMB: Math.round(process.memoryUsage().rss / 1048576), heapMB, m3uMB, node: process.version, execArgv: process.execArgv });
+  }
+  // a lista encolheu muito na última atualização: voltar para a anterior ou ficar com a nova
+  if (p === '/api/catalog/shrunk' && m === 'POST') {
+    const list = requireList(q.get('list'));
+    const ok = catalogs.settleShrunk(list, q.get('back') === '1');
+    catalogText.delete(list.id);
+    return sendJson(res, ok ? 200 : 409, ok ? { ok: true } : { error: 'Não há versão anterior guardada.' });
+  }
   if (p === '/api/catalog/status' && m === 'GET') {
     const id = q.get('list');
-    const cached = store.readJson(`catalog-${id}.json`, null);
-    return sendJson(res, 200, { refreshing: catalogs.isRefreshing(id), updatedAt: cached ? cached.updatedAt : null });
+    return sendJson(res, 200, { refreshing: catalogs.isRefreshing(id), updatedAt: catalogs.updatedAtOf(id), progress: catalogs.progressOf(id) });
   }
 
   if (p === '/api/m3u' && m === 'POST') {
     const id = q.get('list');
     if (!/^[\w-]+$/.test(id || '')) return sendJson(res, 400, { error: 'id inválido' });
     const buf = await readBody(req, 300 * 1024 * 1024);
+    // só lista M3U entra (um .apk ou um vídeo escolhido por engano não vira o arquivo da lista)
+    const problem = m3uFileProblem(buf.toString('latin1', 0, Math.min(buf.length, 4096)));
+    if (problem) return sendJson(res, 400, { error: problem });
     fs.writeFileSync(store.file(`m3u-${id}.m3u`), buf);
     catalogs.forget(id);
     return sendJson(res, 200, { ok: true, bytes: buf.length });
+  }
+
+  // Lista de arquivo que veio pelo celular (QR Code): o arquivo já está na TV; vira o arquivo desta lista.
+  if (p === '/api/m3u-pair' && m === 'POST') {
+    const id = q.get('list');
+    if (!pairing.adoptFile(q.get('file'), id)) return sendJson(res, 410, { error: 'O arquivo do celular não está mais aqui. Mande de novo pelo QR Code.' });
+    catalogs.forget(id);
+    return sendJson(res, 200, { ok: true });
   }
 
   if (p === '/api/list' && m === 'DELETE') {
@@ -434,8 +488,8 @@ async function handleApi(req, res, url) {
   if (p === '/api/epg' && m === 'POST') {
     const body = await readJsonBody(req);
     const list = requireList(body.list);
-    const cached = store.readJson(`catalog-${list.id}.json`, null);
-    return sendJson(res, 200, epg.query(list, cached, body.chans, { force: !!body.force }));
+    // só o endereço do guia: ler o catálogo inteiro do disco a cada consulta pesava segundos na TV e no celular
+    return sendJson(res, 200, epg.query(list, { epgUrl: catalogs.epgUrlOf(list.id) }, body.chans, { force: !!body.force }));
   }
 
   if (p === '/api/quit' && m === 'POST') {
@@ -530,6 +584,7 @@ const server = http.createServer((req, res) => {
   }
   lastSeen = Date.now();
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (!BACKGROUND.has(url.pathname) || url.searchParams.get('uso') === '1') warmup.touch();
   if (url.pathname === '/proxy') {
     handleProxy(req, res, url.searchParams).catch((err) => {
       if (!res.headersSent) res.writeHead(500);
@@ -555,6 +610,9 @@ const server = http.createServer((req, res) => {
   }
   serveStatic(req, res, url.pathname);
 });
+// A primeira carga de uma lista grande, num provedor lento, fica minutos no mesmo pedido (/api/catalog): o
+// padrão do Node (5 min) cortaria. Quem limita é o download (util.readText), não o servidor.
+server.requestTimeout = 0;
 
 // Inicia o servidor. Rodando direto (`npm start`) usa a porta fixa e encerra se ela já estiver
 // ocupada; no app de computador tenta as próximas portas e não desliga por inatividade.
@@ -573,6 +631,8 @@ function start({ port = PORT, host = HOST, keepAlive = KEEPALIVE, portFallback =
       });
       server.listen(p, host, () => {
         PORT = p;
+        // outras listas prontas por trás, com o app parado (só com memória sobrando; ver warmup.js)
+        warmup.start(() => openStreams);
         if (idleMs > 0) {
           setInterval(() => {
             if (openStreams === 0 && Date.now() - lastSeen > idleMs) {

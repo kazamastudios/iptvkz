@@ -110,20 +110,83 @@ function indexSection(sec) {
   return { ...sec, byId, byCat, catName };
 }
 
-export async function loadCatalog(listId, { force = false } = {}) {
-  const r = await api(`/api/catalog?list=${encodeURIComponent(listId)}${force ? '&refresh=1' : ''}`);
+// A lista chega por seção (canais, filmes, séries): primeiro a da tela atual (first), que já aparece, e as outras
+// logo depois, por trás. Numa lista grande, ler só uma seção é bem mais rápido na TV e no celular, e na primeira
+// carga de uma lista Xtream a seção da tela vem assim que chega do provedor, sem esperar as outras.
+// Telas que precisam de outra seção esperam por ela (sectionsReady). whole: só troca a lista com tudo pronto
+// (atualização em segundo plano, com a pessoa usando a lista antiga).
+export const SECTIONS = ['live', 'movies', 'series'];
+const EMPTY = () => indexSection({ cats: [], items: [] });
+// quem quer saber quando uma seção chega (lista simples: EventTarget não existe nas TVs LG antigas)
+let sectionWatchers = [];
+const sectionArrived = () => { sectionWatchers = sectionWatchers.filter((fn) => fn() !== true); };
+
+export async function loadCatalog(listId, { force = false, first = 'live', whole = false } = {}) {
+  const order = [first, ...SECTIONS].filter((k, i, a) => SECTIONS.includes(k) && a.indexOf(k) === i);
+  const get = (sec, extra) => api(`/api/catalog?list=${encodeURIComponent(listId)}&section=${sec}${extra}`);
+  const r = await get(order[0], force ? '&refresh=1' : '');
   const c = r.catalog;
-  current = {
+  const next = {
     listId,
     updatedAt: c.updatedAt,
     epgUrl: c.epgUrl,
-    live: indexSection(c.live),
-    movies: indexSection(c.movies),
-    series: indexSection(c.series),
+    timing: c.timing || null, // medições da última montagem (modo de depuração)
+    live: EMPTY(),
+    movies: EMPTY(),
+    series: EMPTY(),
+    loaded: new Set([order[0]]),
+    ver: 1,
   };
+  next[order[0]] = indexSection(c[order[0]]);
+  // as outras seções, uma de cada vez (aparelho fraco não recebe duas listas grandes juntas)
+  const rest = (async () => {
+    for (const sec of order.slice(1)) {
+      let sr = null;
+      for (let tries = 0; !sr && tries < 3; tries++) {
+        try { sr = await get(sec, r.building ? '&wait=1' : ''); } catch (e) { if (tries === 2) throw e; }
+      }
+      next[sec] = indexSection(sr.catalog[sec]);
+      next.loaded.add(sec);
+      next.ver++;
+      if (current === next) sectionArrived();
+    }
+  })();
+  if (whole) await rest;
+  else rest.catch((e) => console.error('catalogo', e));
+  next.rest = rest;
+  current = next;
   epgCache.clear();
   seriesCache.clear();
-  return { refreshing: r.refreshing };
+  return { refreshing: r.refreshing, rest, warning: r.warning || null, shrunk: c.shrunk || null, counts: c.counts || null };
+}
+
+// As seções já chegaram? (as que faltam continuam chegando por trás)
+export function sectionsLoaded(secs) {
+  return !current || secs.every((s) => current.loaded.has(s));
+}
+
+// Espera as seções chegarem. Devolve false se a lista mudou no meio.
+export function sectionsReady(secs) {
+  const c = current;
+  if (sectionsLoaded(secs)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let done = false;
+    // true: já respondeu, sai da lista de quem espera
+    const check = () => {
+      if (done) return true;
+      if (current !== c) { done = true; resolve(false); return true; }
+      if (secs.every((s) => c.loaded.has(s))) { done = true; resolve(true); return true; }
+      return false;
+    };
+    sectionWatchers.push(check);
+    // falhou alguma seção: a tela abre com o que tem
+    c.rest.catch(() => { if (!done) { done = true; resolve(current === c); } });
+  });
+}
+
+// Avisa quando uma seção chega (ex.: atualizar as contagens da barra lateral).
+export function onSection(fn) {
+  sectionWatchers.push(() => { fn(); return false; });
 }
 
 export function clearCatalog() {
@@ -200,7 +263,7 @@ export function lockAdult() {
 }
 
 function adultInfo(section) {
-  const key = `${current?.listId}|${current?.updatedAt}|${adultVer}`;
+  const key = `${current?.listId}|${current?.updatedAt}|${current?.ver}|${adultVer}`;
   if (adultMemo.key !== key) adultMemo = { key, data: {} };
   if (adultMemo.data[section]) return adultMemo.data[section];
   const sec = current?.[section];

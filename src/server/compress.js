@@ -6,7 +6,9 @@ function sendText(req, res, status, headers, body, memo) {
     res.writeHead(status, { ...headers, Vary: 'Accept-Encoding' });
     res.end(body);
   };
-  if (body.length < 1024 || !/\bgzip\b/.test(req.headers['accept-encoding'] || '')) return plain();
+  // No mesmo aparelho (app Android, LG, PC) não há rede para economizar: comprimir uma lista grande custava
+  // segundos de processador no celular e na TV, e o WebView ainda descomprimia. Só comprime para quem vem pela rede.
+  if (req.isLocal || body.length < 1024 || !/\bgzip\b/.test(req.headers['accept-encoding'] || '')) return plain();
   const send = (gz) => {
     res.writeHead(status, { ...headers, Vary: 'Accept-Encoding', 'Content-Encoding': 'gzip', 'Content-Length': gz.length });
     res.end(gz);

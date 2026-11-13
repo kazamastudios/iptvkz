@@ -220,6 +220,29 @@ input, select, textarea { font: inherit; color: inherit; }
   transform: translateY(10px) scale(.98); transition: transform .2s;
 }
 .modal.wide { width: 760px; }
+/* Celular: o formulário usa a largura da tela (menos margem e recuo), as abas viram uma grade 2x2 do mesmo
+   tamanho, usuário e senha ficam um embaixo do outro, e o nome do arquivo escolhido vai para baixo do botão. */
+@media (max-width: 760px) {
+  .modal-back { padding: 10px; }
+  .modal-head { padding: 14px 12px 2px 18px; }
+  .modal-body { padding: 10px 16px 18px; }
+  .modal .tabs { display: grid; grid-template-columns: 1fr 1fr; width: auto; border-radius: 14px; margin-bottom: 14px; }
+  .modal .tabs button { justify-content: center; padding: 10px 6px; border-radius: 10px; min-width: 0; white-space: nowrap; }
+  .modal .row.cred-row { flex-direction: column; align-items: stretch; gap: 0; }
+  .modal .row.file-row { flex-wrap: wrap; gap: 8px; }
+  .modal .row.file-row > .btn { flex: 1 1 100%; justify-content: center; }
+  .modal .form-actions { flex-wrap: wrap; }
+  .modal .form-actions .btn { flex: 1; justify-content: center; white-space: nowrap; }
+  /* "Excluir lista" (editar a lista) numa linha só, em cima de Cancelar e Salvar */
+  .modal .form-actions .btn.danger { flex: 1 1 100%; margin-right: 0 !important; }
+  /* Servidores: o endereço ocupa a linha e as etiquetas e botões vão para baixo; nada passa da largura da tela */
+  .modal .speed-row { flex-wrap: wrap; row-gap: 6px; }
+  .modal .speed-host { flex: 1 1 100%; }
+  .modal .servers-acts, .modal .add-server { flex-wrap: wrap; }
+  .modal .servers-acts .btn { flex: 1 1 100%; justify-content: center; }
+  .modal .add-server .input { flex: 1 1 100%; min-width: 0; }
+  .modal .add-server .btn { flex: 1 1 100%; justify-content: center; }
+}
 .modal-back.show .modal { transform: none; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 4px 24px; }
 .modal-head h2 { margin: 0; font: 650 20px var(--font-display); }
@@ -418,7 +441,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* invisível mas tocável: o toque no vídeo mostra e esconde os controles (com visibility: hidden ele não recebia toques) */
 .player.native-video video { opacity: 0; }
 .player.pseudo-fs { position: fixed; z-index: 9000; }
-/* "Internet lenta" no canto de cima à direita: aparece mesmo com os controles escondidos */
+/* "Internet instável" no canto de cima à direita: aparece mesmo com os controles escondidos */
 .player .net-tag { position: absolute; top: 18px; right: 18px; z-index: 6; display: flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px; background: rgba(0, 0, 0, .66); border: 1px solid rgba(255, 181, 71, .45); color: #ffd38a; font-size: 13px; font-weight: 600; pointer-events: none; transition: opacity .3s; }
 .player .net-tag i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
 .player .net-tag.hidden { opacity: 0; }
@@ -957,7 +980,14 @@ input, select, textarea { font: inherit; color: inherit; }
 .sk-col .sk-text:first-child { margin-top: 0; }
 .sk-ep { display: flex; align-items: center; gap: 16px; padding: 10px; border-radius: 12px; background: var(--card); }
 .sk-still { width: 168px; height: 94px; flex: none; }
-.sk-status { display: flex; align-items: center; gap: 10px; margin: 2px 0 16px; color: var(--muted); }
+.list-blocked #statusBanner { display: none; }
+/* arquivo escolhido que não serve (um app, um vídeo...): o aviso fica no lugar do nome do arquivo */
+.err-text { color: var(--bad, #ff6b6b) !important; }
+.blocked-list p { max-width: 560px; }
+.sk-status { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 2px 0 16px; color: var(--muted); }
+/* andamento do download da lista: só transform anima */
+.load-bar { height: 3px; margin: -8px 0 16px; border-radius: 2px; background: var(--line, rgba(255,255,255,.12)); overflow: hidden; max-width: 420px; }
+.load-bar i { display: block; height: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); transition: transform .9s linear; }
 .sk-page { overflow: hidden; height: 100%; }
 .sk-now::before { content: ""; display: block; width: 60%; height: 10px; margin-top: 4px; border-radius: 6px; }
 .detail .plot .sk-text { max-width: 620px; }
@@ -1352,3 +1382,16 @@ html { -webkit-tap-highlight-color: transparent; }
    deitado (tela mais larga), o Android cancelava o arraste depois de poucos milímetros e só arrastes curtos funcionavam. */
 .player .seek { touch-action: none; }
 @media (pointer: coarse) { .player .seek { height: 28px; } } /* tela de toque: barra mais alta para o dedo, deitado ou em pé */
+
+/* status de cada lista no seletor e em Configurações (ativa: só o ponto; o resto com o texto) */
+.list-menu button .lm-name { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; }
+.list-menu button .lm-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lm-st, .lc-st { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.lm-st { margin-top: 2px; }
+.lc-st { margin-top: 4px; }
+.lm-st:empty, .lc-st:empty { display: none; }
+/* Bolinha do status ao lado do nome, centralizada na altura dele; nome grande termina em "…" e não empurra a bolinha */
+.lm-row, .nm-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lm-row .lm-label, .nm-row .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ldot { flex: none; display: flex; align-items: center; }
+.ldot:empty { display: none; }

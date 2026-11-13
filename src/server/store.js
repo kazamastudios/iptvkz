@@ -28,9 +28,14 @@ function readJson(name, fallback) {
 }
 
 function writeJson(name, value) {
+  writeText(name, JSON.stringify(value));
+}
+
+// texto já convertido (o catálogo é convertido uma vez só e usado para gravar e para responder)
+function writeText(name, text) {
   const target = file(name);
   const tmp = target + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(value));
+  fs.writeFileSync(tmp, text);
   fs.renameSync(tmp, target);
 }
 
@@ -50,9 +55,13 @@ function getList(id) {
 }
 
 function removeListFiles(id) {
-  for (const name of [`catalog-${id}.json`, `epg-${id}.json`, `m3u-${id}.m3u`]) {
+  // o catálogo são vários arquivos (catalog-<id>.meta.json e um por seção) ou, no formato antigo, catalog-<id>.json
+  let names = [];
+  try { names = fs.readdirSync(DATA).filter((f) => f.startsWith(`catalog-${id}.`)); } catch {}
+  for (const name of [...names, `epg-${id}.json`, `m3u-${id}.m3u`, `building-${id}.mark`]) {
     try { fs.unlinkSync(file(name)); } catch {}
   }
 }
 
-module.exports = { DATA, file, readJson, writeJson, getState, setState, getList, removeListFiles };
+module.exports = {
+  writeText, DATA, file, readJson, writeJson, getState, setState, getList, removeListFiles };

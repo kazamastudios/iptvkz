@@ -194,8 +194,10 @@ export class Player {
     if (!liveTv) left.push(this.btnAV, this.btnGear);
     left.push(o.live ? h('span.badge.onair.live-badge', 'AO VIVO') : this.timeEl);
 
-    // filmes e séries já abrem ocupando a tela: tela cheia só no ao vivo, que no PC toca numa janela ao lado da lista
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, !CAST_ENABLED || onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, o.live && !liveTv ? this.btnFs : null);
+    // Tela cheia: no ao vivo (no PC ele toca numa janela ao lado da lista) e nos filmes e séries onde o player só
+    // ocupa a janela (PC, navegador). Na TV e no app Android os filmes já abrem na tela toda: lá o botão não aparece.
+    const fsBtn = o.live ? !liveTv : !TV.on && !window.IPTVKZAndroid;
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, !CAST_ENABLED || onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, fsBtn ? this.btnFs : null);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
@@ -213,8 +215,8 @@ export class Player {
 
     this.flashEl = h('div.seek-flash');
     this.ppEl = h('div.pp-flash'); // ícone de play/pause no centro, só ao apertar
-    // Internet lenta: aviso discreto no canto, para não parecer defeito do player. Some quando o vídeo volta a fluir.
-    this.netTag = h('div.net-tag.hidden', h('i'), h('span', 'Internet lenta'));
+    // Internet instável: aviso discreto no canto, para não parecer defeito do player. Some quando o vídeo volta a fluir.
+    this.netTag = h('div.net-tag.hidden', h('i'), h('span', 'Internet instável'));
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
     this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
     this.root._player = this; // o Voltar do app acha o player em tela cheia por aqui
@@ -265,6 +267,8 @@ export class Player {
     const on = (ev, fn) => v.addEventListener(ev, fn);
     on('play', () => this._setIcon(this.btnPlay, 'pause'));
     on('pause', () => { this._setIcon(this.btnPlay, 'play'); this._showCtrl(); this._report(); });
+    // qualquer pulo no vídeo (barra, teclas, retomar de onde parou) conta como "mexeu na barra" para o aviso de internet
+    on('seeking', () => { this._seekAt = Date.now(); });
     on('waiting', () => { this._spin(true); this._netStall(true); if (this.hadFrame) this.stalls = (this.stalls || 0) + 1; });
     on('playing', () => {
       this._spin(false);
@@ -276,6 +280,10 @@ export class Player {
       if (this.openMs == null && this.loadAt) this.openMs = Math.round(performance.now() - this.loadAt);
       this._hideError();
       setTimeout(() => !this.destroyed && this._learnAudio(), 1500);
+      // Começou (ou voltou) a tocar: os controles ficam uns 4 s e saem da frente. O tempo de esconder pode ter vencido
+      // enquanto o vídeo abria ou estava pausado, e aí nada mais os escondia até o mouse mexer.
+      // Na TV o foco do controle fica no botão de play: aqui ele solta (Enter de novo ainda pausa).
+      if (this.root.classList.contains('ctrl-visible')) this._scheduleHide(4000, true);
     });
     on('canplay', () => this._spin(false));
     on('volumechange', () => {
@@ -751,6 +759,7 @@ export class Player {
   }
 
   _showError(kind) {
+    const leave = this.opts.onBack || this.opts.onCancel;
     const fmt = kind === 'format';
     const slow = kind === 'timeout';
     const title = fmt ? 'Este aparelho não toca este formato' : this.opts.live ? 'Canal indisponível' : slow ? 'O servidor da lista não mandou o vídeo' : 'Não foi possível carregar';
@@ -764,12 +773,19 @@ export class Player {
       h('h3', title),
       h('p', text),
       h('div.acts',
-        h('button.btn', { onclick: () => this.retry() }, ico('refresh'), 'Tentar de novo')),
+        // sair também: só "Tentar de novo" deixava a pessoa presa nesta tela
+        leave ? h('button.btn', { onclick: () => leave() }, ico('back'), 'Voltar') : null,
+        h('button.btn.primary', { onclick: () => this.retry() }, ico('refresh'), 'Tentar de novo')),
     );
     this.errorEl.classList.remove('hidden');
     clearTimeout(this._netT);
     this.netTag.classList.add('hidden');
-    if (TV.on) focusEl(this.errorEl.querySelector('.btn')); // senão o controle fica preso atrás do player
+    if (TV.on) focusEl(this.errorEl.querySelector('.btn.primary')); // senão o controle fica preso atrás do player
+  }
+
+  // A tela de erro (ou "tocando em outro aparelho") está aberta: a tecla Voltar sai do vídeo direto.
+  hasError() {
+    return !this.errorEl.classList.contains('hidden');
   }
 
   _hideError() {
@@ -789,19 +805,23 @@ export class Player {
     this.center.classList.toggle('hidden', !on);
   }
 
-  // O vídeo parou esperando dados (ou demora a abrir): depois de um tempo, mostra "Internet lenta" no canto.
+  // O vídeo parou esperando dados (ou demora a abrir): depois de um tempo, mostra "Internet instável" no canto.
   // Sem internet nenhuma, o texto diz isso. Ao voltar a tocar, o aviso fica mais uns segundos e some.
   _netStall(waiting) {
     clearTimeout(this._netT);
     if (waiting) {
       this._netT = setTimeout(async () => {
         if (this.destroyed || !this.errorEl.classList.contains('hidden')) return;
+        // mexeu na barra no meio da espera (ou está arrastando agora): é o vídeo indo para outro ponto, não a internet
+        if (this.scrub || (this._isDragging && this._isDragging()) || Date.now() - (this._seekAt || 0) < 12000) return this._netStall(true);
         let offline = navigator.onLine === false;
         try { offline = offline || (await api('/api/net')).online === false; } catch {}
         if (this.destroyed) return;
-        this.netTag.lastChild.textContent = offline ? 'Sem internet' : 'Internet lenta';
+        this.netTag.lastChild.textContent = offline ? 'Sem internet' : 'Internet instável';
         this.netTag.classList.remove('hidden');
-      }, this.hadFrame ? 4000 : 12000); // folga: travadinhas curtas e servidores lentos para abrir não são internet ruim
+        // folga: travadinhas curtas, servidores lentos para abrir e o carregamento depois de mexer na barra
+        // (o provedor precisa achar o novo ponto do vídeo) não são internet ruim
+      }, !this.hadFrame || Date.now() - (this._seekAt || 0) < 15000 ? 12000 : 6000);
     } else if (!this.netTag.classList.contains('hidden')) {
       this._netT = setTimeout(() => this.netTag.classList.add('hidden'), 3000);
     }
@@ -860,7 +880,7 @@ export class Player {
     // a partir do que está na tela (vários toques seguidos somam, mesmo antes do vídeo chegar no anterior)
     const target = Math.max(0, Math.min(v.duration - 1, this._shownTime() + s));
     this.resumeAt = 0;
-    this._seekTo = { t: target, at: Date.now() };
+    this._seekTo = { t: target, at: Date.now() }; this._seekAt = Date.now();
     v.currentTime = target;
     this._updateSeek();
     this.timeEl.textContent = `${fmtTime(target)} / ${fmtTime(v.duration)}`;
@@ -912,13 +932,14 @@ export class Player {
     syncFocus();
   }
 
-  _scheduleHide(ms) {
+  // release: some mesmo com o foco do controle num botão (depois do play), soltando o foco
+  _scheduleHide(ms, release) {
     clearTimeout(this._hideT);
     this._hideT = setTimeout(() => {
       if (this.video.paused || !this.menu.classList.contains('hidden')) return;
       if (this._ctrlFocused()) {
         // no ao vivo as setas trocam de canal: sem uso, o foco solta dos botões
-        if (!(TV.on && this.opts.live)) return this._scheduleHide(ms);
+        if (!(TV.on && this.opts.live) && !release) return this._scheduleHide(ms);
         this.leaveControls();
       }
       this.root.classList.remove('ctrl-visible');
@@ -951,7 +972,7 @@ export class Player {
       const ratio = e.type === 'pointercancel' ? lastRatio : ratioAt(e);
       const t = ratio * d;
       this.resumeAt = 0; // a escolha da pessoa vale mais que o "continuar de onde parou" que ainda não foi aplicado
-      this._seekTo = { t, at: Date.now() };
+      this._seekTo = { t, at: Date.now() }; this._seekAt = Date.now();
       show(t / d);
       this._scheduleHide(3000);
       setTimeout(() => { this.video.currentTime = t; }, 0); // o pedido segue depois do desenho
@@ -1245,7 +1266,10 @@ export class Player {
 
   _ctrlFocused() {
     const a = document.activeElement;
-    return !!a && a !== this.video && this.root.contains(a) && (a.tagName === 'BUTTON' || a.tagName === 'INPUT' || a === this._seekEl);
+    if (!a || a === this.video || !this.root.contains(a) || !(a.tagName === 'BUTTON' || a.tagName === 'INPUT' || a === this._seekEl)) return false;
+    // Botão clicado com o mouse também fica com o foco, mas não segura os controles na tela: só o foco do
+    // controle remoto ou do teclado (o que aparece destacado) segura. TV antiga sem :focus-visible: segura.
+    try { return a.matches(':focus-visible'); } catch { return true; }
   }
 
   _renderMenu() {
@@ -1485,7 +1509,7 @@ export class Player {
     clearTimeout(this._scrubT);
     if (!this.scrub) return;
     this.resumeAt = 0;
-    this._seekTo = { t: this.scrub.t, at: Date.now() };
+    this._seekTo = { t: this.scrub.t, at: Date.now() }; this._seekAt = Date.now();
     this.video.currentTime = this.scrub.t;
     this.scrub = null;
     this.seekTip.classList.remove('on');

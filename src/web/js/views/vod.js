@@ -4,7 +4,7 @@ import { isPhone, catSelect } from '../core/catselect.js';
 import { starIcon } from '../core/icons.js';
 import {
   C, S, visibleCats, visibleItems, favItems, isFav, toggleFav, getProgress, setProgress, clearProgress, isWatched, isStarted,
-  continueMovies, continueSeries, clearContinue, catItems, isLater, toggleLater, laterItems, adultLocked, isAdultItem, seriesDetail, movieDetail, preferredVersion, versionNames, setSetting,
+  continueMovies, continueSeries, clearContinue, catItems, isLater, toggleLater, adultLocked, isAdultItem, seriesDetail, movieDetail, preferredVersion, versionNames, setSetting,
 } from '../core/store.js';
 import { playMovie, playEpisode } from './vodplayer.js';
 import { castButton } from '../player/castpick.js';
@@ -241,7 +241,7 @@ export function vodHome(section) {
         rows.push(
           btn('home', 'Início', null, section === 'movies' ? 'film' : 'series'),
           btn('all', cfg[section].all, visibleItems(section).length, 'tv'),
-          btn('fav', 'Favoritos', favItems(section).length, 'star'),
+          // Favoritos e Minha lista ficam em Salvos (o endereço ?cat=fav continua abrindo, para links antigos)
           h('div.cat-sep'),
         );
       }
@@ -564,10 +564,9 @@ function homeContent(section, ctx, scroller, { card = posterCard } = {}) {
     toast('“Continuar assistindo” limpo', 'info', 6000, { label: 'Desfazer', fn: () => { undo(); ctx.rerender(); } });
   };
 
+  // Na página de Filmes e Séries, só "Continuar assistindo" (o histórico). Favoritos e Minha lista ficam em Salvos.
   page.append(...[
     shelf('Continuar assistindo', section === 'movies' ? continueMovies() : continueSeries(), null, clearContinueShelf),
-    shelf('Minha lista', laterItems(section), '#/mylist'),
-    shelf('Favoritos', favItems(section), `#/${section}?cat=fav`),
   ].filter(Boolean));
   if (section === 'movies' && sec.items.some((m) => m.added)) {
     const recent = [...visibleItems(section)].sort((a, b) => b.added - a.added).slice(0, 30);
