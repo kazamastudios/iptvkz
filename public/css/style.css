@@ -75,6 +75,11 @@ html.tv .wrap { padding: 0 3rem; }
 .nav a { padding: .4rem .9rem; color: var(--muted); text-decoration: none; font-size: .95rem; font-weight: 550; }
 .nav a:hover, .nav a:focus, .nav a[aria-current] { color: var(--text); }
 
+/* troca de idioma */
+.lang { display: flex; align-items: center; justify-content: center; min-height: 2.5rem; margin-right: .6rem; padding: 0 .7rem; border: 1px solid var(--line-2); border-radius: 8px; color: var(--muted); font: 600 .8rem/1 var(--mono); letter-spacing: .06em; text-decoration: none; }
+.lang:hover, .lang:focus { color: var(--text); border-color: var(--muted); }
+.hero__note { margin-top: 1rem; color: var(--faint); font-size: .875rem; }
+
 /* topo */
 .hero { padding: 8.5rem 0 4rem; }
 .hero__in { display: flex; align-items: center; }
@@ -82,6 +87,9 @@ html.tv .wrap { padding: 0 3rem; }
 .hero__stage { flex: 1 1 60%; min-width: 0; }
 .hero h1 { margin: 1rem 0 1.4rem; font-size: 3.9rem; font-size: clamp(2.6rem, 5.2vw, 4.8rem); line-height: 1.04; letter-spacing: -.045em; font-weight: 800; }
 html.tv .hero h1 { font-size: 4.2rem; }
+/* em inglês as linhas do título são mais longas */
+html[lang="en"] .hero h1 { font-size: 3.4rem; font-size: clamp(2.25rem, 4.6vw, 4.25rem); }
+html.tv[lang="en"] .hero h1 { font-size: 3.7rem; }
 .lead { color: var(--muted); font-size: 1.15rem; max-width: 33rem; }
 .cta { display: flex; flex-wrap: wrap; margin: 1.9rem -.35rem -.35rem; }
 .cta .btn { margin: .35rem; }
@@ -309,6 +317,8 @@ html.kb .ring.is-on { opacity: 1; }
 @media (max-width: 640px) {
   .nav { display: none; }
   .topbar .btn { margin-left: auto; }
+  .topbar .lang { margin-left: auto; }
+  .topbar .lang + .btn { margin-left: 0; }
   .form-row { display: block; margin: 0; }
   .form-row .form-field { margin-left: 0; margin-right: 0; }
   .support-form { padding: 1.15rem; }
@@ -319,6 +329,7 @@ html.kb .ring.is-on { opacity: 1; }
   .switch button { margin: 0 .35rem 0 0; }
   .brand img { width: 7.5rem; }
   .hero h1 { font-size: 2.6rem; }
+  html[lang="en"] .hero h1 { font-size: 2.25rem; }
   .cta .btn { flex: 1 1 100%; }
   .section { padding: 4rem 0; }
   .card__text { padding: 1.4rem 1.4rem 1.1rem; }

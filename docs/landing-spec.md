@@ -126,3 +126,12 @@ A página de suporte traz o formulário: tipo, parte do app, momento, aparelho (
 **Configuração no Cloudflare Pages:** criar um token do GitHub de acesso restrito a este repositório, com permissão de escrita em Issues, e guardá-lo como segredo `GITHUB_TOKEN`. Sem ele, ou se o envio falhar, a página oferece mandar o relato por e-mail para `suporte@kazamastudios.com.br`.
 
 **Contatos:** `suporte@kazamastudios.com.br` para ajuda com o app e `contato@kazamastudios.com.br` para privacidade, termos e assuntos gerais. Aparecem no rodapé, na página de suporte, no FAQ, nos termos e na política de privacidade.
+
+## 9. Idiomas
+
+A versão em inglês fica em `public/en/` (`index.html`, `support.html`, `terms.html` e `privacy.html`), com o mesmo CSS, imagens e scripts da raiz. Os scripts escolhem os textos pelo `lang` do `<html>` e acham a raiz do site pelo próprio endereço (`../` em `en/`).
+
+- Toda página tem o botão PT/EN no topo, o link do outro idioma no rodapé e os `hreflang` no `<head>`. O português é o padrão (`x-default`).
+- O app continua só em português do Brasil. A página em inglês diz isso no topo, na galeria e nas dúvidas, e mostra os nomes das telas do app em português, com a tradução ao lado.
+- Termos e privacidade em inglês são tradução. Em caso de diferença, vale o texto em português.
+- Mudou um texto da página em português? Atualize o equivalente em inglês no mesmo PR.
