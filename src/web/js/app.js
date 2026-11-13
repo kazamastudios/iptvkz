@@ -385,6 +385,11 @@ async function checkListStatus() {
   renderListStatus();
   const [tone] = STATUS_INFO[data.state] || ['idle'];
   if (tone === 'bad' && prev !== data.state && isPlaying()) toast(`${list.name}: ${STATUS_DETAIL[data.state]}`, 'error', 9000);
+  // a lista passou a ser bloqueada (ou foi liberada): a tela troca, a não ser que esteja vendo algo agora
+  if (!!BLOCK_INFO[prev] !== !!BLOCK_INFO[data.state] && !isPlaying() && parseHash().name !== 'settings') {
+    if (!BLOCK_INFO[data.state] && appState === 'error') loadActive();
+    else { current = null; route(); }
+  }
   if (data.state === 'offline' && net.state === 'online') suggestServer(list);
 }
 
@@ -515,6 +520,10 @@ function route() {
     appState = 'welcome';
     return showState(welcomeView(() => ctx.addList()), 'IPTVKZ');
   }
+  const blocked = name !== 'settings' && listBlocked();
+  // a tela de bloqueio já explica: o aviso do topo, igual, sai enquanto ela está aberta
+  document.body.classList.toggle('list-blocked', !!blocked);
+  if (blocked) return showBlocked(blocked);
   // A lista carregando não prende o app: Configurações continua aberta para trocar ou excluir.
   if (appState === 'loading' && name !== 'settings') {
     if (current && showLoading) showLoading();
@@ -564,6 +573,51 @@ function route() {
       if (!inContent && !document.querySelector('.modal-back, .vod-overlay, .tvkb')) focusFirst();
     }, 30);
   }
+}
+
+// Lista que o provedor não libera mais (vencida, bloqueada, desativada, acesso recusado): nada da lista abre,
+// porque nenhum canal ou vídeo vai tocar. A tela explica e oferece o que dá para fazer. "Fora do ar" não bloqueia
+// (costuma ser passageiro) e Configurações continua aberta. Vale em PC, TV (foco no primeiro botão) e celular.
+const BLOCK_INFO = {
+  expired: ['Esta lista expirou', 'A assinatura venceu. Fale com o seu provedor para renovar; depois toque em “Verificar de novo”.'],
+  banned: ['O provedor bloqueou esta conta', 'Fale com o seu provedor para entender o motivo e liberar a conta.'],
+  disabled: ['O provedor desativou esta conta', 'Fale com o seu provedor para reativar a conta.'],
+  refused: ['O provedor recusou o acesso', 'A lista pode ter expirado, ou o usuário e a senha mudaram. Confira com o seu provedor e, se mudou algo, edite a lista.'],
+};
+function listBlocked() {
+  const l = activeList();
+  return l && status.listId === l.id && status.data && BLOCK_INFO[status.data.state] ? status.data.state : null;
+}
+function showBlocked(state) {
+  const list = activeList();
+  const [title, text] = BLOCK_INFO[state];
+  const again = h('button.btn.primary', {
+    onclick: async () => {
+      again.disabled = true;
+      again.textContent = 'Verificando...';
+      status.at = 0;
+      await checkListStatus();
+      current = null;
+      route();
+    },
+  }, ico('refresh'), 'Verificar de novo');
+  const remove = async () => {
+    if (!await confirmDialog('Excluir lista?', `“${list.name}” sai deste aparelho, com os favoritos e o histórico dela.`, 'Excluir')) return;
+    await deleteList(list.id);
+  };
+  showState(h('div.center-state.blocked-list',
+    ico('alert'),
+    h('h2', title),
+    h('p', h('b', list.name), ` · ${text}`),
+    h('p.muted', 'Enquanto isso, os canais, filmes e séries desta lista ficam indisponíveis.'),
+    h('div.row', { style: { marginTop: '8px', justifyContent: 'center', flexWrap: 'wrap', gap: '10px' } },
+      again,
+      h('button.btn', { onclick: () => ctx.editList(list) }, ico('edit'), 'Editar lista'),
+      S.lists.length > 1
+        ? h('button.btn', { onclick: () => ctx.navigate('#/settings') }, ico('settings'), 'Trocar de lista')
+        : h('button.btn', { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar outra lista'),
+      h('button.btn.ghost', { onclick: remove }, ico('trash'), 'Excluir lista'))), 'IPTVKZ');
+  if (TV.on) setTimeout(() => focusEl(again), 30);
 }
 
 function showError() {
