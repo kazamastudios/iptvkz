@@ -708,6 +708,8 @@ function showError() {
   const list = activeList();
   // Bloqueio da rede: a pessoa tende a culpar o app. A tela diz com todas as letras de onde vem.
   const blocked = blockedByNetwork(lastError);
+  // a tela já explica: o aviso do topo, igual, sai enquanto ela está aberta (como na lista vencida)
+  document.body.classList.toggle('list-blocked', blocked);
   showState(h('div.center-state',
     ico('alert'),
     h('h2', blocked ? 'A rede bloqueou esta lista' : 'Não foi possível carregar a lista'),
