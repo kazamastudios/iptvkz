@@ -415,6 +415,11 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, await catalogs.checkStatus(requireList(q.get('list'))));
   }
 
+  // medições do carregamento das listas (modo de depuração e testes de desempenho), só no próprio aparelho
+  if (p === '/api/diag' && m === 'GET') {
+    if (!req.isLocal) return sendJson(res, 403, { error: 'Só no próprio aparelho' });
+    return sendJson(res, 200, { ...require('./diag').last, memMB: Math.round(process.memoryUsage().rss / 1048576), node: process.version });
+  }
   if (p === '/api/catalog/status' && m === 'GET') {
     const id = q.get('list');
     return sendJson(res, 200, { refreshing: catalogs.isRefreshing(id), updatedAt: catalogs.updatedAtOf(id), progress: catalogs.progressOf(id) });
@@ -452,8 +457,8 @@ async function handleApi(req, res, url) {
   if (p === '/api/epg' && m === 'POST') {
     const body = await readJsonBody(req);
     const list = requireList(body.list);
-    const cached = store.readJson(`catalog-${list.id}.json`, null);
-    return sendJson(res, 200, epg.query(list, cached, body.chans, { force: !!body.force }));
+    // só o endereço do guia: ler o catálogo inteiro do disco a cada consulta pesava segundos na TV e no celular
+    return sendJson(res, 200, epg.query(list, { epgUrl: catalogs.epgUrlOf(list.id) }, body.chans, { force: !!body.force }));
   }
 
   if (p === '/api/quit' && m === 'POST') {

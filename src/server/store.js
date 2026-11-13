@@ -44,6 +44,25 @@ function writeTextLater(name, text) {
   });
 }
 
+// Igual a writeTextLater, mas com o texto em pedaços, gravados em sequência (sem juntar tudo antes).
+function writePiecesLater(name, pieces) {
+  const target = file(name);
+  const tmp = `${target}.${process.pid}-${Date.now()}.tmp`;
+  const fail = (e) => { console.error('gravar', name, e.message); fs.unlink(tmp, () => {}); };
+  fs.open(tmp, 'w', (err, fd) => {
+    if (err) return fail(err);
+    let i = 0;
+    const next = (e) => {
+      if (e) return fs.close(fd, () => fail(e));
+      if (i >= pieces.length) {
+        return fs.close(fd, (e2) => (e2 ? fail(e2) : fs.rename(tmp, target, (e3) => e3 && fail(e3))));
+      }
+      fs.write(fd, pieces[i++], null, 'utf8', (e4) => next(e4));
+    };
+    next();
+  });
+}
+
 // texto já convertido (o catálogo é convertido uma vez só e usado para gravar e para responder)
 function writeText(name, text) {
   const target = file(name);
@@ -74,4 +93,4 @@ function removeListFiles(id) {
 }
 
 module.exports = {
-  writeText, writeTextLater, DATA, file, readJson, writeJson, getState, setState, getList, removeListFiles };
+  writeText, writeTextLater, writePiecesLater, DATA, file, readJson, writeJson, getState, setState, getList, removeListFiles };

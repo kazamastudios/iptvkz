@@ -12,7 +12,7 @@ const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'iptvkz-test-'));
 process.env.IPTVKZ_DATA = DATA;
 const server = require('../src/server/index.js');
 const net = require('../src/server/network.js');
-const { buildFromM3U } = require('../src/server/catalog.js');
+const { buildFromM3U, prepareParts } = require('../src/server/catalog.js');
 
 // ---------- provedor fictício ----------
 
@@ -338,11 +338,14 @@ test('pareamento pelo celular: chave de uso único, lista entregue uma vez', asy
   assert.strictEqual((await request('GET', '/api/pair/status?token=' + token)).json.list, null);
 });
 
-test('lista grande: 60 mil entradas montam em poucos segundos', () => {
+test('lista grande: 60 mil entradas montam em poucos segundos', async () => {
   const text = m3u(60000, 'http://exemplo.invalid');
   const t0 = Date.now();
-  const c = buildFromM3U(text, { id: 'big' });
+  const c = await buildFromM3U(text, { id: 'big' });
   const ms = Date.now() - t0;
+  // a conversão em lotes (com pausas) tem de dar exatamente o mesmo texto que a conversão de uma vez
+  const parts = await prepareParts(c);
+  for (const k of ['live', 'movies', 'series']) assert.strictEqual(parts[k], JSON.stringify(c[k]), `seção ${k} igual`);
   assert.strictEqual(c.live.items.length, 20000);
   assert.strictEqual(c.movies.items.length, 20000);
   assert.ok(ms < 15000, `levou ${ms} ms`);

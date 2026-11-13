@@ -1,4 +1,5 @@
 // Utilidades compartilhadas do servidor.
+const { StringDecoder } = require('string_decoder');
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) IPTVKZ/1.0';
 
 function hash(str) {
@@ -60,7 +61,10 @@ async function readText(url, { onProgress, idleMs = 45000, maxMs = 15 * 60000 } 
     if (!res.ok) throw Object.assign(new Error(`O servidor respondeu ${res.status} (${safeHost(url)})`), { status: res.status });
     // com compressão, o tamanho informado é o comprimido: não serve de total
     const total = res.headers.get('content-encoding') ? 0 : Number(res.headers.get('content-length')) || 0;
-    const chunks = [];
+    // decodifica cada pedaço assim que chega (StringDecoder cuida de acento partido entre pedaços): juntar os
+    // pedaços e só depois converter mantinha a lista três vezes na memória
+    const decoder = new StringDecoder('utf8');
+    const texts = [];
     let got = 0;
     if (res.body) {
       // getReader funciona no fetch do Node e no da TV LG (platforms/webos/service/shim.js). Lá, cancelar o
@@ -74,12 +78,13 @@ async function readText(url, { onProgress, idleMs = 45000, maxMs = 15 * 60000 } 
         clearTimeout(idle);
         idle = setTimeout(() => ctrl.abort(), idleMs);
         const buf = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
-        chunks.push(buf);
+        texts.push(decoder.write(buf));
         got += buf.length;
         if (onProgress) onProgress(got, total);
       }
     }
-    return Buffer.concat(chunks, got).toString('utf8');
+    texts.push(decoder.end());
+    return texts.join('');
   } catch (err) {
     if (ctrl.signal.aborted) throw Object.assign(new Error('Tempo esgotado ao baixar de ' + safeHost(url)), { timeout: true });
     if (err.status) throw err;
