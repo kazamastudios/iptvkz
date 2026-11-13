@@ -913,8 +913,6 @@ async function buildNow(list, { first, onSection, stamp = Date.now() } = {}) {
   const parts = await prepareParts(catalog);
   const converter = Date.now() - t2;
   mem.read();
-  // grava as partes uma depois da outra, sem juntar o catálogo inteiro num texto só (mais 50 MB na memória)
-  store.writePiecesLater(`catalog-${list.id}.json`, ['{', parts.meta, ...SECTIONS.flatMap((k) => [`,"${k}":`, parts[k]]), '}']);
   const travado = loop.stop();
   if (catalog.timing) {
     // o texto já foi gerado sem estes números: valem para /api/diag e para a tela a partir da próxima abertura
@@ -923,11 +921,71 @@ async function buildNow(list, { first, onSection, stamp = Date.now() } = {}) {
   diag.last.build = { listId: list.id, at: Date.now(), ...(catalog.timing || {}), converter, memMB: mem.peak(), travadoMs: travado };
   // Depois de convertido, o servidor só entrega o texto das seções: os itens montados saem da memória (numa lista
   // de 60 MB são centenas de MB, e era o que derrubava o app em aparelho de 2 GB). Fica só o resumo com as partes.
-  const light = {};
-  for (const k of Object.keys(catalog)) if (!SECTIONS.includes(k)) light[k] = catalog[k];
+  const light = lightOf(catalog);
   partsCache.set(light, parts);
   memory.set(list.id, light);
+  // grava um arquivo por seção, por trás (a tela não espera o armazenamento)
+  saveFiles(list.id, light, parts).catch((e) => console.error('gravar catálogo', list.id, e.message));
   return light;
+}
+
+// o resumo do catálogo: tudo menos as seções
+function lightOf(catalog) {
+  const light = {};
+  for (const k of Object.keys(catalog)) if (!SECTIONS.includes(k)) light[k] = catalog[k];
+  return light;
+}
+
+// ---------- Catálogo no disco: um arquivo por seção ----------
+// catalog-<id>.meta.json: o resumo (data, guia, servidor, medições) e o carimbo das seções em uso (files).
+// catalog-<id>.<carimbo>.<seção>.json: o texto de cada seção, entregue à tela como está (sem interpretar).
+// Ao abrir com o app fechado, o servidor lê só o resumo e, quando a tela pede, só o arquivo daquela seção: antes lia
+// e interpretava o catálogo inteiro (5,5 s travado no Mecool com uma lista de 60 MB).
+// Uma carga nova grava as seções com outro carimbo e só no fim troca o resumo (gravação atômica): quem abrir no
+// meio vê o conjunto anterior inteiro. Depois apaga os conjuntos antigos e o arquivo do formato antigo
+// (catalog-<id>.json, com tudo junto).
+const metaName = (id) => `catalog-${id}.meta.json`;
+const secName = (id, files, sec) => `catalog-${id}.${files}.${sec}.json`;
+const legacyName = (id) => `catalog-${id}.json`;
+const fsCall = (fn, ...args) => new Promise((resolve, reject) => fn(...args, (e, r) => (e ? reject(e) : resolve(r))));
+let saveSeq = 0;
+
+async function saveFiles(id, light, parts) {
+  const files = `${light.updatedAt}-${++saveSeq}`;
+  for (const k of SECTIONS) await fsCall(fs.writeFile, store.file(secName(id, files, k)), parts[k]);
+  const dropOurs = () => SECTIONS.forEach((k) => fs.unlink(store.file(secName(id, files, k)), () => {}));
+  // a lista foi excluída (ou trocada por outra carga) enquanto gravava: não deixa arquivos para trás
+  if (!store.getList(id) || memory.get(id) !== light) return dropOurs();
+  store.writeText(metaName(id), JSON.stringify({ ...light, files }));
+  light.files = files;
+  // a partir daqui, as seções vêm do disco: o texto sai da memória
+  partsCache.set(light, diskParts(id, light));
+  // conjuntos antigos, temporários e o formato antigo
+  const keep = new Set([metaName(id), ...SECTIONS.map((k) => secName(id, files, k))]);
+  for (const f of fs.readdirSync(store.DATA)) {
+    if (f.startsWith(`catalog-${id}.`) && !keep.has(f)) fs.unlink(store.file(f), () => {});
+  }
+}
+
+// Partes lidas do disco quando a tela pede (o texto da seção vai como está, sem interpretar).
+function diskParts(id, light) {
+  const meta = JSON.stringify(light).slice(1, -1);
+  const parts = { meta, memo: {} };
+  for (const k of SECTIONS) {
+    Object.defineProperty(parts, k, {
+      enumerable: true,
+      get: () => {
+        try { return fs.readFileSync(store.file(secName(id, light.files, k)), 'utf8'); } catch { return '{"cats":[],"items":[]}'; }
+      },
+    });
+  }
+  return parts;
+}
+
+// Resumo guardado no formato novo, ou null.
+function readMeta(id) {
+  const meta = store.readJson(metaName(id), null);
+  return meta && meta.files ? meta : null;
 }
 
 // first: a seção que a tela vai mostrar primeiro (o Xtream a pede antes e a libera assim que chega)
@@ -959,7 +1017,7 @@ function sectionFrom(list, sec) {
   });
 }
 
-const hasCache = (id) => memory.has(id) || fs.existsSync(store.file(`catalog-${id}.json`));
+const hasCache = (id) => memory.has(id) || fs.existsSync(store.file(metaName(id))) || fs.existsSync(store.file(legacyName(id)));
 
 // Uma seção para a tela. force: baixa a lista de novo. wait: a tela já recebeu outra seção desta mesma carga
 // (então espera a montagem em andamento, em vez de pegar a versão guardada antiga).
@@ -981,15 +1039,25 @@ async function getCatalog(list, { force = false } = {}) {
     // abrir com o app fechado: lê e interpreta o arquivo inteiro do catálogo (medido para o modo de depuração)
     const t0 = Date.now();
     const loop = diag.loopWatch();
-    cached = store.readJson(`catalog-${list.id}.json`, null);
+    const meta = readMeta(list.id);
+    if (meta) {
+      // formato novo: só o resumo agora; cada seção é lida do disco quando a tela pedir
+      cached = meta;
+      partsCache.set(cached, diskParts(list.id, cached));
+    } else {
+      // formato antigo (tudo num arquivo): lê uma vez e já grava no formato novo
+      cached = store.readJson(legacyName(list.id), null);
+      if (cached) {
+        tidyCatalog(cached); // listas baixadas antes da limpeza dos nomes
+        const parts = partsOf(cached);
+        cached = lightOf(cached);
+        partsCache.set(cached, parts);
+        const light = cached;
+        memory.set(list.id, light);
+        saveFiles(list.id, light, parts).catch((e) => console.error('gravar catálogo', list.id, e.message));
+      }
+    }
     if (cached) {
-      tidyCatalog(cached); // listas baixadas antes da limpeza dos nomes
-      // como depois de montar: fica o texto das seções e o resumo, sem os itens
-      const parts = partsOf(cached);
-      const light = {};
-      for (const k of Object.keys(cached)) if (!SECTIONS.includes(k)) light[k] = cached[k];
-      partsCache.set(light, parts);
-      cached = light;
       diag.last.coldRead = { listId: list.id, ms: Date.now() - t0, travadoMs: loop.stop(), memMB: Math.round(process.memoryUsage().rss / 1048576) };
     } else loop.stop();
   }
@@ -1017,7 +1085,7 @@ function progressOf(id) {
 function headOf(id) {
   let fd = null;
   try {
-    fd = fs.openSync(store.file(`catalog-${id}.json`), 'r');
+    fd = fs.openSync(store.file(legacyName(id)), 'r');
     const buf = Buffer.alloc(8192);
     return buf.toString('utf8', 0, fs.readSync(fd, buf, 0, buf.length, 0));
   } catch {
@@ -1027,14 +1095,14 @@ function headOf(id) {
   }
 }
 function updatedAtOf(id) {
-  const m = memory.get(id);
+  const m = memory.get(id) || readMeta(id);
   if (m) return m.updatedAt;
   const at = /"updatedAt":(\d+)/.exec(headOf(id));
   return at ? Number(at[1]) : null;
 }
 // Endereço do guia de programação que veio na lista (o guia é consultado o tempo todo na tela Ao vivo).
 function epgUrlOf(id) {
-  const m = memory.get(id);
+  const m = memory.get(id) || readMeta(id);
   if (m) return m.epgUrl || '';
   const at = /"epgUrl":("(?:[^"\\]|\\.)*")/.exec(headOf(id));
   try { return at ? JSON.parse(at[1]) : ''; } catch { return ''; }

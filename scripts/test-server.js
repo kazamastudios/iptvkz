@@ -287,6 +287,38 @@ test('Xtream: a seção da tela chega antes das outras, e as outras esperam a me
   assert.strictEqual(series.json.catalog.series.items[0].name, 'Série Teste');
 });
 
+test('catálogo no disco: um arquivo por seção, abre a frio pela seção e some ao excluir a lista', async () => {
+  await addLists([{ id: 'sec', type: 'm3u', name: 'Seções', url: `${FAKE}/lista.m3u` }]);
+  const first = await request('GET', '/api/catalog?list=sec&section=live');
+  assert.strictEqual(first.status, 200);
+  const files = () => fs.readdirSync(DATA).filter((f) => f.startsWith('catalog-sec.')).sort();
+  // grava por trás: espera o resumo e as três seções
+  await until(async () => (files().length === 4 ? true : null));
+  assert.ok(files().includes('catalog-sec.meta.json'));
+  assert.deepStrictEqual(files().filter((f) => f !== 'catalog-sec.meta.json').map((f) => f.split('.').slice(-2, -1)[0]).sort(), ['live', 'movies', 'series']);
+  // abrir a frio: o servidor esquece a lista e lê de novo do disco, seção por seção
+  const catalogs = require('../src/server/catalog.js');
+  catalogs.forget('sec');
+  for (const sec of ['live', 'movies', 'series']) {
+    const r = await request('GET', `/api/catalog?list=sec&section=${sec}`);
+    assert.strictEqual(r.json.catalog.updatedAt, first.json.catalog.updatedAt);
+    assert.ok(Array.isArray(r.json.catalog[sec].items));
+  }
+  const again = await request('GET', '/api/catalog?list=sec&section=live');
+  assert.deepStrictEqual(again.json.catalog.live, first.json.catalog.live, 'mesmo conteúdo lido do disco');
+  await request('DELETE', '/api/list?list=sec');
+  assert.deepStrictEqual(files(), [], 'excluir a lista apaga os arquivos do catálogo');
+});
+
+test('catálogo no formato antigo (um arquivo só) abre e é convertido', async () => {
+  await addLists([{ id: 'old', type: 'm3u', name: 'Antiga', url: `${FAKE}/lista.m3u` }]);
+  const old = { v: 1, listId: 'old', updatedAt: Date.now(), epgUrl: '', live: { cats: [{ id: 'g1', name: 'Notícias' }], items: [{ id: 'l1', name: 'Canal', cat: 'g1', url: 'http://x/1' }] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] } };
+  fs.writeFileSync(path.join(DATA, 'catalog-old.json'), JSON.stringify(old));
+  const r = await request('GET', '/api/catalog?list=old&section=live');
+  assert.strictEqual(r.json.catalog.live.items[0].name, 'Canal');
+  await until(async () => (fs.existsSync(path.join(DATA, 'catalog-old.meta.json')) && !fs.existsSync(path.join(DATA, 'catalog-old.json')) ? true : null));
+});
+
 test('EPG: guia .xml.gz da lista chega para o canal certo', async () => {
   const body = { list: 'm3uurl', chans: [{ k: 'a', e: 'c1', n: 'Canal 1' }] };
   const r = await until(async () => {

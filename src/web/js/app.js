@@ -1032,6 +1032,8 @@ async function waitForInternet() {
 }
 
 // Modo de depuração: o que importa na tela atual (lista, catálogo, quanto há desenhado)
+let diagInfo = null; // /api/diag: memória do servidor e a última leitura do catálogo a frio
+let diagAt = 0;
 debugSection('app', () => {
   const c = C();
   const rows = [];
@@ -1044,9 +1046,25 @@ debugSection('app', () => {
     const t = c.timing;
     if (t && t.download != null) {
       const sec = (ms) => `${(ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`;
-      const slow = Object.entries(t).filter(([k, v]) => typeof v === 'number' && !['total', 'download', 'login', 'MB', 'memMB', 'travadoMs'].includes(k)).sort((a, b) => b[1] - a[1])[0];
-      rows.push(['Baixar lista', `${sec(t.download)} do provedor${t.parallel ? '' : ' (pouca memória: em partes)'}`, tone(t.download, 8000, 25000),
+      const slow = Object.entries(t).filter(([k, v]) => typeof v === 'number' && !['total', 'download', 'login', 'MB', 'memMB', 'travadoMs', 'montar', 'converter'].includes(k)).sort((a, b) => b[1] - a[1])[0];
+      rows.push(['Baixar lista', `${sec(t.download)} do provedor${t.parallel === false ? ' (pouca memória: em partes)' : ''}${t.MB ? ` · ${n(t.MB)} MB` : ''}`, tone(t.download, 8000, 25000),
         slow ? `mais lento: ${slow[0].replace(/_/g, ' ')} ${sec(slow[1])}` : '', tone(slow && slow[1], 5000, 15000)]);
+    }
+    // a última montagem desta lista no aparelho: quanto levou, memória e quanto o servidor ficou sem responder
+    if (t && (t.montar != null || t.converter != null)) {
+      const sec = (ms) => `${(ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`;
+      rows.push(['Montar lista', [t.montar != null ? `${sec(t.montar)} montar` : '', t.converter != null ? `${sec(t.converter)} converter` : ''].filter(Boolean).join(' · '), tone((t.montar || 0) + (t.converter || 0), 5000, 20000),
+        t.memMB ? `pico ${n(t.memMB)} MB · servidor parado ${sec(t.travadoMs || 0)}` : '', tone(t.travadoMs, 1000, 4000)]);
+    }
+    // servidor agora (medido a cada 5 s com o modo de depuração aberto)
+    if (Date.now() - diagAt > 5000) {
+      diagAt = Date.now();
+      api('/api/diag').then((d) => { diagInfo = d; }, () => {});
+    }
+    if (diagInfo) {
+      const cold = diagInfo.coldRead && diagInfo.coldRead.listId === c.listId ? diagInfo.coldRead : null;
+      rows.push(['Servidor', `${n(diagInfo.memMB)} MB de memória`, tone(diagInfo.memMB, 500, 900),
+        cold ? `abrir com o app fechado: ${n(cold.ms)} ms` : '', tone(cold && cold.ms, 1000, 4000)]);
     }
   } else rows.push(['Lista', appState === 'loading' ? 'carregando...' : appState === 'error' ? 'erro ao carregar' : 'nenhuma', appState === 'error' ? 'bad' : '']);
   const nodes = document.getElementsByTagName('*').length;

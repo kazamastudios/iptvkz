@@ -31,38 +31,6 @@ function writeJson(name, value) {
   writeText(name, JSON.stringify(value));
 }
 
-// Grava em segundo plano: quem pediu a lista não espera o armazenamento (lento em TV Box e celular).
-// Se o app fechar antes, a lista só é baixada de novo na próxima vez.
-function writeTextLater(name, text) {
-  const target = file(name);
-  const tmp = `${target}.${process.pid}-${Date.now()}.tmp`;
-  // callbacks, não fs.promises: o servidor da TV LG roda em Node 8
-  const fail = (e) => { console.error('gravar', name, e.message); fs.unlink(tmp, () => {}); };
-  fs.writeFile(tmp, text, (err) => {
-    if (err) return fail(err);
-    fs.rename(tmp, target, (e2) => e2 && fail(e2));
-  });
-}
-
-// Igual a writeTextLater, mas com o texto em pedaços, gravados em sequência (sem juntar tudo antes).
-function writePiecesLater(name, pieces) {
-  const target = file(name);
-  const tmp = `${target}.${process.pid}-${Date.now()}.tmp`;
-  const fail = (e) => { console.error('gravar', name, e.message); fs.unlink(tmp, () => {}); };
-  fs.open(tmp, 'w', (err, fd) => {
-    if (err) return fail(err);
-    let i = 0;
-    const next = (e) => {
-      if (e) return fs.close(fd, () => fail(e));
-      if (i >= pieces.length) {
-        return fs.close(fd, (e2) => (e2 ? fail(e2) : fs.rename(tmp, target, (e3) => e3 && fail(e3))));
-      }
-      fs.write(fd, pieces[i++], null, 'utf8', (e4) => next(e4));
-    };
-    next();
-  });
-}
-
 // texto já convertido (o catálogo é convertido uma vez só e usado para gravar e para responder)
 function writeText(name, text) {
   const target = file(name);
@@ -87,10 +55,13 @@ function getList(id) {
 }
 
 function removeListFiles(id) {
-  for (const name of [`catalog-${id}.json`, `epg-${id}.json`, `m3u-${id}.m3u`]) {
+  // o catálogo são vários arquivos (catalog-<id>.meta.json e um por seção) ou, no formato antigo, catalog-<id>.json
+  let names = [];
+  try { names = fs.readdirSync(DATA).filter((f) => f.startsWith(`catalog-${id}.`)); } catch {}
+  for (const name of [...names, `epg-${id}.json`, `m3u-${id}.m3u`]) {
     try { fs.unlinkSync(file(name)); } catch {}
   }
 }
 
 module.exports = {
-  writeText, writeTextLater, writePiecesLater, DATA, file, readJson, writeJson, getState, setState, getList, removeListFiles };
+  writeText, DATA, file, readJson, writeJson, getState, setState, getList, removeListFiles };

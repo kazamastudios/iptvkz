@@ -130,6 +130,7 @@ export async function loadCatalog(listId, { force = false, first = 'live', whole
     listId,
     updatedAt: c.updatedAt,
     epgUrl: c.epgUrl,
+    timing: c.timing || null, // medições da última montagem (modo de depuração)
     live: EMPTY(),
     movies: EMPTY(),
     series: EMPTY(),
