@@ -35,6 +35,7 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -53,6 +54,24 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Inicia o servidor embutido e mostra a interface do IPTVKZ em tela cheia. */
 public class MainActivity extends Activity {
+    // seletor de arquivos aberto pelo WebView (onShowFileChooser) esperando a resposta
+    private static final int REQ_FILE = 4711;
+    private ValueCallback<Uri[]> filePick;
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_FILE) {
+            ValueCallback<Uri[]> cb = filePick;
+            filePick = null;
+            if (cb != null) {
+                Uri uri = resultCode == RESULT_OK && data != null ? data.getData() : null;
+                cb.onReceiveValue(uri != null ? new Uri[]{uri} : null);
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
     private static final String TAG = "IPTVKZ";
     private static final long START_TIMEOUT_MS = 45000;
     private static final long CHECK_LIMIT_MS = 8000;
@@ -338,6 +357,11 @@ public class MainActivity extends Activity {
             @JavascriptInterface
             public String lanAddress() { return MainActivity.this.lanAddress(); }
 
+            // a página só mostra "Escolher arquivo" quando o app sabe abrir o seletor (onShowFileChooser);
+            // APKs antigos, que recebem a interface nova pela atualização, não têm este método
+            @JavascriptInterface
+            public boolean canPickFiles() { return true; }
+
             // Espera o foco do campo chegar ao WebView antes de pedir o teclado.
             @JavascriptInterface
             public void showKeyboard() { main.postDelayed(MainActivity.this::showKeyboard, 150); }
@@ -382,6 +406,26 @@ public class MainActivity extends Activity {
             public void onHideCustomView() {
                 if (fullscreen != null) root.removeView(fullscreen);
                 fullscreen = null;
+            }
+
+            // "Escolher arquivo" (Arquivo M3U, Lista IPTVKZ): sem isto, o WebView ignora o botão no celular.
+            // Abre o seletor de arquivos do Android; a resposta chega em onActivityResult.
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (filePick != null) filePick.onReceiveValue(null);
+                filePick = callback;
+                Intent pick = new Intent(Intent.ACTION_GET_CONTENT);
+                pick.addCategory(Intent.CATEGORY_OPENABLE);
+                // listas .m3u e arquivos de lista baixada (.json) não têm um tipo único nos aparelhos: aceita todos
+                pick.setType("*/*");
+                try {
+                    startActivityForResult(Intent.createChooser(pick, "Escolher arquivo"), REQ_FILE);
+                } catch (Exception e) {
+                    filePick = null;
+                    callback.onReceiveValue(null);
+                    return false;
+                }
+                return true;
             }
         });
         root.addView(web, new ViewGroup.LayoutParams(-1, -1));

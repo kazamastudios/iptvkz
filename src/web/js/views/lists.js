@@ -55,7 +55,17 @@ function pairingBox(onList, onRestore, onReady) {
 }
 
 // App da TV (Android TV ou LG): sem seletor de arquivos nem downloads.
-const nativeTvApp = () => !!(window.IPTVKZAndroid || window.webOSSystem || window.PalmSystem);
+// App do celular Android: o mesmo app da Android TV, que lá se identifica com "SmartTV" no navegador.
+const androidApp = () => !!window.IPTVKZAndroid;
+const androidPhoneApp = () => androidApp() && !/SmartTV/.test(navigator.userAgent);
+// Aparelho que não abre o seletor de arquivos (o arquivo vem pelo celular, no QR Code): TV LG, Android TV e
+// APKs antigos do celular, sem o seletor (canPickFiles).
+const nativeTvApp = () => !!(window.webOSSystem || window.PalmSystem ||
+  (androidApp() && !(androidPhoneApp() && window.IPTVKZAndroid.canPickFiles && window.IPTVKZAndroid.canPickFiles())));
+// O próprio aparelho é o celular: QR Code não serve (seria escanear a si mesmo).
+// Celular com um APK antigo (sem o seletor de arquivos): não há QR Code para indicar, só atualizar o app.
+const OLD_APP = 'Este app ainda não abre arquivos no celular: atualize o IPTVKZ (Configurações) e tente de novo.';
+const isPhoneDevice = () => !TV.on && (androidPhoneApp() || window.matchMedia('(hover: none) and (pointer: coarse)').matches);
 
 // Baixa o arquivo da lista direto no aparelho (computador, celular, navegador).
 export function downloadList(list) {
@@ -229,7 +239,7 @@ export function openListPhone(list, { onSaved, onRefresh, onDelete } = {}) {
 }
 
 // O QR só faz sentido fora do celular (no celular, edita direto pela tela)
-export const canPhoneEdit = () => TV.on || !window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+export const canPhoneEdit = () => !isPhoneDevice();
 
 // Links tipo http://host:porta/get.php?username=X&password=Y&type=m3u_plus viram Xtream.
 // Texto colado com um ou vários endereços (um por linha, ou separados por espaço, vírgula...). Conserta o que dá:
@@ -522,7 +532,7 @@ export function openListForm(existing, onSaved, onDelete) {
     file: h('div', h('div.field', h('label', 'Arquivo da lista'),
       // os apps da TV (e o Android) não abrem seletor de arquivos: lá o arquivo vem pelo celular, no QR Code
       nativeTvApp() ? fileLabel : h('div.row', h('button.btn', { type: 'button', onclick: () => fileInput.click() }, ico('upload'), 'Escolher arquivo'), fileLabel), fileInput,
-      nativeTvApp() ? h('div.hint', 'Este aparelho não abre arquivos: escaneie o QR Code acima com o celular e escolha “Arquivo M3U” por lá.') : null)),
+      nativeTvApp() ? h('div.hint', isPhoneDevice() ? OLD_APP : 'Este aparelho não abre arquivos: escaneie o QR Code acima com o celular e escolha “Arquivo M3U” por lá.') : null)),
     load: h('div', h('div.field', h('label', 'Arquivo da lista baixada'),
       // os apps da TV não abrem seletor de arquivos: lá o arquivo vem pelo celular
       nativeTvApp() ? null : h('div.row', h('button.btn', { type: 'button', onclick: () => loadInput.click() }, ico('upload'), 'Escolher arquivo'), loadLabel), loadInput,
@@ -547,7 +557,7 @@ export function openListForm(existing, onSaved, onDelete) {
   const saveBtn = h('button.btn.primary', { type: 'submit' }, existing ? 'Salvar e recarregar' : 'Adicionar lista');
   setTab(tab);
   // TV e PC: QR para mandar a lista pelo celular (no PC é opcional, dá para digitar). No celular não faz sentido.
-  const touchOnly = !TV.on && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  const touchOnly = isPhoneDevice();
   const pairing = !touchOnly && !existing ? pairingBox((list) => {
     // o que veio do celular entra no mesmo caminho do formulário (validação e lista repetida)
     const x = list.type === 'm3u' ? xtreamFromUrl(list.url) : xtreamFromUrl(list.server);
@@ -599,7 +609,7 @@ export function openListForm(existing, onSaved, onDelete) {
     e.preventDefault();
     showErr('');
     if (tab === 'load') {
-      if (!loadFile) return showErr(nativeTvApp() ? 'Use o QR Code acima com o celular e escolha “Lista IPTVKZ”.' : 'Escolha o arquivo da lista baixada.');
+      if (!loadFile) return showErr(nativeTvApp() ? (isPhoneDevice() ? OLD_APP : 'Use o QR Code acima com o celular e escolha “Lista IPTVKZ”.') : 'Escolha o arquivo da lista baixada.');
       try {
         const body = await loadFile.text();
         const { summary } = await api('/api/list-import?dry=1', { method: 'POST', body });
@@ -630,7 +640,7 @@ export function openListForm(existing, onSaved, onDelete) {
       // sem nome: o do servidor (com várias listas, "Minha lista" repetido não diz qual é qual)
       if (!list.name) list.name = freeName(linkName(list.url), list.id);
     } else {
-      if (!pickedFile && !pairFile && ex.source !== 'file') return showErr(nativeTvApp() ? 'Escaneie o QR Code acima com o celular e mande o arquivo por “Arquivo M3U”.' : 'Escolha o arquivo .m3u da lista.');
+      if (!pickedFile && !pairFile && ex.source !== 'file') return showErr(nativeTvApp() ? (isPhoneDevice() ? OLD_APP : 'Escaneie o QR Code acima com o celular e mande o arquivo por “Arquivo M3U”.') : 'Escolha o arquivo .m3u da lista.');
       if (!list.name) list.name = freeName('Minha lista', list.id);
     }
 
