@@ -981,6 +981,9 @@ input, select, textarea { font: inherit; color: inherit; }
 .sk-ep { display: flex; align-items: center; gap: 16px; padding: 10px; border-radius: 12px; background: var(--card); }
 .sk-still { width: 168px; height: 94px; flex: none; }
 .list-blocked #statusBanner { display: none; }
+/* tentar outro servidor do provedor (telas de erro e de bloqueio) */
+.server-try { text-align: center; }
+.server-try select { width: auto; max-width: 100%; min-width: 0; }
 /* arquivo escolhido que não serve (um app, um vídeo...): o aviso fica no lugar do nome do arquivo */
 .err-text { color: var(--bad, #ff6b6b) !important; }
 .blocked-list p { max-width: 560px; }

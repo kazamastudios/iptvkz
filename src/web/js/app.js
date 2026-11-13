@@ -16,7 +16,7 @@ import { startLifeline } from './core/lifeline.js';
 import { guideView } from './views/guide.js';
 import { searchView } from './views/search.js';
 import { settingsView } from './views/settings.js';
-import { openListForm, openListPhone, welcomeView } from './views/lists.js';
+import { openListForm, openListPhone, welcomeView, openServers, parseServers } from './views/lists.js';
 import { overlayKey, isOverlayOpen } from './views/vodplayer.js';
 import { ensureTerms, termsAccepted } from './views/terms.js';
 import { initTvKeyboard } from './tv/tvkeyboard.js';
@@ -669,6 +669,43 @@ function listBlocked() {
   const l = activeList();
   return l && status.listId === l.id && status.data && BLOCK_INFO[status.data.state] ? status.data.state : null;
 }
+// Lista Xtream com outros servidores do mesmo provedor: nas telas de erro e de bloqueio, dá para tentar outro
+// servidor na hora (seletor no PC e no celular; botões na TV, onde o controle anda melhor entre botões) e
+// testar todos (a tela Servidores, com o teste de velocidade). Sem outros servidores, não aparece nada.
+function serverPicker(list) {
+  if (!list || list.type !== 'xtream') return null;
+  const main = parseServers(list.server)[0] || list.server;
+  const others = parseServers((list.servers || []).join('\n')).filter((s) => s !== main);
+  if (!others.length) return null;
+  const short = (s) => String(s).replace(/^https?:\/\//, '');
+  const use = async (server) => {
+    const i = S.lists.findIndex((l) => l.id === list.id);
+    if (i < 0) return;
+    S.lists[i] = { ...S.lists[i], server, servers: [main, ...others.filter((x) => x !== server)] };
+    await saveNow('lists').catch(() => {});
+    toast(`Tentando com ${short(server)}`, 'info');
+    status.at = 0;
+    checkListStatus();
+    loadActive(true);
+  };
+  const testAll = h('button.btn.ghost', {
+    onclick: () => openServers(S.lists.find((l) => l.id === list.id) || list, () => { status.at = 0; checkListStatus(); loadActive(true); }),
+  }, ico('server'), 'Testar servidores');
+  let choose;
+  if (TV.on) {
+    choose = h('div.row', { style: { flexWrap: 'wrap', gap: '8px', justifyContent: 'center' } },
+      ...others.slice(0, 3).map((s) => h('button.btn', { onclick: () => use(s) }, ico('refresh'), short(s))));
+  } else {
+    const sel = h('select.input', { 'aria-label': 'Outro servidor' }, ...others.map((s) => h('option', { value: s }, short(s))));
+    choose = h('div.row', { style: { gap: '8px', flexWrap: 'wrap', justifyContent: 'center' } },
+      sel, h('button.btn', { onclick: () => use(sel.value) }, ico('refresh'), 'Tentar com este'));
+  }
+  return h('div.server-try',
+    h('p.muted', { style: { margin: '18px 0 8px' } }, `Este provedor tem outros servidores. Em uso: ${short(main)}.`),
+    choose,
+    h('div', { style: { marginTop: '8px' } }, testAll));
+}
+
 function showBlocked(state) {
   const list = activeList();
   const [title, text] = BLOCK_INFO[refusedKey(list, state)];
@@ -697,7 +734,8 @@ function showBlocked(state) {
       S.lists.length > 1
         ? h('button.btn', { onclick: () => ctx.navigate('#/settings') }, ico('settings'), 'Trocar de lista')
         : h('button.btn', { onclick: () => ctx.addList() }, ico('plus'), 'Adicionar outra lista'),
-      h('button.btn.ghost', { onclick: remove }, ico('trash'), 'Excluir lista'))), 'IPTVKZ');
+      h('button.btn.ghost', { onclick: remove }, ico('trash'), 'Excluir lista')),
+    serverPicker(list)), 'IPTVKZ');
   if (TV.on) setTimeout(() => focusEl(again), 30);
 }
 
@@ -720,7 +758,8 @@ function showError() {
     h('div.row', { style: { marginTop: '8px' } },
       h('button.btn.primary', { onclick: () => loadActive(true) }, ico('refresh'), 'Tentar de novo'),
       list ? h('button.btn', { onclick: () => ctx.editList(list) }, ico('edit'), 'Editar lista') : null,
-      S.lists.length > 1 ? h('button.btn.ghost', { onclick: () => ctx.navigate('#/settings') }, 'Trocar de lista') : null)), 'IPTVKZ');
+      S.lists.length > 1 ? h('button.btn.ghost', { onclick: () => ctx.navigate('#/settings') }, 'Trocar de lista') : null),
+    serverPicker(list)), 'IPTVKZ');
 }
 
 // ---------- carregamento de listas ----------
