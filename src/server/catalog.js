@@ -144,6 +144,24 @@ function parseAttrs(s) {
   return attrs;
 }
 
+// Só os atributos que o app usa, achados com indexOf: numa lista de 60 MB, ler todos com expressão regular
+// pesava segundos no celular e na TV. Sem nenhum deles (nomes em maiúsculas, raro), cai no jeito completo.
+const EXTINF_KEYS = ['tvg-logo', 'group-title', 'tvg-id', 'tvg-name'];
+function quickAttrs(head) {
+  const attrs = {};
+  let found = false;
+  for (const k of EXTINF_KEYS) {
+    let at = head.indexOf(k + '="');
+    // precisa ser o nome inteiro ("tvg-id" não pode casar dentro de "x-tvg-id")
+    while (at > 0 && !/\s/.test(head[at - 1])) at = head.indexOf(k + '="', at + 1);
+    if (at < 0) continue;
+    const from = at + k.length + 2;
+    const end = head.indexOf('"', from);
+    if (end >= 0) { attrs[k] = head.slice(from, end); found = true; }
+  }
+  return found || head.indexOf('="') < 0 ? attrs : parseAttrs(head);
+}
+
 function parseExtinf(line) {
   const body = line.slice(line.indexOf(':') + 1);
   let inQuote = false;
@@ -155,17 +173,21 @@ function parseExtinf(line) {
   }
   const head = commaAt >= 0 ? body.slice(0, commaAt) : body;
   const name = commaAt >= 0 ? body.slice(commaAt + 1).trim() : '';
-  const attrs = parseAttrs(head);
+  const attrs = quickAttrs(head);
   return { name: name || attrs['tvg-name'] || 'Sem nome', attrs, group: attrs['group-title'] || '' };
 }
 
 function parseM3U(text) {
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
   const header = {};
   const entries = [];
   let cur = null;
-  for (const raw of lines) {
-    const line = raw.trim();
+  // linha a linha sem copiar o texto inteiro (tirar o BOM com replace ou dividir com split duplicava 60 MB)
+  let pos = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  while (pos < text.length) {
+    let nl = text.indexOf('\n', pos);
+    if (nl < 0) nl = text.length;
+    const line = text.slice(pos, nl).trim();
+    pos = nl + 1;
     if (!line) continue;
     if (line.startsWith('#EXTM3U')) {
       Object.assign(header, parseAttrs(line));
@@ -229,6 +251,9 @@ function catCollector() {
   };
 }
 
+const NO_VERSION = { base: '', label: '' };
+const KIND_RE = /\/(series|movie)\//i;
+
 function buildFromM3U(text, list) {
   const { header, entries } = parseM3U(text);
   if (!entries.length) throw new Error('A lista está vazia ou não é um arquivo M3U válido.');
@@ -243,15 +268,14 @@ function buildFromM3U(text, list) {
 
   for (const e of entries) {
     const url = e.url;
-    const lower = url.toLowerCase();
-    const ext = urlExt(url);
     const logo = e.attrs['tvg-logo'] || '';
+    const path = KIND_RE.exec(url);
     let kind = 'live';
-    if (lower.includes('/series/')) kind = 'series';
-    else if (lower.includes('/movie/')) kind = 'movie';
-    else if (VOD_EXT.has(ext)) kind = 'vod';
+    if (path) kind = path[1].toLowerCase() === 'series' ? 'series' : 'movie';
+    else if (VOD_EXT.has(urlExt(url))) kind = 'vod';
 
-    const { base, label } = splitVersion(e.name, e.group);
+    // canal não tem versões, e filme separa as versões depois (mergeMovies): só série e vídeo solto precisam aqui
+    const { base, label } = kind === 'live' || kind === 'movie' ? NO_VERSION : splitVersion(e.name, e.group);
     const epInfo = kind === 'live' || kind === 'movie' ? null : parseEpisode(base);
     if (kind === 'vod') kind = epInfo ? 'series' : 'movie';
 
@@ -750,6 +774,7 @@ const inflight = new Map(); // id -> Promise
 // Andamento do carregamento, para a tela mostrar que está andando: id -> { phase, got, total, at }
 // phase: 'download' (baixando do provedor) ou 'build' (organizando canais, filmes e séries)
 const progress = new Map();
+const texts = new Map(); // id -> { updatedAt, text }: o catálogo recém-montado já convertido em texto
 
 async function build(list) {
   progress.set(list.id, { phase: 'download', got: 0, total: 0, at: Date.now() });
@@ -786,14 +811,22 @@ async function buildNow(list) {
     prog.phase = 'build';
     data = buildFromM3U(text, list);
   } else {
+    const t0 = Date.now();
     const text = await fetchText(list.url, { onProgress: (got, total) => Object.assign(prog, { got, total }) });
+    const download = Date.now() - t0;
     prog.phase = 'build';
     // deixa a tela receber o "organizando" antes de o servidor ficar ocupado montando o catálogo
     await new Promise((r) => setTimeout(r, 50));
+    const t1 = Date.now();
     data = buildFromM3U(text, list);
+    // quanto levou cada parte (aparece no modo de depuração, como no Xtream)
+    data.timing = { download, montar: Date.now() - t1, MB: Math.round(text.length / 1048576) };
   }
   const catalog = tidyCatalog({ v: 1, listId: list.id, updatedAt: Date.now(), ...data });
-  store.writeJson(`catalog-${list.id}.json`, catalog);
+  // converte uma vez só: o mesmo texto vai para o arquivo e para a resposta à tela (index.js, catalogText)
+  const text = JSON.stringify(catalog);
+  store.writeTextLater(`catalog-${list.id}.json`, text);
+  texts.set(list.id, { updatedAt: catalog.updatedAt, text });
   memory.set(list.id, catalog);
   return catalog;
 }
@@ -824,6 +857,13 @@ function isRefreshing(id) {
   return inflight.has(id);
 }
 
+// Texto do catálogo recém-montado (uma vez: depois quem guarda é o index.js)
+function takeText(catalog) {
+  const t = texts.get(catalog.listId);
+  texts.delete(catalog.listId);
+  return t && t.updatedAt === catalog.updatedAt ? t.text : null;
+}
+
 function progressOf(id) {
   const p = progress.get(id);
   return p ? { phase: p.phase, got: p.got, total: p.total, secs: Math.round((Date.now() - p.at) / 1000) } : null;
@@ -839,6 +879,7 @@ function updatedAtOf(id) {
 
 function forget(id) {
   memory.delete(id);
+  texts.delete(id);
 }
 
 module.exports = {
@@ -847,6 +888,7 @@ module.exports = {
   isRefreshing,
   progressOf,
   updatedAtOf,
+  takeText,
   forget,
   xtreamSeriesInfo,
   xtreamVodInfo,

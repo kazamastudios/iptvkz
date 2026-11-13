@@ -12,8 +12,9 @@ function hash(str) {
 }
 
 function norm(s) {
-  return String(s || '')
-    .normalize('NFD')
+  s = String(s || '');
+  // sem acento (a maioria dos nomes) não precisa do normalize, que é lento em celular e TV
+  return (/[^\x00-\x7f]/.test(s) ? s.normalize('NFD') : s)
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
@@ -62,11 +63,19 @@ async function readText(url, { onProgress, idleMs = 45000, maxMs = 15 * 60000 } 
     const chunks = [];
     let got = 0;
     if (res.body) {
-      for await (const chunk of res.body) {
+      // getReader funciona no fetch do Node e no da TV LG (platforms/webos/service/shim.js). Lá, cancelar o
+      // pedido não encerra a leitura: o prazo vencido também precisa soltar a espera.
+      const reader = res.body.getReader();
+      const aborted = new Promise((_, reject) => ctrl.signal.addEventListener('abort', () => reject(new Error('aborted'))));
+      aborted.catch(() => {});
+      for (;;) {
+        const { done, value } = await Promise.race([reader.read(), aborted]);
+        if (done) break;
         clearTimeout(idle);
         idle = setTimeout(() => ctrl.abort(), idleMs);
-        chunks.push(chunk);
-        got += chunk.length;
+        const buf = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+        chunks.push(buf);
+        got += buf.length;
         if (onProgress) onProgress(got, total);
       }
     }

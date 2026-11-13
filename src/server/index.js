@@ -219,7 +219,7 @@ const catalogText = new Map(); // listId -> { updatedAt, text }
 function serializeCatalog(catalog) {
   const c = catalogText.get(catalog.listId);
   if (c && c.updatedAt === catalog.updatedAt) return c.text;
-  const text = JSON.stringify(catalog);
+  const text = catalogs.takeText(catalog) || JSON.stringify(catalog);
   catalogText.set(catalog.listId, { updatedAt: catalog.updatedAt, text });
   return text;
 }

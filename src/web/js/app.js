@@ -963,7 +963,7 @@ debugSection('app', () => {
     const t = c.timing;
     if (t && t.download != null) {
       const sec = (ms) => `${(ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`;
-      const slow = Object.entries(t).filter(([k, v]) => typeof v === 'number' && !['total', 'download', 'login'].includes(k)).sort((a, b) => b[1] - a[1])[0];
+      const slow = Object.entries(t).filter(([k, v]) => typeof v === 'number' && !['total', 'download', 'login', 'MB'].includes(k)).sort((a, b) => b[1] - a[1])[0];
       rows.push(['Baixar lista', `${sec(t.download)} do provedor${t.parallel ? '' : ' (pouca memória: em partes)'}`, tone(t.download, 8000, 25000),
         slow ? `mais lento: ${slow[0].replace(/_/g, ' ')} ${sec(slow[1])}` : '', tone(slow && slow[1], 5000, 15000)]);
     }

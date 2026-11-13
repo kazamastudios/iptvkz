@@ -28,9 +28,27 @@ function readJson(name, fallback) {
 }
 
 function writeJson(name, value) {
+  writeText(name, JSON.stringify(value));
+}
+
+// Grava em segundo plano: quem pediu a lista não espera o armazenamento (lento em TV Box e celular).
+// Se o app fechar antes, a lista só é baixada de novo na próxima vez.
+function writeTextLater(name, text) {
+  const target = file(name);
+  const tmp = `${target}.${process.pid}-${Date.now()}.tmp`;
+  // callbacks, não fs.promises: o servidor da TV LG roda em Node 8
+  const fail = (e) => { console.error('gravar', name, e.message); fs.unlink(tmp, () => {}); };
+  fs.writeFile(tmp, text, (err) => {
+    if (err) return fail(err);
+    fs.rename(tmp, target, (e2) => e2 && fail(e2));
+  });
+}
+
+// texto já convertido (o catálogo é convertido uma vez só e usado para gravar e para responder)
+function writeText(name, text) {
   const target = file(name);
   const tmp = target + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(value));
+  fs.writeFileSync(tmp, text);
   fs.renameSync(tmp, target);
 }
 
@@ -55,4 +73,5 @@ function removeListFiles(id) {
   }
 }
 
-module.exports = { DATA, file, readJson, writeJson, getState, setState, getList, removeListFiles };
+module.exports = {
+  writeText, writeTextLater, DATA, file, readJson, writeJson, getState, setState, getList, removeListFiles };
