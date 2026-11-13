@@ -57,8 +57,16 @@ const NET_ERRORS = [
 ];
 function netError(url, err) {
   const raw = [err && err.cause && err.cause.code, err && err.code, err && err.cause && err.cause.message, err && err.message].filter(Boolean).join(' ');
-  const hit = NET_ERRORS.find(([re]) => re.test(raw));
-  return new Error(`Não foi possível conectar a ${safeHost(url)}: ${hit ? hit[1] : raw || 'erro desconhecido'}.`);
+  let hit = NET_ERRORS.find(([re]) => re.test(raw));
+  let blocked = false;
+  // Link http:// que deu erro de certificado: alguém no caminho desviou o pedido para uma página https que não é a
+  // do servidor (é o que redes e operadoras fazem com endereços bloqueados). Mandar "usar http://" não faz sentido.
+  if (hit && /certificado/.test(hit[1]) && /^http:/i.test(String(url))) {
+    blocked = true;
+    hit = [null, 'a rede desviou o acesso para outra página (certificado de segurança que não é o do servidor). Isso costuma acontecer quando a rede ou a operadora bloqueia o endereço; no Wi-Fi ou em outra rede o resultado pode ser outro'];
+  }
+  // blocked: a tela explica que é a rede (não o app) e o status da lista fica "Bloqueada pela rede"
+  return Object.assign(new Error(`Não foi possível conectar a ${safeHost(url)}: ${hit ? hit[1] : raw || 'erro desconhecido'}.`), blocked ? { blocked: true } : {});
 }
 
 // Resposta HTTP de erro em palavras (lista M3U, API do Xtream).
@@ -114,6 +122,7 @@ async function readBody(url, onText, { onProgress, headers, raw = false, idleMs 
     // decodifica cada pedaço assim que chega (StringDecoder cuida de acento partido entre pedaços)
     const decoder = new StringDecoder('utf8');
     let got = 0;
+    let sinceYield = 0;
     if (res.body) {
       // getReader funciona no fetch do Node e no da TV LG (platforms/webos/service/shim.js). Lá, cancelar o
       // pedido não encerra a leitura: o prazo vencido também precisa soltar a espera.
@@ -129,6 +138,9 @@ async function readBody(url, onText, { onProgress, headers, raw = false, idleMs 
         got += buf.length;
         give(raw ? buf : decoder.write(buf));
         if (onProgress) onProgress(got, total);
+        // com os dados já chegando de uma vez (rede local, provedor rápido), a leitura não dava vez ao resto do
+        // servidor: uma pausa a cada ~512 KB deixa as outras respostas saírem
+        if ((sinceYield += buf.length) >= 512 * 1024) { sinceYield = 0; await new Promise((r) => setImmediate(r)); }
       }
     }
     if (!raw) give(decoder.end());
@@ -145,6 +157,53 @@ async function readBody(url, onText, { onProgress, headers, raw = false, idleMs 
   } finally {
     clearTimeout(idle);
     clearTimeout(hard);
+  }
+}
+
+// Lista JSON grande (os itens do Xtream: dezenas de MB) lida item por item enquanto chega: cada objeto do array de
+// fora vira um JSON.parse pequeno, e onItem guarda só o que interessa. Interpretar tudo de uma vez travava a TV Box
+// por ~9 s e punha a lista inteira na memória. Resposta que não é um array (erro, objeto) é lida inteira no fim.
+async function streamJsonArray(url, onItem, opts) {
+  let mode = 0; // 0: antes do '['; 1: dentro do array; 2: não é array (junta tudo)
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let piece = '';
+  const whole = [];
+  await readBody(url, (t) => {
+    if (mode === 2) { whole.push(t); return; }
+    let from = 0;
+    for (let i = 0; i < t.length; i++) {
+      const c = t.charCodeAt(i);
+      if (mode === 0) {
+        if (c === 91) { mode = 1; from = i + 1; } // [
+        else if (c > 32 && c !== 0xfeff) { mode = 2; whole.push(t.slice(i)); return; }
+        continue;
+      }
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === 92) esc = true; // barra invertida: o próximo caractere é literal
+        else if (c === 34) inStr = false; // aspas: fim do texto
+        continue;
+      }
+      if (c === 34) inStr = true;
+      else if (c === 123 || c === 91) { if (depth === 0) { piece = ''; from = i; } depth++; }
+      else if (c === 125 || c === 93) {
+        if (depth === 0) continue; // ] do fim
+        depth--;
+        if (depth === 0) {
+          onItem(JSON.parse(piece + t.slice(from, i + 1)));
+          piece = '';
+          from = i + 1;
+        }
+      }
+    }
+    if (depth > 0) piece += t.slice(from);
+  }, opts);
+  if (mode === 2) {
+    const v = JSON.parse(whole.join(''));
+    if (Array.isArray(v)) v.forEach(onItem);
+    else if (v && typeof v === 'object') Object.values(v).forEach((x) => { if (x && typeof x === 'object') onItem(x); });
   }
 }
 
@@ -197,8 +256,16 @@ async function streamLines(url, onLine, opts) {
 
 const fetchText = (url, opts) => readText(url, opts);
 
+// Uma nova tentativa quando a conexão cai no meio (ou foi fechada pelo provedor enquanto o app estava ocupado e o
+// pedido seguinte tentou reaproveitá-la). Não repete prazo esgotado nem resposta de erro do servidor.
 async function fetchJson(url, opts) {
-  const text = await readText(url, opts);
+  let text;
+  try {
+    text = await readText(url, opts);
+  } catch (err) {
+    if (err.timeout || err.status || err.handler) throw err;
+    text = await readText(url, opts);
+  }
   try {
     return JSON.parse(text);
   } catch {
@@ -225,4 +292,4 @@ function m3uFileProblem(head) {
   return null;
 }
 
-module.exports = { UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, m3uFileProblem, safeHost };
+module.exports = { UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, m3uFileProblem, streamJsonArray, safeHost };

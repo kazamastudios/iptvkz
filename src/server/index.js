@@ -585,6 +585,8 @@ const server = http.createServer((req, res) => {
   lastSeen = Date.now();
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (!BACKGROUND.has(url.pathname) || url.searchParams.get('uso') === '1') warmup.touch();
+  // app Android: a tela avisa se está no Wi-Fi (a preparação por trás só baixa listas no Wi-Fi)
+  if (url.pathname === '/api/ping' && url.searchParams.get('rede')) warmup.setNetwork(url.searchParams.get('rede'));
   if (url.pathname === '/proxy') {
     handleProxy(req, res, url.searchParams).catch((err) => {
       if (!res.headersSent) res.writeHead(500);

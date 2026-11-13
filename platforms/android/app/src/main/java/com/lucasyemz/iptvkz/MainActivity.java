@@ -19,6 +19,7 @@ import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -391,6 +392,22 @@ public class MainActivity extends Activity {
             // APKs antigos, que recebem a interface nova pela atualização, não têm este método
             @JavascriptInterface
             public boolean canPickFiles() { return true; }
+
+            // Tipo de rede, para o servidor só preparar listas por trás no Wi-Fi: "wifi" (Wi-Fi ou cabo), "dados"
+            // (rede móvel) ou "" (sem rede ou não deu para saber)
+            @JavascriptInterface
+            public String networkType() {
+                try {
+                    ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+                    NetworkCapabilities nc = cm.getNetworkCapabilities(cm.getActiveNetwork());
+                    if (nc == null) return "";
+                    if (nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) return "wifi";
+                    if (nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) return "dados";
+                } catch (Exception e) {
+                    Log.e(TAG, "Tipo de rede: " + e);
+                }
+                return "";
+            }
 
             // "Baixar lista" no celular: abre o "Salvar como" do Android e grava o arquivo que o servidor interno
             // gera (só endereços do próprio app). A página fica sabendo do resultado por window.__iptvkzSaved.
