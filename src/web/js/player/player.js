@@ -278,6 +278,10 @@ export class Player {
       if (this.openMs == null && this.loadAt) this.openMs = Math.round(performance.now() - this.loadAt);
       this._hideError();
       setTimeout(() => !this.destroyed && this._learnAudio(), 1500);
+      // Começou (ou voltou) a tocar: os controles ficam uns 4 s e saem da frente. O tempo de esconder pode ter vencido
+      // enquanto o vídeo abria ou estava pausado, e aí nada mais os escondia até o mouse mexer.
+      // Na TV o foco do controle fica no botão de play: aqui ele solta (Enter de novo ainda pausa).
+      if (this.root.classList.contains('ctrl-visible')) this._scheduleHide(4000, true);
     });
     on('canplay', () => this._spin(false));
     on('volumechange', () => {
@@ -916,13 +920,14 @@ export class Player {
     syncFocus();
   }
 
-  _scheduleHide(ms) {
+  // release: some mesmo com o foco do controle num botão (depois do play), soltando o foco
+  _scheduleHide(ms, release) {
     clearTimeout(this._hideT);
     this._hideT = setTimeout(() => {
       if (this.video.paused || !this.menu.classList.contains('hidden')) return;
       if (this._ctrlFocused()) {
         // no ao vivo as setas trocam de canal: sem uso, o foco solta dos botões
-        if (!(TV.on && this.opts.live)) return this._scheduleHide(ms);
+        if (!(TV.on && this.opts.live) && !release) return this._scheduleHide(ms);
         this.leaveControls();
       }
       this.root.classList.remove('ctrl-visible');
@@ -1249,7 +1254,10 @@ export class Player {
 
   _ctrlFocused() {
     const a = document.activeElement;
-    return !!a && a !== this.video && this.root.contains(a) && (a.tagName === 'BUTTON' || a.tagName === 'INPUT' || a === this._seekEl);
+    if (!a || a === this.video || !this.root.contains(a) || !(a.tagName === 'BUTTON' || a.tagName === 'INPUT' || a === this._seekEl)) return false;
+    // Botão clicado com o mouse também fica com o foco, mas não segura os controles na tela: só o foco do
+    // controle remoto ou do teclado (o que aparece destacado) segura. TV antiga sem :focus-visible: segura.
+    try { return a.matches(':focus-visible'); } catch { return true; }
   }
 
   _renderMenu() {
