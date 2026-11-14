@@ -75,6 +75,8 @@ async function sourceRefused(src) {
 // Quanto esperar pelo primeiro quadro de cada tentativa (a TV demora mais para abrir o decodificador).
 const START_TIMEOUT = 20000;
 const START_TIMEOUT_TV = 25000;
+// Internet que demora mais que isso num pedido pequeno é lenta de verdade (mesmo limite da bolinha do topo, em app.js).
+const SLOW_NET_MS = 1500;
 
 export function proxyUrl(url) {
   return '/proxy?url=' + encodeURIComponent(url);
@@ -215,8 +217,9 @@ export class Player {
 
     this.flashEl = h('div.seek-flash');
     this.ppEl = h('div.pp-flash'); // ícone de play/pause no centro, só ao apertar
-    // Internet instável: aviso discreto no canto, para não parecer defeito do player. Some quando o vídeo volta a fluir.
-    this.netTag = h('div.net-tag.hidden', h('i'), h('span', 'Internet instável'));
+    // Aviso discreto no canto dizendo o que está acontecendo (servidor da lista lento, reconectando, sem internet),
+    // para a espera não parecer defeito do player. Some quando o vídeo volta a fluir.
+    this.netTag = h('div.net-tag.hidden', h('i'), h('span', ''));
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
     this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
     this.root._player = this; // o Voltar do app acha o player em tela cheia por aqui
@@ -450,7 +453,7 @@ export class Player {
     const token = (this._loadToken = (this._loadToken || 0) + 1);
     this.root.classList.add('awaiting'); // a logo só aparece até o primeiro quadro, não nas travadinhas
     this._spin(true);
-    this.netTag.classList.add('hidden');
+    this._tagOff();
     this._netStall(true); // demorando muito para abrir também mostra o aviso
     // o limite de telas e os tocadores ao mesmo tempo; sem os tocadores, o vídeo vai pelo player do navegador
     const [ok] = await Promise.all([claimScreen(), playerLibs().catch(() => {})]);
@@ -726,6 +729,7 @@ export class Player {
     if (kind !== 'format' && this.attempts < (kind === 'timeout' ? 1 : 2)) {
       this.attempts++;
       this._spin(true);
+      this._tag(this.opts.live ? 'Reconectando ao canal...' : 'Reconectando ao servidor da lista...');
       clearTimeout(this._retryT);
       this._retryT = setTimeout(() => !this.destroyed && this._start(this.currentUrl()), 1200 * this.attempts);
       return;
@@ -733,6 +737,7 @@ export class Player {
     if (this.src.alt && !this.usingAlt) {
       this.usingAlt = true;
       this.attempts = 0;
+      this._tag('Tentando outro link do mesmo título...');
       this._start(this.src.alt);
       return;
     }
@@ -779,7 +784,7 @@ export class Player {
     );
     this.errorEl.classList.remove('hidden');
     clearTimeout(this._netT);
-    this.netTag.classList.add('hidden');
+    this._tagOff();
     if (TV.on) focusEl(this.errorEl.querySelector('.btn.primary')); // senão o controle fica preso atrás do player
   }
 
@@ -805,8 +810,34 @@ export class Player {
     this.center.classList.toggle('hidden', !on);
   }
 
-  // O vídeo parou esperando dados (ou demora a abrir): depois de um tempo, mostra "Internet instável" no canto.
-  // Sem internet nenhuma, o texto diz isso. Ao voltar a tocar, o aviso fica mais uns segundos e some.
+  // Aviso no canto: tone 'warn' (amarelo, esperando), 'bad' (vermelho, sem internet) ou 'ok' (verde, voltou).
+  _tag(text, tone = 'warn') {
+    clearTimeout(this._tagT);
+    this.netTag.lastChild.textContent = text;
+    this.netTag.dataset.tone = tone;
+    this.netTag.classList.remove('hidden');
+  }
+
+  _tagOff(after = 0) {
+    clearTimeout(this._tagT);
+    if (after) this._tagT = setTimeout(() => this.netTag.classList.add('hidden'), after);
+    else this.netTag.classList.add('hidden');
+  }
+
+  // Quem está atrasando: 'off' sem internet, 'slow' internet lenta (o teste é um pedido pequeno a sites grandes),
+  // 'ok' internet boa, então a demora é do servidor da lista.
+  async _whoIsSlow() {
+    if (navigator.onLine === false) return 'off';
+    try {
+      const r = await api('/api/net');
+      if (r.online === false) return 'off';
+      if (r.ms > SLOW_NET_MS && !r.busy) return 'slow';
+    } catch {}
+    return 'ok';
+  }
+
+  // O vídeo parou esperando dados (ou demora a abrir): depois de um tempo, diz no canto quem está atrasando.
+  // Ao voltar a tocar no meio do vídeo, mostra "Voltou" por uns segundos e some.
   _netStall(waiting) {
     clearTimeout(this._netT);
     if (waiting) {
@@ -814,16 +845,21 @@ export class Player {
         if (this.destroyed || !this.errorEl.classList.contains('hidden')) return;
         // mexeu na barra no meio da espera (ou está arrastando agora): é o vídeo indo para outro ponto, não a internet
         if (this.scrub || (this._isDragging && this._isDragging()) || Date.now() - (this._seekAt || 0) < 12000) return this._netStall(true);
-        let offline = navigator.onLine === false;
-        try { offline = offline || (await api('/api/net')).online === false; } catch {}
-        if (this.destroyed) return;
-        this.netTag.lastChild.textContent = offline ? 'Sem internet' : 'Internet instável';
-        this.netTag.classList.remove('hidden');
+        const who = await this._whoIsSlow();
+        if (this.destroyed || !this.errorEl.classList.contains('hidden') || (!this.video.paused && this.video.readyState >= 3)) return; // já voltou sozinho
+        const what = this.opts.live ? 'o canal' : 'o vídeo';
+        if (who === 'off') this._tag('Sem internet. Confira o Wi-Fi', 'bad');
+        else if (who === 'slow') this._tag(`Internet lenta. Carregando ${what}...`);
+        else if (!this.hadFrame) this._tag('O servidor da lista está demorando. Aguarde...');
+        else this._tag('Servidor da lista oscilando. Aguarde...');
         // folga: travadinhas curtas, servidores lentos para abrir e o carregamento depois de mexer na barra
         // (o provedor precisa achar o novo ponto do vídeo) não são internet ruim
       }, !this.hadFrame || Date.now() - (this._seekAt || 0) < 15000 ? 12000 : 6000);
     } else if (!this.netTag.classList.contains('hidden')) {
-      this._netT = setTimeout(() => this.netTag.classList.add('hidden'), 3000);
+      // abriu agora (primeiro quadro): só sai; voltou depois de travar: confirma
+      if (!this.hadFrame) return this._tagOff(600);
+      this._tag(this.opts.live ? 'Voltou' : 'Voltou a tocar', 'ok');
+      this._tagOff(2500);
     }
   }
 
