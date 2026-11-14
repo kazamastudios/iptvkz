@@ -441,10 +441,23 @@ input, select, textarea { font: inherit; color: inherit; }
 /* invisível mas tocável: o toque no vídeo mostra e esconde os controles (com visibility: hidden ele não recebia toques) */
 .player.native-video video { opacity: 0; }
 .player.pseudo-fs { position: fixed; z-index: 9000; }
-/* "Internet instável" no canto de cima à direita: aparece mesmo com os controles escondidos */
-.player .net-tag { position: absolute; top: 18px; right: 18px; z-index: 6; display: flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px; background: rgba(0, 0, 0, .66); border: 1px solid rgba(255, 181, 71, .45); color: #ffd38a; font-size: 13px; font-weight: 600; pointer-events: none; transition: opacity .3s; }
-.player .net-tag i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+/* Aviso de status no canto de cima à direita (servidor lento, reconectando, sem internet, voltou): aparece mesmo
+   com os controles escondidos. Amarelo esperando, vermelho sem internet, verde quando volta. */
+.player .net-tag { position: absolute; top: 18px; right: 18px; z-index: 6; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 36px); padding: 7px 13px; border-radius: 999px; background: rgba(0, 0, 0, .66); border: 1px solid rgba(255, 181, 71, .45); color: #ffd38a; font-size: 13px; font-weight: 600; pointer-events: none; transition: opacity .3s, transform .25s; }
+/* com os controles na tela, desce para baixo da barra de cima, para não cobrir o título nem o Voltar */
+.player.ctrl-visible .net-tag { transform: translateY(var(--tag-drop, 56px)); }
+.player .net-tag span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player .net-tag i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+.player .net-tag[data-tone="bad"] { border-color: rgba(255, 90, 90, .5); color: #ffb0b0; }
+.player .net-tag[data-tone="bad"] i { background: #ff5a5a; }
+.player .net-tag[data-tone="ok"] { border-color: rgba(61, 220, 151, .45); color: #a8f0cf; }
+.player .net-tag[data-tone="ok"] i { background: var(--good); }
 .player .net-tag.hidden { opacity: 0; }
+/* TV: lido de longe */
+.tv .player .net-tag { top: 28px; right: 28px; padding: 10px 18px; font-size: 20px; gap: 10px; }
+.tv .player .net-tag i { width: 11px; height: 11px; }
+/* celular: tela estreita, aviso menor */
+@media (max-width: 600px) { .player .net-tag { top: 12px; right: 12px; max-width: calc(100% - 24px); font-size: 12px; padding: 6px 11px; --tag-drop: 64px; } }
 /* Modo de depuração (Beta): painel no canto de cima à esquerda, por cima de tudo, sem pegar cliques */
 .debug-hud { position: fixed; bottom: 8px; right: 8px; z-index: 99999; max-width: min(620px, 70vw); padding: 7px 10px; border-radius: 10px; background: rgba(0, 0, 0, .78); color: #d8d8e2; font: 11px/1.55 ui-monospace, Consolas, monospace; pointer-events: none; }
 .debug-hud > div > span + span { margin-left: 8px; }
