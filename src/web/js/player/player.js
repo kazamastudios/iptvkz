@@ -1119,6 +1119,9 @@ export class Player {
       h('div.acts', btn, h('button.btn.ghost.small', { onclick: () => { this.nextDismissed = true; this._removeNextCard(); } }, 'Agora não')));
     this.root.append(card);
     this.nextCard = card;
+    // TV: o card já aparece com "Assistir agora" em foco (OK assiste, ← → troca, ↓ vai para os controles).
+    // No PC o mouse clica e no celular o toque; sem foco automático, para a barra de espaço seguir pausando.
+    if (TV.on && !this._ctrlFocused() && this.menu.classList.contains('hidden')) focusEl(btn);
     if (countdown) {
       let left = 8;
       btn.lastChild.textContent = `Assistir em ${left}s`;
@@ -1133,6 +1136,8 @@ export class Player {
 
   _removeNextCard() {
     clearInterval(this._nextT);
+    // o foco estava no card: solta, e as setas voltam a abrir os controles
+    if (this.nextCard && this.nextCard.contains(document.activeElement)) this.leaveControls();
     if (this.nextCard) this.nextCard.remove();
     this.nextCard = null;
   }
@@ -1303,6 +1308,7 @@ export class Player {
   _ctrlFocused() {
     const a = document.activeElement;
     if (!a || a === this.video || !this.root.contains(a) || !(a.tagName === 'BUTTON' || a.tagName === 'INPUT' || a === this._seekEl)) return false;
+    if (this.nextCard && this.nextCard.contains(a)) return false; // o card do próximo episódio não segura os controles
     // Botão clicado com o mouse também fica com o foco, mas não segura os controles na tela: só o foco do
     // controle remoto ou do teclado (o que aparece destacado) segura. TV antiga sem :focus-visible: segura.
     try { return a.matches(':focus-visible'); } catch { return true; }
@@ -1566,12 +1572,29 @@ export class Player {
     if (k === 'MediaStop' || code === 413) { if (this.opts.onBack) this.opts.onBack(); else this.video.pause(); return true; }
     if (TV.on) {
       const horizontal = k === 'ArrowLeft' || k === 'ArrowRight';
+      // Card "Próximo episódio": ← → trocam entre "Assistir agora" e "Agora não", OK escolhe, ↓ desce para os controles
+      const card = this.nextCard;
+      if (card && card.contains(document.activeElement)) {
+        const bs = [...card.querySelectorAll('button')];
+        const i = bs.indexOf(document.activeElement);
+        if (horizontal) { focusEl(bs[i + (k === 'ArrowRight' ? 1 : -1)] || bs[i]); return true; }
+        if (k === 'Enter') { document.activeElement.click(); return true; }
+        if (k === 'ArrowDown') { this._showCtrl(); focusEl(this._seekEl || this.btnPlay); return true; }
+        if (k === 'ArrowUp') return true;
+      }
       if (!this.opts.live && document.activeElement === this._seekEl) {
         this._showCtrl();
         if (k === 'ArrowDown') { focusEl(this.btnPlay); return true; }
-        if (k === 'ArrowUp') return true;
+        // o card fica logo acima da barra de tempo: ↑ volta para ele
+        if (k === 'ArrowUp') { if (card) focusEl(card.querySelector('button')); return true; }
         if (k === 'Enter') { this.togglePlay(); return true; }
         if (horizontal) { this._scrubKey(k === 'ArrowRight' ? 1 : -1); return true; }
+      }
+      // ↑ na fileira de botões sobe para a barra de tempo (com o card na tela, o ↑ pulava a barra e ia direto para ele)
+      if (k === 'ArrowUp' && card && this._seekEl && this.menu.classList.contains('hidden') && this.prow.contains(document.activeElement)) {
+        this._showCtrl();
+        focusEl(this._seekEl);
+        return true;
       }
       // ←/→ andam em ordem pela fileira de botões (a barra de tempo, por ser larga, roubava o foco)
       if (horizontal && this.menu.classList.contains('hidden') && document.activeElement.tagName === 'BUTTON' && this.prow.contains(document.activeElement)) {
@@ -1584,6 +1607,8 @@ export class Player {
       // com um botão dos controles em foco, as setas/OK navegam entre os botões
       if (this._ctrlFocused() || !this.menu.classList.contains('hidden')) { this._showCtrl(); return false; }
       if (k === 'Enter') { this.togglePlay(); this._showCtrl(); return true; }
+      // sem nada em foco e com o card na tela: ↑ vai para o card (ele fica acima dos controles); ↓ abre os controles
+      if (card && k === 'ArrowUp') { focusEl(card.querySelector('button')); return true; }
       if (k === 'ArrowDown' || k === 'ArrowUp') {
         this._showCtrl();
         focusEl(k === 'ArrowUp' && this._seekEl ? this._seekEl : this.btnPlay);
