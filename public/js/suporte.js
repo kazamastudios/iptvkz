@@ -18,6 +18,34 @@
   var aparelho = form.elements.aparelho;
   if (window.iptvkzDevice) aparelho.value = window.iptvkzDevice;
 
+  // Vindo do botão "Relatar problema" do app: aparelho, versão, parte do app e tipo do erro já preenchidos.
+  // Só valores conhecidos entram (nada da lista do usuário vem no endereço). Quem escaneou o QR Code da TV está no
+  // celular: o aparelho do relato é o que o app mandou, não o detectado aqui.
+  var ERROS = {
+    'sem-internet': T('Sem internet', 'No internet'),
+    'acesso-recusado': T('O provedor não aceitou o acesso', 'The provider refused access'),
+    'endereco': T('Endereço da lista não encontrado', 'List address not found'),
+    'servidor': T('O servidor da lista não respondeu', 'The list server did not respond'),
+    'lista': T('Não foi possível carregar a lista', 'Could not load the list'),
+  };
+  var inicial = '';
+  (function () {
+    var q;
+    try { q = new URLSearchParams(location.search); } catch (e) { return; }
+    if (q.get('de') !== 'app') return;
+    ['tipo', 'aparelho', 'area', 'momento'].forEach(function (nome) {
+      var v = q.get(nome), sel = form.elements[nome];
+      if (v && v !== 'outro' && Array.prototype.some.call(sel.options, function (o) { return o.value === v; })) sel.value = v;
+    });
+    var versao = (q.get('versao') || '').replace(/[^\w .·-]/g, '').slice(0, 30);
+    if (versao) form.elements.versao.value = versao;
+    var erro = ERROS[q.get('erro')];
+    if (erro) {
+      inicial = T('Apareceu no app: “', 'The app showed: “') + erro + '”.\n\n';
+      form.elements.mensagem.value = inicial;
+    }
+  })();
+
   // "Outro" abre um campo e passa a exigir o preenchimento
   ['area', 'momento', 'aparelho'].forEach(function (nome) {
     var select = form.elements[nome], outro = form.elements[nome + 'Outro'];
@@ -40,7 +68,7 @@
     if (d.momento === 'outro' && !d.momentoOutro.trim()) return ['momentoOutro', T('Conte em que momento aconteceu.', 'Tell us when it happened.')];
     if (!d.aparelho) return ['aparelho', T('Escolha o aparelho.', 'Choose the device.')];
     if (d.aparelho === 'outro' && !d.aparelhoOutro.trim()) return ['aparelhoOutro', T('Conte qual é o aparelho.', 'Tell us which device.')];
-    if (d.mensagem.trim().length < 10) return ['mensagem', T('Conte um pouco mais do que aconteceu.', 'Tell us a bit more about what happened.')];
+    if (d.mensagem.trim().length < 10 || (inicial && d.mensagem.trim() === inicial.trim())) return ['mensagem', T('Conte um pouco mais do que aconteceu.', 'Tell us a bit more about what happened.')];
     return null;
   }
   function texto(nome, d) {

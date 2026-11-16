@@ -1,6 +1,7 @@
 // Configurações: listas, categorias (ocultar/ordenar), reprodução e sobre.
 import { h, ico, fmtAgo, confirmDialog, toast, modal } from '../core/util.js';
 import { installTvButton } from './installtv.js';
+import { reportButton } from './report.js';
 import { isBeta, debugOn, setDebug } from '../core/debug.js';
 import {
   S, C, activeList, orderedCats, setCatHidden, setCatOrder, resetCats, setSetting, saveNow, api,
@@ -334,7 +335,8 @@ export function settingsView(params, ctx) {
     h('p', 'Os dados ficam em ', h('code', S.dataDir || 'data/'), '.'),
     h('p.muted', 'O IPTVKZ é só um player: não fornece listas nem conteúdo, e cada usuário responde pelo que adiciona e assiste.'),
     h('div.row', { style: { marginBottom: '12px' } },
-      h('button.btn.small', { onclick: () => showTermsDialog() }, ico('file'), 'Termos de uso')),
+      h('button.btn.small', { onclick: () => showTermsDialog() }, ico('file'), 'Termos de uso'),
+      reportButton({}, '.btn.small')),
     TV.on ? h('button.btn.small.ghost', {
       onclick: async () => {
         if (await confirmDialog('Sair do IPTVKZ?', 'O aplicativo será fechado nesta TV.', 'Sair')) exitApp();

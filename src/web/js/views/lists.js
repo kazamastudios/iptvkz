@@ -1,16 +1,7 @@
 // Formulário de lista (M3U link / arquivo / Xtream) e tela de boas-vindas.
-import { h, ico, modal, uid, toast, confirmDialog } from '../core/util.js';
+import { h, ico, modal, uid, toast, confirmDialog, loadQrLib } from '../core/util.js';
 import { S, saveNow, api } from '../core/store.js';
 import { TV, focusEl } from '../tv/tv.js';
-
-const loadQrLib = () => new Promise((resolve, reject) => {
-  if (window.qrcode) return resolve();
-  const s = document.createElement('script');
-  s.src = '/vendor/qrcode.js';
-  s.onload = resolve;
-  s.onerror = reject;
-  document.head.append(s);
-});
 
 // TV: QR Code para preencher a lista (ou restaurar um backup) pelo celular. Sem suporte neste aparelho, não aparece nada.
 function pairingBox(onList, onRestore, onReady) {

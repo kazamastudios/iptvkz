@@ -123,6 +123,8 @@ A página de suporte traz o formulário: tipo, parte do app, momento, aparelho (
 
 `public/_worker.js` recebe o formulário e cria o chamado com etiquetas `tipo:`, `area:` e `aparelho:`, para filtrar no GitHub. O relato é público, então links, credenciais e menções são removidos. A função também tem limite por IP e armadilhas contra robôs.
 
+**Vindo do app:** o botão “Relatar problema” (tela de erro da lista e Configurações → Sobre) abre `suporte.html?de=app&tipo=…&aparelho=…&versao=…&area=…&momento=…&erro=…`. A página só aceita valores que existem no formulário e, para `erro`, códigos conhecidos (`public/js/suporte.js`). O app não envia nada; na TV, mostra um QR Code com esse endereço.
+
 **Configuração no Cloudflare Pages:** criar um token do GitHub de acesso restrito a este repositório, com permissão de escrita em Issues, e guardá-lo como segredo `GITHUB_TOKEN`. Sem ele, ou se o envio falhar, a página oferece mandar o relato por e-mail para `suporte@kazamastudios.com.br`.
 
 **Contatos:** `suporte@kazamastudios.com.br` para ajuda com o app e `contato@kazamastudios.com.br` para privacidade, termos e assuntos gerais. Aparecem no rodapé, na página de suporte, no FAQ, nos termos e na política de privacidade.

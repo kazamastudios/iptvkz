@@ -1371,6 +1371,12 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
 .pair-box { display: flex; align-items: center; margin-bottom: 16px; padding: 12px; border-radius: 12px; background: var(--card); }
 .pair-qr { flex: none; width: 150px; height: 150px; margin-right: 16px; border-radius: 8px; background: #fff; image-rendering: pixelated; }
 .pair-box p { margin: 4px 0 0; font-size: 13px; }
+/* Relatar problema (TV): QR Code da página de suporte; o espaço fica reservado enquanto a imagem é gerada */
+.report-box { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; padding: 12px; border-radius: 12px; background: var(--card); }
+.report-qr { flex: none; width: 150px; height: 150px; }
+.report-qr .pair-qr { margin: 0; }
+.report-box p { margin: 4px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+.report-note { margin: 0; font-size: 13px; line-height: 1.45; }
 /* Instalar na TV */
 .install-tabs { flex-wrap: wrap; padding: 4px 0 12px; }
 .install-tabs button { flex: 1 1 auto; height: auto; min-height: 34px; padding: 6px 10px; }
