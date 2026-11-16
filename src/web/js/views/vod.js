@@ -91,7 +91,8 @@ export function posterCard(section, item, ctx, { where = false, onOpen = null, w
   }
   if (bottom.length) th.append(h('div.btags' + (bar ? '.over-bar' : ''), ...bottom));
   if (bar) th.append(bar);
-  return h('div.poster', { onclick: (e) => (onOpen ? onOpen(e) : ctx.navigate(`#/${cfg[section].detail}?id=${encodeURIComponent(item.id)}`)), title: item.name },
+  // role: o leitor de tela anuncia a capa como algo que abre (o foco do controle e do teclado já chega nela)
+  return h('div.poster', { role: 'button', onclick: (e) => (onOpen ? onOpen(e) : ctx.navigate(`#/${cfg[section].detail}?id=${encodeURIComponent(item.id)}`)), title: item.name },
     th, h('div.pt', cardName(item))); // embaixo da capa só o nome: ano, episódio e progresso ficam nas etiquetas da capa
 }
 

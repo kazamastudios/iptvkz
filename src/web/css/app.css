@@ -9,7 +9,7 @@
   --line-2: #33334a;
   --text: #f4f4f8;
   --muted: #9c9cb2;
-  --faint: #6b6b80;
+  --faint: #8a8aa0; /* contraste 4,5:1 ou mais em todos os fundos (era #6b6b80, 3,3:1 nos cards) */
   --accent: #ff2a2a;
   --accent-2: #ff5050;
   --accent-rgb: 255, 42, 42;
@@ -1442,6 +1442,16 @@ html { -webkit-tap-highlight-color: transparent; }
    deitado (tela mais larga), o Android cancelava o arraste depois de poucos milímetros e só arrastes curtos funcionavam. */
 .player .seek { touch-action: none; }
 @media (pointer: coarse) { .player .seek { height: 28px; } } /* tela de toque: barra mais alta para o dedo, deitado ou em pé */
+/* Tela de toque: alvos de pelo menos ~40px para o dedo. "Ver tudo" e o logo do topo ganham área de toque com
+   margem negativa (o desenho não muda); os botões das categorias crescem, porque ficam lado a lado e o dedo
+   errava (ocultava a categoria querendo só descer). PC (mouse) e TV (foco do controle) não mudam. */
+@media (pointer: coarse) {
+  html:not(.tv-wide) .shelf-head a { padding: 11px 8px; margin: -11px -8px; }
+  html:not(.tv-wide) .top-logo { padding: 6px; margin: -6px; }
+  html:not(.tv-wide) .cat-row .icon-btn { width: 40px; height: 40px; }
+  html:not(.tv-wide) .cat-row .adult-tag { height: 36px; padding: 0 10px; }
+  html:not(.tv-wide) .cat-row { gap: 6px; }
+}
 
 /* status de cada lista no seletor e em Configurações (ativa: só o ponto; o resto com o texto) */
 .list-menu button .lm-name { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; }

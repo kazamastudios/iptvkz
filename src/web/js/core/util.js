@@ -392,6 +392,7 @@ export function isBack(e) {
 }
 
 const modalStack = [];
+let modalSeq = 0;
 export function closeTopModal() {
   const top = modalStack[modalStack.length - 1];
   if (!top) return false;
@@ -403,8 +404,11 @@ export function closeTopModal() {
 // locked: sem botão de fechar, sem Esc/Voltar e sem clique fora (ex.: aceite dos termos).
 export function modal(title, body, { wide = false, cls = '', onClose, locked = false } = {}) {
   const root = $('#overlayRoot');
+  // leitor de tela (TalkBack, Guia de Áudio da LG): anuncia que uma janela abriu e lê o título dela
+  const titleId = 'mt' + (++modalSeq);
   const box = h('div.modal' + (wide ? '.wide' : '') + (cls ? '.' + cls : ''),
-    h('div.modal-head', h('h2', title), locked ? null : h('button.icon-btn', { title: 'Fechar', onclick: () => close() }, ico('close'))),
+    { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+    h('div.modal-head', h('h2', { id: titleId }, title), locked ? null : h('button.icon-btn', { title: 'Fechar', onclick: () => close() }, ico('close'))),
     h('div.modal-body', body));
   const back = h('div.modal-back', box);
   back.addEventListener('mousedown', (e) => {
