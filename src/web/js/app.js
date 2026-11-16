@@ -44,7 +44,8 @@ const NAV_OF = { movie: 'movies', serie: 'series' };
 const ALL_SECTIONS = ['live', 'movies', 'series'];
 const NEEDS = {
   live: ['live'], guide: ['live'], movies: ['movies'], movie: ['movies'], series: ['series'], serie: ['series'],
-  history: ALL_SECTIONS, mylist: ALL_SECTIONS, favorites: ALL_SECTIONS, search: ALL_SECTIONS,
+  // o Histórico só mostra filmes e séries: não espera os canais (na LG, abrir no Histórico levava ~1 s a mais)
+  history: ['movies', 'series'], mylist: ALL_SECTIONS, favorites: ALL_SECTIONS, search: ALL_SECTIONS,
 };
 const SECTION_NAME = { live: 'canais', movies: 'filmes', series: 'séries' };
 // a seção que a tela atual mostra primeiro (as telas que misturam tudo começam pelos canais)
@@ -752,19 +753,31 @@ function showBlocked(state) {
 // A rede (operadora) desviou o acesso ao endereço da lista: a mensagem do servidor diz isso (util.js, netError).
 const blockedByNetwork = (msg) => /desviou o acesso/.test(msg || '');
 
+// Título da tela de erro pelo tipo do problema: a pessoa entende de cara se é a internet dela, o login, o link ou o
+// servidor da lista (que costuma voltar sozinho). O texto do servidor, com os detalhes, continua embaixo.
+function loadErrorTitle(msg) {
+  const m = msg || '';
+  if (net.state === 'offline' || navigator.onLine === false) return ['Sem internet', 'Confira o Wi-Fi ou o cabo e toque em “Tentar de novo”.'];
+  if (/senha inválidos|recusou o acesso|erro 40[13]/.test(m)) return ['O provedor não aceitou o acesso', 'Confira o usuário e a senha (ou o link) com o seu provedor e, se mudou algo, edite a lista.'];
+  if (/endereço não encontrado|não existe \(erro 404\)|página, não uma lista/.test(m)) return ['Endereço da lista não encontrado', 'Confira se o link está certo, letra por letra, ou peça o link de novo ao provedor.'];
+  if (/não respondeu a tempo|Tempo esgotado|caiu no meio|recusou a conexão|está com problema|pedidos demais|sem caminho/.test(m)) return ['O servidor da lista não respondeu', 'Costuma ser passageiro. Espere um pouco e tente de novo.'];
+  return ['Não foi possível carregar a lista', ''];
+}
+
 function showError() {
   const list = activeList();
   // Bloqueio da rede: a pessoa tende a culpar o app. A tela diz com todas as letras de onde vem.
   const blocked = blockedByNetwork(lastError);
   // a tela já explica: o aviso do topo, igual, sai enquanto ela está aberta (como na lista vencida)
   document.body.classList.toggle('list-blocked', blocked);
+  const [title, hint] = blocked ? ['A rede bloqueou esta lista', ''] : loadErrorTitle(lastError);
   showState(h('div.center-state',
     ico('alert'),
-    h('h2', blocked ? 'A rede bloqueou esta lista' : 'Não foi possível carregar a lista'),
+    h('h2', title),
     blocked
       ? h('p', 'O endereço desta lista foi bloqueado pela rede ou pela operadora que você está usando agora, e por isso ela não funciona aqui. Não é um problema do IPTVKZ. Consulte o provedor da lista para mais informações e para saber se o acesso é permitido.')
-      : h('p', lastError),
-    blocked ? h('p.faint', { style: { fontSize: '12px' } }, lastError) : null,
+      : h('p', hint || lastError),
+    blocked || hint ? h('p.faint', { style: { fontSize: '12px' } }, lastError) : null,
     stateActions(h('button.btn.primary', { onclick: () => loadActive(true) }, ico('refresh'), 'Tentar de novo'), [
       list ? h('button.btn', { onclick: () => ctx.editList(list) }, ico('edit'), 'Editar lista') : null,
       S.lists.length > 1 ? h('button.btn', { onclick: () => ctx.navigate('#/settings') }, ico('settings'), 'Trocar de lista') : null,

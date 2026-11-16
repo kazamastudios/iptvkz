@@ -122,7 +122,9 @@ let sectionWatchers = [];
 const sectionArrived = () => { sectionWatchers = sectionWatchers.filter((fn) => fn() !== true); };
 
 export async function loadCatalog(listId, { force = false, first = 'live', whole = false } = {}) {
-  const order = [first, ...SECTIONS].filter((k, i, a) => SECTIONS.includes(k) && a.indexOf(k) === i);
+  // depois da primeira, filmes e séries antes dos canais: o Histórico (onde o app abre para quem já assistiu algo)
+  // precisa das duas, e quem está em Filmes costuma ir para Séries
+  const order = [first, 'movies', 'series', 'live'].filter((k, i, a) => SECTIONS.includes(k) && a.indexOf(k) === i);
   const get = (sec, extra) => api(`/api/catalog?list=${encodeURIComponent(listId)}&section=${sec}${extra}`);
   const r = await get(order[0], force ? '&refresh=1' : '');
   const c = r.catalog;
