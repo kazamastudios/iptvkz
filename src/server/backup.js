@@ -64,7 +64,18 @@ function summary(data) {
 
 // Junta as listas do arquivo às desta TV: a de mesmo id é substituída, as outras ficam como estão.
 // Devolve os ids restaurados.
-function apply(data) {
+// target: carregar o arquivo no lugar de uma lista existente (Editar > Lista IPTVKZ): a primeira lista do arquivo
+// assume o id dela, com favoritos, histórico e categorias.
+function retarget(data, target) {
+  const from = String(data.state.lists[0].id);
+  const state = { ...data.state, lists: [{ ...data.state.lists[0], id: target }] };
+  for (const k of PER_LIST) if (isObj(data.state[k])) state[k] = data.state[k][from] != null ? { [target]: data.state[k][from] } : {};
+  const files = typeof data.files[from] === 'string' ? { [target]: data.files[from] } : {};
+  return { ...data, state, files };
+}
+
+function apply(data, target) {
+  if (target && ID.test(String(target))) data = retarget(data, String(target));
   const lists = store.readJson('lists.json', []);
   const ids = [];
   for (const l of data.state.lists) {
@@ -84,8 +95,8 @@ function apply(data) {
     store.setState(k, cur);
   }
   store.setState('lists', lists);
-  const settings = store.readJson('settings.json', {});
-  if (!lists.some((l) => l && l.id === settings.activeList)) store.setState('settings', { ...settings, activeList: ids[0] });
+  // a lista carregada já abre
+  store.setState('settings', { ...store.readJson('settings.json', {}), activeList: ids[0] });
   return ids;
 }
 

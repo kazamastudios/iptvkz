@@ -78,7 +78,7 @@ const ctx = {
   },
   useList,
   refreshList,
-  editList: (l) => openListForm(l, onListSaved, deleteList),
+  editList: (l) => openListForm(l, onListSaved, deleteList, { onRefresh: refreshList }),
   phoneEdit: (l) => openListPhone(l, { onSaved: onListSaved, onRefresh: refreshList, onDelete: deleteList }),
   addList: () => openListForm(null, onListSaved),
   deleteList,

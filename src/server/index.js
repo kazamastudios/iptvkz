@@ -288,7 +288,9 @@ async function handleApi(req, res, url) {
     let data;
     try { data = backup.parse((await readBody(req, 60 * 1024 * 1024)).toString('utf8')); } catch (err) { return sendJson(res, 400, { error: err.message }); }
     if (q.get('dry') === '1') return sendJson(res, 200, { summary: backup.summary(data) });
-    for (const id of backup.apply(data)) {
+    const target = q.get('target');
+    if (target && !store.getList(target)) return sendJson(res, 404, { error: 'Lista não encontrada.' });
+    for (const id of backup.apply(data, target)) {
       catalogs.forget(id);
       epg.forget(id);
     }
