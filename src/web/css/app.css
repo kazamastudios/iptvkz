@@ -409,6 +409,16 @@ input, select, textarea { font: inherit; color: inherit; }
 .tv .stream-home .hero-stream { min-height: 0; }
 /* o card em foco para a ~58px do destaque: cabe o título da fileira dele, e a fileira de cima some atrás do destaque */
 .stream-scroll { scroll-padding-top: calc(var(--app-h, 100vh) * .46 + 58px); scroll-padding-top: calc(max(var(--app-h, 100vh) * .46, 350px) + 58px); } /* a 2ª acompanha o min-height do destaque; TVs sem max() usam a 1ª */
+/* tela baixa (tablet deitado, portátil, notebook pequeno): cards e destaque um pouco menores, cabem mais títulos */
+@media (max-height: 760px) {
+  html:not(.tv-wide) .shelf-row .poster.wide { width: 224px; }
+  html:not(.tv-wide) .shelf-row .poster { width: 132px; }
+  html:not(.tv-wide) .poster-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 18px 12px; }
+  html:not(.tv-wide) .stream-cat .poster-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+  html:not(.tv-wide) .stream-home .hero-stream { min-height: 280px; }
+  html:not(.tv-wide) .stream-scroll { scroll-padding-top: calc(var(--app-h, 100vh) * .46 + 58px); scroll-padding-top: calc(max(var(--app-h, 100vh) * .46, 280px) + 58px); }
+  html:not(.tv-wide) .hero-title { font-size: 34px; }
+}
 /* celular: destaque ocupa a largura, texto por cima da imagem, cards menores */
 @media (max-width: 760px) {
   /* no celular não há mouse nem foco para mudar o destaque, e preso ele tomaria metade da tela: rola junto */
@@ -784,7 +794,9 @@ input, select, textarea { font: inherit; color: inherit; }
 .skeleton { background: linear-gradient(90deg, #181822 0%, #20202c 50%, #181822 100%); background-size: 200% 100%; animation: sk 1.2s infinite; border-radius: 12px; }
 @keyframes sk { to { background-position: -200% 0; } }
 
-@media (max-width: 1100px) {
+/* Barra lateral só com ícones: telas estreitas e também as baixas de tablet e portátil (Switch com Android,
+   1280x720), onde o menu largo tomava espaço demais. A TV sem toque (tv-wide) mantém o menu largo. */
+@media (max-width: 1100px), (max-width: 1400px) and (max-height: 760px) {
   :root:not(.tv-wide) { --sidebar: 76px; }
   html:not(.tv-wide) .brand span, html:not(.tv-wide) .nav a span:not(.ico), html:not(.tv-wide) .sidebar-foot a span:not(.ico), html:not(.tv-wide) .nav .count, html:not(.tv-wide) .list-btn .meta, html:not(.tv-wide) .list-btn > .ico:last-child, html:not(.tv-wide) .sidebar-foot .status span, html:not(.tv-wide) .build-tag > span:first-child { display: none; }
   html:not(.tv-wide) .nav a, html:not(.tv-wide) .sidebar-foot a, html:not(.tv-wide) .list-btn { justify-content: center; }
@@ -945,7 +957,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .brand img.logo-h { width: 192px; height: auto; border-radius: 0; display: block; }
 .brand img.logo-mark { display: none; }
 .brand { padding: 6px 8px 6px 12px; margin-bottom: 10px; }
-@media (max-width: 1100px) {
+@media (max-width: 1100px), (max-width: 1400px) and (max-height: 760px) {
   html:not(.tv-wide) .brand img.logo-h { display: none; }
   html:not(.tv-wide) .brand img.logo-mark { display: block; }
 }
