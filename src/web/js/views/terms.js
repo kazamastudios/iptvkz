@@ -1,16 +1,19 @@
 // Termos de uso: aceite obrigatório na primeira vez (e quando a versão dos termos mudar).
-import { h, ico, modal } from '../core/util.js';
+import { h, ico, modal, toast, SITE, openSite } from '../core/util.js';
 import { S, setSetting, saveNow } from '../core/store.js';
 import { focusEl, normKey, TV } from '../tv/tv.js';
 
 export const TERMS_VERSION = 4;
 
 // Termos e política completos no site. Na TV não há navegador à mão: mostra só o endereço para ler no celular.
-const SITE = 'iptvkz.kazamastudios.com.br';
 function siteLinks() {
   const style = { margin: '0 0 4px', fontSize: '13px' };
   if (TV.on) return h('p.muted', { style }, `Termos e política de privacidade completos em ${SITE}`);
-  const link = (page, label) => h('a', { href: `https://${SITE}/${page}`, target: '_blank', rel: 'noopener' }, label);
+  // pelo openSite: no celular Android o link comum não abria nada (o WebView do app não sai para fora)
+  const link = (page, label) => h('a', {
+    href: `https://${SITE}/${page}`, target: '_blank', rel: 'noopener',
+    onclick: (e) => { e.preventDefault(); if (!openSite(`https://${SITE}/${page}`)) toast(`Abra no navegador: ${SITE}/${page}`, 'info', 6000); },
+  }, label);
   return h('p.muted', { style }, 'Versão completa no site: ', link('termos.html', 'Termos de uso'), ' · ', link('privacidade.html', 'Política de privacidade'));
 }
 

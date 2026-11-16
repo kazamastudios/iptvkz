@@ -473,3 +473,26 @@ export function confirmDialog(title, text, okLabel = 'Confirmar', danger = false
 export function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
+
+// ---------- site e QR Code ----------
+export const SITE = 'iptvkz.kazamastudios.com.br';
+
+// Abre uma página do site no navegador do aparelho. Devolve false quando não deu (Android com o app antigo, sem a
+// ponte): quem chama mostra o endereço. No Android o WebView do app não abre links de fora; no PC (Electron) o
+// window.open vai para o navegador padrão.
+export function openSite(url) {
+  const a = window.IPTVKZAndroid;
+  if (a) return a.openSite ? !!a.openSite(url) : false;
+  window.open(url, '_blank', 'noopener');
+  return true;
+}
+
+// Biblioteca do QR Code, carregada só quando for usar.
+export const loadQrLib = () => new Promise((resolve, reject) => {
+  if (window.qrcode) return resolve();
+  const s = document.createElement('script');
+  s.src = '/vendor/qrcode.js';
+  s.onload = resolve;
+  s.onerror = reject;
+  document.head.append(s);
+});

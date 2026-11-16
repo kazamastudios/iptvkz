@@ -388,6 +388,22 @@ public class MainActivity extends Activity {
             @JavascriptInterface
             public String lanAddress() { return MainActivity.this.lanAddress(); }
 
+            // Abre uma página do site do IPTVKZ (suporte, termos) no navegador do aparelho: o WebView do app não
+            // abre links de fora. Só o próprio site, porque a ponte também fica visível para quadros internos
+            // (trailer do YouTube). Devolve false sem navegador (comum na TV): a página mostra o QR Code.
+            @JavascriptInterface
+            public boolean openSite(String url) {
+                if (url == null || !url.startsWith("https://iptvkz.kazamastudios.com.br/")) return false;
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE);
+                // sem resolveActivity: no Android 11+ ele não enxerga os navegadores sem <queries> no manifesto
+                try {
+                    startActivity(i);
+                    return true;
+                } catch (RuntimeException e) {
+                    return false;
+                }
+            }
+
             // a página só mostra "Escolher arquivo" quando o app sabe abrir o seletor (onShowFileChooser);
             // APKs antigos, que recebem a interface nova pela atualização, não têm este método
             @JavascriptInterface

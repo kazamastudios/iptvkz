@@ -19,6 +19,7 @@ import { settingsView } from './views/settings.js';
 import { openListForm, openListPhone, welcomeView, openServers, parseServers } from './views/lists.js';
 import { overlayKey, isOverlayOpen } from './views/vodplayer.js';
 import { ensureTerms, termsAccepted } from './views/terms.js';
+import { reportButton } from './views/report.js';
 import { initTvKeyboard } from './tv/tvkeyboard.js';
 import { initSmoothScroll } from './core/smoothscroll.js';
 import { VIEW_MODES, viewMode, setViewMode, applyViewMode } from './core/viewmode.js';
@@ -757,11 +758,11 @@ const blockedByNetwork = (msg) => /desviou o acesso/.test(msg || '');
 // servidor da lista (que costuma voltar sozinho). O texto do servidor, com os detalhes, continua embaixo.
 function loadErrorTitle(msg) {
   const m = msg || '';
-  if (net.state === 'offline' || navigator.onLine === false) return ['Sem internet', 'Confira o Wi-Fi ou o cabo e toque em “Tentar de novo”.'];
-  if (/senha inválidos|recusou o acesso|erro 40[13]/.test(m)) return ['O provedor não aceitou o acesso', 'Confira o usuário e a senha (ou o link) com o seu provedor e, se mudou algo, edite a lista.'];
-  if (/endereço não encontrado|não existe \(erro 404\)|página, não uma lista/.test(m)) return ['Endereço da lista não encontrado', 'Confira se o link está certo, letra por letra, ou peça o link de novo ao provedor.'];
-  if (/não respondeu a tempo|Tempo esgotado|caiu no meio|recusou a conexão|está com problema|pedidos demais|sem caminho/.test(m)) return ['O servidor da lista não respondeu', 'Costuma ser passageiro. Espere um pouco e tente de novo.'];
-  return ['Não foi possível carregar a lista', ''];
+  if (net.state === 'offline' || navigator.onLine === false) return ['Sem internet', 'Confira o Wi-Fi ou o cabo e toque em “Tentar de novo”.', 'sem-internet'];
+  if (/senha inválidos|recusou o acesso|erro 40[13]/.test(m)) return ['O provedor não aceitou o acesso', 'Confira o usuário e a senha (ou o link) com o seu provedor e, se mudou algo, edite a lista.', 'acesso-recusado'];
+  if (/endereço não encontrado|não existe \(erro 404\)|página, não uma lista/.test(m)) return ['Endereço da lista não encontrado', 'Confira se o link está certo, letra por letra, ou peça o link de novo ao provedor.', 'endereco'];
+  if (/não respondeu a tempo|Tempo esgotado|caiu no meio|recusou a conexão|está com problema|pedidos demais|sem caminho/.test(m)) return ['O servidor da lista não respondeu', 'Costuma ser passageiro. Espere um pouco e tente de novo.', 'servidor'];
+  return ['Não foi possível carregar a lista', '', 'lista'];
 }
 
 function showError() {
@@ -770,7 +771,7 @@ function showError() {
   const blocked = blockedByNetwork(lastError);
   // a tela já explica: o aviso do topo, igual, sai enquanto ela está aberta (como na lista vencida)
   document.body.classList.toggle('list-blocked', blocked);
-  const [title, hint] = blocked ? ['A rede bloqueou esta lista', ''] : loadErrorTitle(lastError);
+  const [title, hint, code] = blocked ? ['A rede bloqueou esta lista', ''] : loadErrorTitle(lastError);
   showState(h('div.center-state',
     ico('alert'),
     h('h2', title),
@@ -781,6 +782,8 @@ function showError() {
     stateActions(h('button.btn.primary', { onclick: () => loadActive(true) }, ico('refresh'), 'Tentar de novo'), [
       list ? h('button.btn', { onclick: () => ctx.editList(list) }, ico('edit'), 'Editar lista') : null,
       S.lists.length > 1 ? h('button.btn', { onclick: () => ctx.navigate('#/settings') }, ico('settings'), 'Trocar de lista') : null,
+      // bloqueio da rede não é falha do app: não pede relato
+      blocked ? null : reportButton({ area: 'lista', momento: 'carregar', erro: code }),
     ]),
     serverPicker(list)), 'IPTVKZ');
 }
