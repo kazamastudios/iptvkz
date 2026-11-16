@@ -111,18 +111,19 @@ export function downloadList(list) {
 }
 
 // Resumo do arquivo de lista baixada, mostrado antes de carregar.
-function loadText(s) {
+// replacing: nome da lista que o arquivo vai substituir (Editar); sem ele, a lista entra junto com as outras.
+function loadText(s, replacing) {
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const when = s.createdAt ? ` em ${new Date(s.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : '';
   const text = `${s.names.join(', ') || plural(s.lists, 'lista', 'listas')}, baixada${when}, com `
     + `${plural(s.favorites, 'favorito', 'favoritos')} e ${plural(s.history, 'item', 'itens')} no histórico. `
-    + 'Ela entra junto com as listas que já estão aqui.';
+    + (replacing ? `Ela substitui “${replacing}” e já abre.` : 'Ela entra junto com as listas que já estão aqui e já abre.');
   return text;
 }
 
 // Confirma e aplica: apply faz a chamada que junta a lista nesta TV/computador.
-async function confirmLoad(s, apply) {
-  if (!await confirmDialog('Carregar lista?', loadText(s), 'Carregar lista')) return false;
+async function confirmLoad(s, apply, replacing) {
+  if (!await confirmDialog('Carregar lista?', loadText(s, replacing), 'Carregar lista')) return false;
   try {
     await apply();
     toast('Lista carregada', 'ok');
@@ -196,7 +197,15 @@ export function openListSave(list) {
 
 // Editar pelo celular: QR Code que abre no celular a lista com as abas Dados e Servidores, Atualizar, Excluir e
 // Salvar. A TV aplica cada pedido que chega; a janela fica aberta (e a chave valendo) para mais mudanças.
-export function openListPhone(list, { onSaved, onRefresh, onDelete } = {}) {
+// O bloco do QR (status e aplicação dos pedidos) serve à janela própria e à aba “Pelo celular” do Editar.
+export function openListPhone(list, opts = {}) {
+  let m = null;
+  const box = phoneEditBox(list, { ...opts, onClosed: () => m && m.close() });
+  m = modal(`Editar “${list.name}” pelo celular`, box.el, { onClose: box.stop });
+  box.start();
+}
+
+function phoneEditBox(list, { onSaved, onRefresh, onDelete, onClosed } = {}) {
   const status = h('p.muted', 'Preparando o QR Code...');
   const qrBox = h('div.pair-box.hidden');
   let token = null;
@@ -208,7 +217,6 @@ export function openListPhone(list, { onSaved, onRefresh, onDelete } = {}) {
     if (token) api('/api/pair/end', { method: 'POST', body: JSON.stringify({ token }) }).catch(() => {});
     token = null;
   };
-  const m = modal(`Editar “${list.name}” pelo celular`, h('div', qrBox, status), { onClose: stop });
   const hhmm = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   async function apply(e) {
     const i = S.lists.findIndex((l) => l.id === e.id);
@@ -216,7 +224,7 @@ export function openListPhone(list, { onSaved, onRefresh, onDelete } = {}) {
     const old = S.lists[i];
     if (e.action === 'delete') {
       stop();
-      m.close();
+      if (onClosed) onClosed();
       toast(`“${old.name}” foi excluída pelo celular`, 'ok');
       if (onDelete) onDelete(old.id);
       return;
@@ -252,7 +260,10 @@ export function openListPhone(list, { onSaved, onRefresh, onDelete } = {}) {
     }
     timer = setTimeout(poll, 2000);
   };
-  (async () => {
+  let started = false;
+  const start = () => (async () => {
+    if (started) return;
+    started = true;
     const native = window.IPTVKZAndroid;
     const address = native && native.lanAddress ? native.lanAddress() : undefined;
     const r = await api('/api/pair/start', { method: 'POST', body: JSON.stringify({ address, list: list.id, mode: 'edit' }) }).catch(() => null);
@@ -274,6 +285,7 @@ export function openListPhone(list, { onSaved, onRefresh, onDelete } = {}) {
     status.textContent = 'Aguardando o celular...';
     poll();
   })().catch(() => { status.textContent = 'Não foi possível preparar o QR Code. Tente de novo.'; });
+  return { el: h('div', qrBox, status), start, stop };
 }
 
 // O QR só faz sentido fora do celular (no celular, edita direto pela tela)
@@ -456,7 +468,7 @@ function findDuplicate(list) {
   return key ? S.lists.find((l) => l.id !== list.id && listKey(l) === key) : null;
 }
 
-export function openListForm(existing, onSaved, onDelete) {
+export function openListForm(existing, onSaved, onDelete, { onRefresh } = {}) {
   const ex = existing || {};
   let tab = ex.type === 'xtream' ? 'xtream' : ex.source === 'file' ? 'file' : existing ? 'url' : 'xtream';
   let pickedFile = null;
@@ -591,22 +603,35 @@ export function openListForm(existing, onSaved, onDelete) {
       // os apps da TV não abrem seletor de arquivos: lá o arquivo vem pelo celular
       nativeTvApp() ? null : h('div.row.file-row', h('button.btn', { type: 'button', onclick: () => loadInput.click() }, ico('upload'), 'Escolher arquivo'), loadLabel), loadInput,
       phoneHint,
-      h('div.hint', 'O arquivo começa com “iptvkz-lista” e é gerado pelo botão “Baixar lista”. A lista entra com favoritos e histórico; as outras continuam.'))),
+      existing && nativeTvApp() ? h('div.hint', 'Nesta TV o arquivo chega pelo celular: em “Adicionar lista”, escaneie o QR Code e escolha “Lista IPTVKZ”.') : null,
+      h('div.hint', existing
+        ? `O arquivo começa com “iptvkz-lista” e é gerado pelo botão “Baixar lista”. Ele substitui “${ex.name}” (dados, favoritos e histórico); as outras listas continuam.`
+        : 'O arquivo começa com “iptvkz-lista” e é gerado pelo botão “Baixar lista”. A lista entra com favoritos e histórico; as outras continuam.'))),
   };
   const tabBtns = {
     xtream: h('button', { type: 'button', onclick: () => setTab('xtream') }, ico('server'), 'Xtream Codes'),
     url: h('button', { type: 'button', onclick: () => setTab('url') }, ico('link'), 'Link M3U'),
     file: h('button', { type: 'button', onclick: () => setTab('file') }, ico('file'), 'Arquivo M3U'),
   };
-  if (!existing) tabBtns.load = h('button', { type: 'button', onclick: () => setTab('load') }, ico('upload'), 'Lista IPTVKZ');
+  tabBtns.load = h('button', { type: 'button', onclick: () => setTab('load') }, ico('upload'), 'Lista IPTVKZ');
+  // Editar: a mesma edição pelo celular do menu da lista, numa aba (fora do celular, onde já se edita na tela)
+  let phoneBox = null;
+  if (existing && canPhoneEdit()) {
+    phoneBox = phoneEditBox(ex, { onSaved, onRefresh, onDelete, onClosed: () => m.close() });
+    panes.phone = phoneBox.el;
+    tabBtns.phone = h('button', { type: 'button', onclick: () => setTab('phone') }, ico('qr'), 'Pelo celular');
+  }
   const extras = h('div');
   const paneBox = h('div');
   function setTab(t) {
     tab = t;
     for (const [k, b] of Object.entries(tabBtns)) b.classList.toggle('on', k === t);
     paneBox.replaceChildren(panes[t]);
-    extras.classList.toggle('hidden', t === 'load');
+    extras.classList.toggle('hidden', t === 'load' || t === 'phone');
     saveBtn.textContent = t === 'load' ? 'Carregar lista' : existing ? 'Salvar e recarregar' : 'Adicionar lista';
+    // pelo celular, cada “Salvar” do celular já vale: o botão daqui não tem o que salvar
+    saveBtn.classList.toggle('hidden', t === 'phone');
+    if (t === 'phone' && phoneBox) phoneBox.start();
   }
   const saveBtn = h('button.btn.primary', { type: 'submit' }, existing ? 'Salvar e recarregar' : 'Adicionar lista');
   setTab(tab);
@@ -668,7 +693,9 @@ export function openListForm(existing, onSaved, onDelete) {
         const body = await loadFile.text();
         const { summary } = await api('/api/list-import?dry=1', { method: 'POST', body });
         m.close();
-        await confirmLoad(summary, () => api('/api/list-import', { method: 'POST', body }));
+        // no Editar, o arquivo entra no lugar desta lista
+        const target = existing ? `?target=${encodeURIComponent(ex.id)}` : '';
+        await confirmLoad(summary, () => api(`/api/list-import${target}`, { method: 'POST', body }), existing ? ex.name : null);
       } catch (e2) {
         showErr(e2.message || String(e2));
       }
@@ -726,7 +753,7 @@ export function openListForm(existing, onSaved, onDelete) {
     }
   });
 
-  const m = modal(existing ? 'Editar lista' : 'Adicionar lista', form, { wide: true, onClose: () => pairing && pairing.stop() });
+  const m = modal(existing ? 'Editar lista' : 'Adicionar lista', form, { wide: true, onClose: () => { if (pairing) pairing.stop(); if (phoneBox) phoneBox.stop(); } });
   setTimeout(() => (tab === 'xtream' ? server : tab === 'url' ? url : name).focus(), 50);
   return m;
 }
