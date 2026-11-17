@@ -64,6 +64,21 @@ html.beta[data-accent="pink"] { --logo-hue: 295deg; --logo-br: 1; }
 html.beta[data-accent="cyan"] { --logo-hue: 152deg; --logo-br: 1; }
 /* toda imagem da logo ou do ícone (menu, topo, abertura, carregamento do player, boas-vindas e o que vier) */
 html[data-accent] img[src^="/img/logo-"], html[data-accent] img[src^="/img/icon"] { filter: hue-rotate(var(--logo-hue, 0deg)) brightness(var(--logo-br, 1)); }
+/* Capas do seu jeito (IPTVKZ+): tamanho (--pz multiplica a largura das capas), cantos e o que aparece nelas.
+   Só medidas e display: nada anima, leve na TV. */
+html[data-psize="s"] { --pz: .82; }
+html[data-psize="l"] { --pz: 1.25; }
+html[data-pradius="square"] { --pradius: 4px; }
+html[data-pradius="soft"] { --pradius: 22px; }
+html[data-phide~="tags"] .poster .tags,
+html[data-phide~="rating"] .poster .rating,
+html[data-phide~="year"] .poster .btags .year,
+html[data-phide~="seen"] .poster .btags .seen,
+html[data-phide~="seen"] .poster .btags .sxe,
+html[data-phide~="bar"] .poster .pbar,
+html[data-phide~="name"] .poster .pt { display: none; }
+html[data-phide~="bar"] .poster .btags.over-bar { bottom: 6px; }
+
 /* Preto: bom para telas OLED (os pixels pretos ficam apagados) */
 html[data-bg="black"] {
   --bg: #000000; --bg-rgb: 0, 0, 0; --bg-2: #050507; --panel: #0b0b10; --card: #121219; --card-2: #1a1a22;
@@ -430,7 +445,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* cards deitados (16:9): o mesmo cartão das capas, com a capa enquadrada perto do topo */
 .poster.wide .thumb { aspect-ratio: 16 / 9; }
 .poster.wide .thumb img { object-position: center 22%; }
-.shelf-row .poster.wide { width: 280px; }
+.shelf-row .poster.wide { width: calc(280px * var(--pz, 1)); }
 .poster.wide .thumb.noimg { font-size: 22px; }
 .stream-home .shelf { contain-intrinsic-size: auto 250px; }
 @supports not (aspect-ratio: 1 / 1) {
@@ -445,10 +460,10 @@ input, select, textarea { font: inherit; color: inherit; }
 .stream-scroll { scroll-padding-top: calc(var(--app-h, 100vh) * .46 + 58px); scroll-padding-top: calc(max(var(--app-h, 100vh) * .46, 350px) + 58px); } /* a 2ª acompanha o min-height do destaque; TVs sem max() usam a 1ª */
 /* tela baixa (tablet deitado, portátil, notebook pequeno): cards e destaque um pouco menores, cabem mais títulos */
 @media (max-height: 760px) {
-  html:not(.tv-wide) .shelf-row .poster.wide { width: 224px; }
-  html:not(.tv-wide) .shelf-row .poster { width: 132px; }
-  html:not(.tv-wide) .poster-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 18px 12px; }
-  html:not(.tv-wide) .stream-cat .poster-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+  html:not(.tv-wide) .shelf-row .poster.wide { width: calc(224px * var(--pz, 1)); }
+  html:not(.tv-wide) .shelf-row .poster { width: calc(132px * var(--pz, 1)); }
+  html:not(.tv-wide) .poster-grid { grid-template-columns: repeat(auto-fill, minmax(calc(132px * var(--pz, 1)), 1fr)); gap: 18px 12px; }
+  html:not(.tv-wide) .stream-cat .poster-grid { grid-template-columns: repeat(auto-fill, minmax(calc(210px * var(--pz, 1)), 1fr)); }
   html:not(.tv-wide) .stream-home .hero-stream { min-height: 280px; }
   html:not(.tv-wide) .stream-scroll { scroll-padding-top: calc(var(--app-h, 100vh) * .46 + 58px); scroll-padding-top: calc(max(var(--app-h, 100vh) * .46, 280px) + 58px); }
   html:not(.tv-wide) .hero-title { font-size: 34px; }
@@ -464,7 +479,7 @@ input, select, textarea { font: inherit; color: inherit; }
   html:not(.tv-wide) .hero-title { font-size: 26px; }
   html:not(.tv-wide) .hero-plot { font-size: 14px; -webkit-line-clamp: 2; height: 3em; }
   html:not(.tv-wide) .hero-acts > .btn, html:not(.tv-wide) .detail .acts > .btn { height: 42px; padding: 0 14px; font-size: 14px; }
-  html:not(.tv-wide) .shelf-row .poster.wide { width: 200px; }
+  html:not(.tv-wide) .shelf-row .poster.wide { width: calc(200px * var(--pz, 1)); }
 }
 .tv .hero-art:not(#splash) { transition: opacity .35s ease !important; } /* exceção leve: uma imagem por vez */
 .watch { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; padding: 0 20px 24px 28px; }
@@ -671,13 +686,13 @@ input, select, textarea { font: inherit; color: inherit; }
 .shelf-body .shelf-row.dragging .poster { pointer-events: none; }
 /* deslizando (rodinha, setas, foco da TV): os cartões não reagem ao mouse até parar (core/smoothscroll.js) */
 .is-scrolling .poster, .is-scrolling .ch-card, .is-scrolling .ep { pointer-events: none; }
-.shelf-row .poster { width: 156px; flex: none; scroll-snap-align: start; }
-.poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 22px 16px; }
+.shelf-row .poster { width: calc(156px * var(--pz, 1)); flex: none; scroll-snap-align: start; }
+.poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(156px * var(--pz, 1)), 1fr)); gap: 22px 16px; }
 /* Streaming, "Ver tudo": a grade da categoria usa os cards largos das fileiras, embaixo do destaque */
-.stream-cat .poster-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.stream-cat .poster-grid { grid-template-columns: repeat(auto-fill, minmax(calc(260px * var(--pz, 1)), 1fr)); }
 .poster { cursor: pointer; min-width: 0; }
 .poster .thumb {
-  width: 100%; aspect-ratio: 2 / 3; border-radius: 12px; transition: transform .2s, box-shadow .2s;
+  width: 100%; aspect-ratio: 2 / 3; border-radius: var(--pradius, 12px); transition: transform .2s, box-shadow .2s;
   box-shadow: 0 6px 18px rgba(0,0,0,.35);
 }
 .poster .thumb img { object-fit: cover; }
@@ -811,6 +826,23 @@ input, select, textarea { font: inherit; color: inherit; }
 @media (hover: hover) { .swatch:hover { transform: scale(1.08); } }
 .swatch:active { transform: scale(.94); }
 .tv .swatch.tv-focus, .kb-nav .swatch.tv-focus { transform: scale(1.08); box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--text); }
+/* Capas do seu jeito: opções em botões (chips) e uma capa de exemplo com as mesmas classes do catálogo */
+.cover-pref { grid-column: 1 / -1; }
+.cover-box { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+.cover-sample { width: calc(120px * var(--pz, 1)); flex: none; pointer-events: none; }
+.cover-sample .thumb { font-size: 13px; }
+.cover-opts { flex: 1; min-width: 240px; display: grid; grid-template-columns: auto 1fr; gap: 10px 14px; align-items: center; }
+.opt-lbl { font-size: 12px; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--muted); font-size: 13px; cursor: pointer; transition: transform .15s ease; }
+.chip.on { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+.chip .chip-check svg { width: 14px; height: 14px; }
+.chip .chip-lock { display: inline-flex; color: var(--faint); }
+.chip .chip-lock svg { width: 11px; height: 11px; }
+@media (hover: hover) { .chip:hover { transform: scale(1.05); } }
+.chip:active { transform: scale(.95); }
+.tv .chip.tv-focus, .kb-nav .chip.tv-focus { transform: scale(1.05); box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--text); }
+@media (max-width: 760px) { .cover-opts { grid-template-columns: minmax(0, 1fr); } .cover-box { gap: 14px; } }
 .plus-note { display: flex; align-items: flex-start; gap: 6px; margin: 12px 0 0; font-size: 13px; }
 .plus-note .ico svg { width: 14px; height: 14px; margin-top: 2px; }
 .switch { display: flex; align-items: center; gap: 10px; cursor: pointer; }
@@ -1389,6 +1421,11 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
   html:not(.tv-wide) .poster-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 8px; }
   html:not(.tv-wide) .stream-cat .poster-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   html:not(.tv-wide) .shelf-row .poster, html:not(.tv-wide) .sk-poster { width: 112px; }
+  html:not(.tv-wide) .shelf-row .poster { width: calc(112px * var(--pz, 1)); }
+  html[data-psize="s"]:not(.tv-wide) .poster-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  html[data-psize="l"]:not(.tv-wide) .poster-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html[data-psize="s"]:not(.tv-wide) .stream-cat .poster-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  html[data-psize="l"]:not(.tv-wide) .stream-cat .poster-grid { grid-template-columns: minmax(0, 1fr); }
 
   /* assistindo ao vivo: player em cima, canais embaixo */
   html:not(.tv-wide) .live.watching { display: flex; flex-direction: column; }
