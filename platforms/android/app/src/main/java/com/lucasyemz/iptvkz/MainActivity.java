@@ -161,6 +161,12 @@ public class MainActivity extends Activity {
         // Beta: âmbar no lugar do vermelho, igual ao tema do app (html.beta em app.css)
         int[] c1 = BuildConfig.IS_BETA ? new int[] {77, 50, 8} : new int[] {77, 13, 18};
         int[] c2 = BuildConfig.IS_BETA ? new int[] {58, 36, 6} : new int[] {58, 7, 22};
+        // tema escolhido na interface (IPTVKZ+): o mesmo fundo de html[data-accent] em app.css
+        ThemeColors.Accent theme = ThemeColors.saved(this);
+        if (theme != null) {
+            c1 = theme.splash1;
+            c2 = theme.splash2;
+        }
         top.setColors(new int[] {Color.rgb(c1[0], c1[1], c1[2]), Color.argb(0, c1[0], c1[1], c1[2])});
         top.setGradientCenter(0.2f, 0f);
         top.setGradientRadius(width * 0.55f);
@@ -194,11 +200,15 @@ public class MainActivity extends Activity {
             Bitmap image = BitmapFactory.decodeStream(in);
             logo.setImageBitmap(image);
             logoHeight = logoWidth * image.getHeight() / image.getWidth();
+            ThemeColors.Accent theme = ThemeColors.saved(this);
+            if (theme != null) logo.setColorFilter(ThemeColors.logoFilter(theme, BuildConfig.IS_BETA));
         } catch (Exception e) {
             Log.w(TAG, "Logo da abertura indisponível", e);
         }
         box.addView(logo, new LinearLayout.LayoutParams(logoWidth, logoHeight));
-        ColorStateList red = ColorStateList.valueOf(BuildConfig.IS_BETA ? Color.rgb(255, 181, 71) : Color.rgb(255, 42, 42));
+        ThemeColors.Accent theme = ThemeColors.saved(this);
+        ColorStateList red = ColorStateList.valueOf(theme != null ? Color.rgb(theme.color[0], theme.color[1], theme.color[2])
+                : BuildConfig.IS_BETA ? Color.rgb(255, 181, 71) : Color.rgb(255, 42, 42));
         bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         bar.setMax(100);
         bar.setIndeterminate(true);
@@ -387,6 +397,17 @@ public class MainActivity extends Activity {
 
             @JavascriptInterface
             public String lanAddress() { return MainActivity.this.lanAddress(); }
+
+            // cor do tema que vale agora (sem prévia): a abertura nativa usa a mesma na próxima vez
+            @JavascriptInterface
+            public void setThemeAccent(String id) { ThemeColors.save(MainActivity.this, id); }
+
+            // ícone do app na tela inicial: a cor que está agora ("red" é o padrão) e a troca (pode fechar o app)
+            @JavascriptInterface
+            public String launcherIcon() { return ThemeColors.launcherIcon(MainActivity.this); }
+
+            @JavascriptInterface
+            public boolean setLauncherIcon(String id) { return ThemeColors.setLauncherIcon(MainActivity.this, id); }
 
             // Abre uma página do site do IPTVKZ (suporte, termos) no navegador do aparelho: o WebView do app não
             // abre links de fora. Só o próprio site, porque a ponte também fica visível para quadros internos

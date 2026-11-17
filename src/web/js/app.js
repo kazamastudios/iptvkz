@@ -23,6 +23,7 @@ import { reportButton } from './views/report.js';
 import { initTvKeyboard } from './tv/tvkeyboard.js';
 import { initSmoothScroll } from './core/smoothscroll.js';
 import { VIEW_MODES, viewMode, setViewMode, applyViewMode } from './core/viewmode.js';
+import { applyTheme } from './core/theme.js';
 import { initSearchBox, warmSearch } from './core/searchbox.js';
 
 const view = $('#view');
@@ -983,6 +984,7 @@ function renderViewSwitch() {
     }, ico(m.icon))));
 }
 applyViewMode();
+applyTheme(); // cor e fundo escolhidos neste aparelho (IPTVKZ+)
 renderViewSwitch();
 window.addEventListener('iptvkz:view', () => {
   renderViewSwitch();
