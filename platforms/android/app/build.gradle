@@ -105,7 +105,9 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            // R8: tira o código não usado das bibliotecas (Media3, Play) e otimiza o resto; o mapping vai para a Play
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
