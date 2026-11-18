@@ -191,6 +191,8 @@ input, select, textarea { font: inherit; color: inherit; }
   background: var(--card); border: 1px solid var(--line); cursor: pointer; text-align: left;
 }
 .list-btn:hover { border-color: var(--line-2); }
+.list-add > .ico:first-child { color: var(--accent); }
+.list-add .short { display: none; }
 .list-btn .meta { flex: 1; min-width: 0; }
 .list-btn .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list-btn .sub { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
@@ -712,6 +714,12 @@ input, select, textarea { font: inherit; color: inherit; }
 .next-card .ring { position: relative; overflow: hidden; }
 .next-card .ring::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; background: #fff; width: var(--p, 0%); transition: width .2s linear; }
 
+/* Player aberto (filme, série ou canal em tela cheia): a página de trás não rola, e arrastar o dedo ou a rodinha
+   em cima do vídeo não passa para ela. Os menus do player continuam rolando. */
+html.player-open, html.player-open body, html.player-fs, html.player-fs body { overflow: hidden; overscroll-behavior: none; }
+html.player-open .view, html.player-fs .view { overflow: hidden; } /* a área de rolagem da página, atrás do player */
+.vod-overlay, .player.pseudo-fs { touch-action: none; overscroll-behavior: contain; }
+.vod-overlay .pmenu, .player.pseudo-fs .pmenu { touch-action: pan-y; overscroll-behavior: contain; }
 .vod-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 90; background: #000; }
 
 /* ---------- filmes / séries ---------- */
@@ -1388,6 +1396,9 @@ html:not(.tv):not(.kb-nav) .tv-ring { display: none; }
   html:not(.tv-wide) .list-btn .meta { display: block; flex: none; width: 100%; text-align: center; }
   html:not(.tv-wide) .list-btn .name { font-size: 10px; line-height: 1.2; font-weight: 600; }
   html:not(.tv-wide) .list-btn .sub { display: none; }
+  html:not(.tv-wide) .list-add .full { display: none; }
+  html:not(.tv-wide) .list-add .short { display: inline; }
+  html:not(.tv-wide) .list-add > .ico:first-child { color: var(--accent); }
   /* topo: logo do app à esquerda do título e Configurações no canto */
   html:not(.tv-wide) .top-logo { display: flex; }
   html:not(.tv-wide) .top-settings { display: inline-flex; }

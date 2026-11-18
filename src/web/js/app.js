@@ -148,7 +148,14 @@ function renderNav() {
 function renderListSwitch() {
   const box = $('#listSwitch');
   box.replaceChildren();
-  if (!S.lists.length) return;
+  // Sem lista: no lugar do botão da lista, um atalho para adicionar (mesmo papel do botão da tela de boas-vindas).
+  // No celular ele ocupa o 6º lugar da barra de baixo, que ficava vazio.
+  if (!S.lists.length) {
+    box.append(h('button.list-btn.list-add', { title: 'Adicionar lista', onclick: () => ctx.addList() },
+      ico('plus'),
+      h('div.meta', h('div.name', h('span.full', 'Adicionar lista'), h('span.short', 'Adicionar')), h('div.sub', 'M3U ou Xtream Codes'))));
+    return;
+  }
   const cur = activeList();
   const menu = h('div.list-menu.hidden');
   const btn = h('button.list-btn', {
@@ -762,6 +769,7 @@ function loadErrorTitle(msg) {
   if (net.state === 'offline' || navigator.onLine === false) return ['Sem internet', 'Confira o Wi-Fi ou o cabo e toque em “Tentar de novo”.', 'sem-internet'];
   if (/senha inválidos|recusou o acesso|erro 40[13]/.test(m)) return ['O provedor não aceitou o acesso', 'Confira o usuário e a senha (ou o link) com o seu provedor e, se mudou algo, edite a lista.', 'acesso-recusado'];
   if (/endereço não encontrado|não existe \(erro 404\)|página, não uma lista/.test(m)) return ['Endereço da lista não encontrado', 'Confira se o link está certo, letra por letra, ou peça o link de novo ao provedor.', 'endereco'];
+  if (/sem espaço para guardar/.test(m)) return ['Aparelho sem espaço', 'A lista não coube no aparelho. Libere espaço (apague apps, fotos ou vídeos que não usa) e toque em “Tentar de novo”.', 'sem-espaco'];
   if (/não respondeu a tempo|Tempo esgotado|caiu no meio|recusou a conexão|está com problema|pedidos demais|sem caminho/.test(m)) return ['O servidor da lista não respondeu', 'Costuma ser passageiro. Espere um pouco e tente de novo.', 'servidor'];
   return ['Não foi possível carregar a lista', '', 'lista'];
 }
