@@ -104,11 +104,25 @@ function detectEngine(url, live) {
   return 'native';
 }
 
-// App Android no celular: as telas ficam em pé e o vídeo em tela cheia deita, como nos apps de streaming.
-// Na TV e fora do app Android não faz nada.
-function videoLandscape(on) {
-  try { if (window.IPTVKZAndroid && window.IPTVKZAndroid.setVideoLandscape) window.IPTVKZAndroid.setVideoLandscape(!!on); } catch {}
+// Celular: as telas ficam em pé e o vídeo em tela cheia deita, como nos apps de streaming; vídeo vertical fica em
+// pé (Player._orient). want: 'landscape', 'portrait' ou null (volta ao normal do aparelho). Na TV não faz nada.
+function videoOrientation(want) {
+  const a = window.IPTVKZAndroid;
+  try {
+    if (a && a.setVideoOrientation) return a.setVideoOrientation(want || '');
+    if (a && a.setVideoLandscape) return a.setVideoLandscape(!!want); // app antigo: só sabia deitar
+  } catch {}
+  // navegador do celular: só dá para travar a tela em tela cheia
+  if (!a && want && isTouch() && document.fullscreenElement && screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock(want).catch(() => {});
+  }
 }
+
+// Girar a imagem (vídeo gravado deitado, ou para ver de outro jeito)
+const ROTATIONS = [[0, 'Normal'], [90, '90° para a direita'], [180, 'De cabeça para baixo'], [270, '90° para a esquerda']];
+// Tela do celular no vídeo: automática segue o formato do vídeo (vertical em pé, horizontal deitada)
+const SCREENS = [['auto', 'Automática (segue o vídeo)'], ['portrait', 'Em pé'], ['landscape', 'Deitada']];
+const phoneScreen = () => !TV.on && isTouch();
 
 export class Player {
   /**
@@ -162,6 +176,14 @@ export class Player {
       this.toggleMenu('av');
     });
     this.btnPip = this._btn('pip', 'Picture-in-picture', () => this.togglePip());
+    // girar a imagem e, no celular, deixar a tela em pé ou deitada
+    this.rot = 0;
+    this.screenMode = 'auto';
+    this.fill = false; // preencher a tela (corta as bordas) em vez de mostrar a imagem inteira
+    this.btnRot = this._btn('rotate', phoneScreen() ? 'Girar, preencher e posição da tela' : 'Girar e preencher (R)', (e) => {
+      e.stopPropagation();
+      this.toggleMenu('rotate');
+    });
     // PC e celular: mandar o vídeo para uma TV da rede (Chromecast/Android TV pelo Cast, LG e outras pelo DLNA)
     this.btnCast = this._btn('cast', 'Assistir na TV', (e) => {
       e.stopPropagation();
@@ -199,7 +221,7 @@ export class Player {
     // Tela cheia: no ao vivo (no PC ele toca numa janela ao lado da lista) e nos filmes e séries onde o player só
     // ocupa a janela (PC, navegador). Na TV e no app Android os filmes já abrem na tela toda: lá o botão não aparece.
     const fsBtn = o.live ? !liveTv : !TV.on && !window.IPTVKZAndroid;
-    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, !CAST_ENABLED || onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, fsBtn ? this.btnFs : null);
+    this.prow = h('div.prow', left, h('div.grow'), this.btnNext, this.btnRot, !CAST_ENABLED || onRealTv() ? null : this.btnCast, TV.on || isTouch() ? null : this.btnPip, fsBtn ? this.btnFs : null);
     this.bottom = h('div.pbottom', seek, this.prow);
 
     const top = [];
@@ -223,7 +245,7 @@ export class Player {
     this.noImageEl = h('div.no-image.hidden', h('b', 'Este canal está sem imagem neste aparelho'), h('span', 'O áudio continua tocando.'));
     this.root = h('div.player.ctrl-visible', this.video, this.subsEl, h('div.shade'), this.netTag, this.noImageEl, this.cover, this.top, this.center, this.flashEl, this.ppEl, this.bottom, this.menu, this.errorEl);
     this.root._player = this; // o Voltar do app acha o player em tela cheia por aqui
-    if (!this.opts.live) videoLandscape(true); // filme e série: o player já abre deitado no celular
+    this._orient(); // filme e série: o player já abre deitado no celular (em pé se o vídeo for vertical)
     this.host.append(this.root);
   }
 
@@ -296,7 +318,10 @@ export class Player {
     });
     on('timeupdate', () => this._onTime());
     on('progress', () => this._updateSeek());
+    // o formato do vídeo chegou (ou mudou): no celular a tela fica em pé ou deitada conforme ele
+    on('resize', () => this._orient());
     on('loadedmetadata', () => {
+      this._orient();
       if (this.resumeAt > 1 && Number.isFinite(v.duration) && this.resumeAt < v.duration - 5) v.currentTime = this.resumeAt;
       this.resumeAt = 0;
       this._updateSeek();
@@ -326,10 +351,18 @@ export class Player {
     // no toque o navegador simula um mousemove, que reabriria os controles
     this.root.addEventListener('mousemove', () => { if (!isTouch()) this._showCtrl(); });
     this.root.addEventListener('mouseleave', () => this._scheduleHide(600));
-    this._onFs = () => this._setIcon(this.btnFs, document.fullscreenElement ? 'exitFs' : 'fullscreen');
+    this._onFs = () => {
+      this._setIcon(this.btnFs, document.fullscreenElement ? 'exitFs' : 'fullscreen');
+      this._orientNow = undefined;
+      this._orient();
+      this._fitRotation();
+    };
+    // imagem girada de lado: o tamanho dela depende do tamanho do player
+    this._onResize = () => { if (this.rot % 180) this._fitRotation(); };
+    window.addEventListener('resize', this._onResize);
     document.addEventListener('fullscreenchange', this._onFs);
     this._onDocClick = (e) => {
-      if (!this.menu.contains(e.target) && !this.btnGear.contains(e.target) && !this.btnAV.contains(e.target) && !this.btnCast.contains(e.target)) this.closeMenu();
+      if (!this.menu.contains(e.target) && !this.btnGear.contains(e.target) && !this.btnAV.contains(e.target) && !this.btnCast.contains(e.target) && !this.btnRot.contains(e.target)) this.closeMenu();
     };
     document.addEventListener('mousedown', this._onDocClick);
     this._onKeyUp = (e) => {
@@ -363,6 +396,8 @@ export class Player {
     this.resumeAt = src.startAt || 0;
     this.subSource = null;
     this.subDelay = 0;
+    if (this.rot) this.setRotation(0); // o giro e a posição da tela valem só para aquele vídeo
+    this.screenMode = 'auto';
     this.autoPicked = false;
     this.useNative = false;
     this.useRemux = false;
@@ -612,6 +647,9 @@ export class Player {
       });
       this.exo = exo;
       exo.open(purl, kind === 'hls' ? 'hls' : 'auto', this.resumeAt > 1 ? this.resumeAt : 0, S.settings.audioLang);
+      if (this.rot) exo.rotate(this.rot);
+      if (this.fill) exo.fit(true);
+      this._orient();
     } else {
       v.src = purl;
       v.play().catch(() => {});
@@ -932,15 +970,71 @@ export class Player {
     // app Android: a tela cheia é da própria página (a do WebView não é confiável), e no celular ela deita a tela
     if (this.exo || window.IPTVKZAndroid) {
       const on = this.root.classList.toggle('pseudo-fs');
-      if (this.opts.live) videoLandscape(on);
+      this._orient();
+      if (this.rot % 180) requestAnimationFrame(() => this._fitRotation());
       return this._setIcon(this.btnFs, on ? 'exitFs' : 'fullscreen');
     }
     if (document.fullscreenElement) return document.exitFullscreen().catch(() => {});
     // iPhone: só o próprio vídeo entra em tela cheia
     if (!this.root.requestFullscreen) return this.video.webkitEnterFullscreen && this.video.webkitEnterFullscreen();
-    this.root.requestFullscreen().then(() => {
-      if (isTouch() && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
-    }).catch(() => {});
+    this.root.requestFullscreen().then(() => { this._orientNow = undefined; this._orient(); }).catch(() => {});
+  }
+
+  // ---------- girar ----------
+  // O vídeo é vertical, já contando o giro?
+  _isTall() {
+    const w = this.video.videoWidth, hh = this.video.videoHeight;
+    if (!w || !hh) return false;
+    return this.rot % 180 ? w > hh : hh > w;
+  }
+
+  // Celular com o vídeo na tela toda: em pé para vídeo vertical, deitada para o resto (ou o que a pessoa escolheu).
+  // Fora da tela cheia (canal ao lado da lista), a tela volta ao normal do aparelho.
+  _orient() {
+    if (this.destroyed || !this.root) return;
+    const full = !this.opts.live || this.root.classList.contains('pseudo-fs') || !!document.fullscreenElement;
+    let want = null;
+    if (full) want = this.screenMode !== 'auto' ? this.screenMode : this._isTall() ? 'portrait' : 'landscape';
+    if (want === this._orientNow) return;
+    this._orientNow = want;
+    videoOrientation(want);
+  }
+
+  setRotation(deg) {
+    this.rot = ((deg % 360) + 360) % 360;
+    if (this.rot) this.root.dataset.rot = this.rot; else delete this.root.dataset.rot;
+    this.root.style.setProperty('--rot', this.rot + 'deg');
+    this._fitRotation();
+    if (this.exo && !this.exo.rotate(this.rot) && this.rot) toast('Atualize o app para girar este vídeo', 'error');
+    this._orient();
+  }
+
+  // Preencher: a imagem cobre o player todo e o que sobra nas bordas é cortado (sem faixas pretas)
+  setFill(on) {
+    this.fill = !!on;
+    if (this.fill) this.root.dataset.fit = 'cover'; else delete this.root.dataset.fit;
+    if (this.exo && !this.exo.fit(this.fill) && this.fill) toast('Atualize o app para preencher a tela', 'error');
+  }
+
+  // De lado (90° e 270°), a imagem usa a altura do player como largura e a largura como altura
+  _fitRotation() {
+    if (!(this.rot % 180)) return;
+    this.root.style.setProperty('--rw', this.root.clientHeight + 'px');
+    this.root.style.setProperty('--rh', this.root.clientWidth + 'px');
+  }
+
+  _renderRotate(m, opt) {
+    m.append(h('h4', 'Girar'));
+    for (const [deg, label] of ROTATIONS) m.append(opt(label, this.rot === deg, () => { this.setRotation(deg); this._renderMenu(); }));
+    m.append(h('div.sep'), h('h4', 'Tamanho'));
+    m.append(opt('Imagem inteira', !this.fill, () => { this.setFill(false); this._renderMenu(); }));
+    m.append(opt('Preencher a tela (corta as bordas)', this.fill, () => { this.setFill(true); this._renderMenu(); }));
+    if (!phoneScreen()) return;
+    m.append(h('div.sep'), h('h4', 'Tela do celular'));
+    for (const [mode, label] of SCREENS) {
+      m.append(opt(label, this.screenMode === mode, () => { this.screenMode = mode; this._orient(); this._renderMenu(); }));
+    }
+    if (this.video.videoWidth) m.append(h('div.note', this._isTall() ? 'Este vídeo é vertical.' : 'Este vídeo é horizontal.'));
   }
 
   async togglePip() {
@@ -1291,7 +1385,7 @@ export class Player {
     const open = !this.menu.classList.contains('hidden');
     if (!open || this.menuMode !== mode) {
       this.menuMode = mode;
-      this.menu.classList.toggle('left', mode !== 'cast'); // legenda e áudio ficam perto do volume; a TV, à direita
+      this.menu.classList.toggle('left', mode !== 'cast' && mode !== 'rotate'); // legenda e áudio ficam perto do volume; a TV, à direita
       this._renderMenu();
       this.menu.classList.remove('hidden');
       this._showCtrl();
@@ -1302,7 +1396,7 @@ export class Player {
   closeMenu() {
     const wasOpen = !this.menu.classList.contains('hidden');
     this.menu.classList.add('hidden');
-    if (wasOpen && TV.on && this.menu.contains(document.activeElement)) focusEl(this.menuMode === 'av' ? this.btnAV : this.btnGear);
+    if (wasOpen && TV.on && this.menu.contains(document.activeElement)) focusEl(this.menuMode === 'av' ? this.btnAV : this.menuMode === 'rotate' ? this.btnRot : this.btnGear);
   }
 
   _ctrlFocused() {
@@ -1326,6 +1420,7 @@ export class Player {
 
     if (this.menuMode === 'settings') return this._renderSettings(m, seg, opt);
     if (this.menuMode === 'cast') return this._renderCast(m, opt);
+    if (this.menuMode === 'rotate') return this._renderRotate(m, opt);
 
     // Botão de legenda: só a legenda
     m.append(h('h4', 'Legenda'));
@@ -1620,6 +1715,7 @@ export class Player {
     if (k === ' ' || k === 'k' || k === 'K') { this.togglePlay(); return true; }
     if (k === 'f' || k === 'F') { this.toggleFullscreen(); return true; }
     if (k === 'm' || k === 'M') { this.toggleMute(); return true; }
+    if (k === 'r' || k === 'R') { this.setRotation(this.rot + 90); this._showCtrl(); return true; }
     if (!this.opts.live && k === 'ArrowLeft') { this._showCtrl(); this._scrubKey(-1); return true; }
     if (!this.opts.live && k === 'ArrowRight') { this._showCtrl(); this._scrubKey(1); return true; }
     if (!this.opts.live && k === 'ArrowUp') { this.video.volume = Math.min(1, this.video.volume + 0.05); return true; }
@@ -1630,7 +1726,8 @@ export class Player {
   destroy() {
     this._report();
     this.destroyed = true;
-    videoLandscape(false);
+    videoOrientation(null);
+    window.removeEventListener('resize', this._onResize);
     clearInterval(this._subTimer);
     clearInterval(this._perfTimer);
     clearInterval(this._castT); // a TV continua tocando se o player fechar; dá para parar pela TV
