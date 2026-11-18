@@ -70,7 +70,8 @@ function mesmaOrigem(request) {
 }
 
 async function criarChamado(env, payload) {
-  const enviar = (dados) => fetch(`https://api.github.com/repos/${REPO}/issues`, {
+  const base = `https://api.github.com/repos/${REPO}/issues`;
+  const enviar = (url, dados) => fetch(url, {
     method: 'POST',
     headers: {
       authorization: `Bearer ${env.GITHUB_TOKEN}`,
@@ -81,13 +82,19 @@ async function criarChamado(env, payload) {
     },
     body: JSON.stringify(dados),
   });
-  let r = await enviar(payload);
-  // Sem permissão para etiquetas, o chamado ainda entra: o título e o texto trazem os mesmos dados.
-  if (r.status === 403 || r.status === 422) {
-    const semEtiquetas = { title: payload.title, body: payload.body };
-    r = await enviar(semEtiquetas);
+  const r = await enviar(base, { title: payload.title, body: payload.body });
+  if (!r.ok) return false;
+  // Etiquetas em uma segunda chamada: na criação, o GitHub as ignora para tokens sem permissão de envio ao
+  // repositório. Se falhar, o chamado já existe, e o título e o texto trazem os mesmos dados.
+  try {
+    const issue = await r.json();
+    if (issue && issue.number && payload.labels && payload.labels.length) {
+      await enviar(`${base}/${issue.number}/labels`, { labels: payload.labels });
+    }
+  } catch {
+    // sem etiquetas
   }
-  return r.ok;
+  return true;
 }
 
 async function relato(request, env) {
