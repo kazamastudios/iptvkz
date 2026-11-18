@@ -7,7 +7,7 @@ import { isBeta } from '../core/debug.js';
 import { hasPlus } from '../core/premium.js';
 import { ACCENTS, BACKGROUNDS, SIZES, RADII, OVERLAYS, isFree, theme, currentTheme, savedTheme, setTheme, previewTheme, isPreviewing } from '../core/theme.js';
 
-const PAID = 'As outras cores, os fundos Preto e Grafite e as opções das capas fazem parte do IPTVKZ+, que chega em breve.';
+const PAID = 'As outras cores, os fundos Preto, Grafite e Claro e as opções das capas fazem parte do IPTVKZ+, que chega em breve.';
 
 // Escolha de uma opção: grátis ou com IPTVKZ+, salva; senão, só prévia.
 function choose(part, value, plus) {
@@ -103,7 +103,7 @@ export function personalizeSection() {
       'aria-pressed': String(on),
       'data-theme': part + ':' + item.id,
       // texto, não objeto: Object.assign no style não aceita variáveis do CSS
-      style: part === 'bg' ? `--sw: ${color}; --sw-card: ${item.card}` : `--sw: ${color}`,
+      style: part === 'bg' ? `--sw: ${color}; --sw-card: ${item.card}${item.ink ? `; color: ${item.ink}; --sw-line: #c4c4d2` : ''}` : `--sw: ${color}`,
       onclick: () => {
         if (locked) previewTheme(part, item.id); else setTheme(part, item.id);
         render(part + ':' + item.id);
@@ -132,7 +132,7 @@ export function personalizeSection() {
       h('div.pref-grid',
         h('div.pref', h('div.lbl', 'Cor de destaque'), h('div.sub', 'Botões, seleção e o foco do controle.'),
           h('div.swatches', { role: 'group', 'aria-label': 'Cor de destaque' }, ...ACCENTS.map((a) => swatch('accent', a, plus, cur)))),
-        h('div.pref', h('div.lbl', 'Fundo'), h('div.sub', 'Preto é bom para telas OLED.'),
+        h('div.pref', h('div.lbl', 'Fundo'), h('div.sub', 'Preto é bom para telas OLED. No Claro, o menu e o player continuam escuros.'),
           h('div.swatches', { role: 'group', 'aria-label': 'Fundo' }, ...BACKGROUNDS.map((b) => swatch('bg', b, plus, cur)))),
         iconCard(render),
         coverCard(plus, cur, render)),
