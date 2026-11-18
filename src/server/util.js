@@ -69,6 +69,14 @@ function netError(url, err) {
   return Object.assign(new Error(`Não foi possível conectar a ${safeHost(url)}: ${hit ? hit[1] : raw || 'erro desconhecido'}.`), blocked ? { blocked: true } : {});
 }
 
+// Aparelho sem espaço ao gravar a lista: em vez do código do sistema (ENOSPC), o que fazer. Outros erros passam como estão.
+const NO_SPACE = 'O aparelho está sem espaço para guardar esta lista. Libere espaço (apague apps, fotos ou vídeos que não usa) e tente de novo.';
+function diskError(err) {
+  const raw = [err && err.code, err && err.message].filter(Boolean).join(' ');
+  if (/ENOSPC|EDQUOT|no space left|quota/i.test(raw)) return Object.assign(new Error(NO_SPACE), { noSpace: true });
+  return err;
+}
+
 // Resposta HTTP de erro em palavras (lista M3U, API do Xtream).
 function httpError(url, status) {
   const host = safeHost(url);
@@ -292,4 +300,4 @@ function m3uFileProblem(head) {
   return null;
 }
 
-module.exports = { UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, m3uFileProblem, streamJsonArray, safeHost };
+module.exports = { diskError, UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, m3uFileProblem, streamJsonArray, safeHost };
