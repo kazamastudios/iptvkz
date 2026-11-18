@@ -556,6 +556,10 @@ input, select, textarea { font: inherit; color: inherit; }
 /* ---------- player ---------- */
 .player { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: #000; overflow: hidden; user-select: none; }
 .player video { width: 100%; height: 100%; display: block; background: #000; }
+/* imagem girada (botão Girar): de lado, a largura e a altura trocam (--rw/--rh vêm do player). Só transform. */
+.player[data-rot] video { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--rot)); }
+.player[data-fit="cover"] video { object-fit: cover; }
+.player[data-rot="90"] video, .player[data-rot="270"] video { width: var(--rw, 100%); height: var(--rh, 100%); }
 /* Android, player nativo: o vídeo é desenhado atrás da página; ela fica transparente na área do player. */
 .exo-hole { background: transparent !important; background-image: none !important; }
 .exo-under { visibility: hidden !important; }
@@ -625,8 +629,10 @@ input, select, textarea { font: inherit; color: inherit; }
 .player .ptop, .player .pbottom { position: absolute; left: 0; right: 0; z-index: 4; opacity: 0; transition: opacity .25s; }
 .player.ctrl-visible .shade, .player.ctrl-visible .ptop, .player.ctrl-visible .pbottom { opacity: 1; }
 .player .ptop { top: 0; display: flex; align-items: center; gap: 10px; padding: 14px 16px; }
+/* Android, vídeo em tela cheia: a imagem vai até o recorte da câmera, os controles ficam fora dele (--cut-*) */
+.player .ptop { padding: calc(14px + var(--cut-t, 0px)) calc(16px + var(--cut-r, 0px)) 14px calc(16px + var(--cut-l, 0px)); }
 .player .ptop .ptitle { font: 600 17px var(--font-display); text-shadow: 0 1px 4px #000; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.player .pbottom { bottom: 0; padding: 0 14px 10px; }
+.player .pbottom { bottom: 0; padding: 0 calc(14px + var(--cut-r, 0px)) calc(10px + var(--cut-b, 0px)) calc(14px + var(--cut-l, 0px)); }
 .player .pbtn {
   width: 40px; height: 40px; border-radius: 50%; border: 0; background: transparent; color: #fff;
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none;
