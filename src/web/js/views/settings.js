@@ -155,9 +155,14 @@ export function settingsView(params, ctx) {
     return h('label.switch', input, h('span.tr'), h('span', label));
   };
   const tvBody = h('div.pref-grid');
+  // App instalado na TV LG ou no Android: o servidor roda dentro do próprio aparelho, então as opções do
+  // computador (acesso pela rede, iniciar com o Windows) não valem aqui e só confundiriam.
+  const nativeApp = !!(window.IPTVKZAndroid || window.webOSSystem || window.PalmSystem);
   const tvSec = h('div.set-section',
-    h('h3', 'TV e outros aparelhos'),
-    h('p', 'Assista na TV pelo navegador dela. Este computador funciona como servidor e precisa ficar ligado.'),
+    h('h3', nativeApp ? 'Este aparelho' : 'TV e outros aparelhos'),
+    h('p', nativeApp
+      ? 'O IPTVKZ roda inteiro neste aparelho, sem precisar de computador.'
+      : 'Assista na TV pelo navegador dela. Este computador funciona como servidor e precisa ficar ligado.'),
     tvBody);
   page.append(tvSec);
 
@@ -166,7 +171,9 @@ export function settingsView(params, ctx) {
     const focused = TV.on ? [...tvBody.querySelectorAll('.switch')].indexOf(document.activeElement) : -1;
     if (focused >= 0) setTimeout(() => focusEl(tvBody.querySelectorAll('.switch')[focused]), 0);
     tvBody.replaceChildren();
-    if (info.local) {
+    if (nativeApp) {
+      // nada do computador: só o Modo TV, abaixo
+    } else if (info.local) {
       const lan = !!S.settings.lanAccess;
       const addrs = info.addresses.filter((a) => !a.virtual);
       const list = addrs.length ? addrs : info.addresses;
