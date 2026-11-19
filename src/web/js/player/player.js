@@ -604,6 +604,7 @@ export class Player {
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
         this.root.classList.add('pseudo-fs');
+        document.documentElement.classList.add('player-fs');
       }
       const exo = new NativeVideo(v, this.root, {
         onError: (k) => this._fail(k, gen),
@@ -932,6 +933,7 @@ export class Player {
     // app Android: a tela cheia é da própria página (a do WebView não é confiável), e no celular ela deita a tela
     if (this.exo || window.IPTVKZAndroid) {
       const on = this.root.classList.toggle('pseudo-fs');
+      document.documentElement.classList.toggle('player-fs', on); // a página de trás não rola
       if (this.opts.live) videoLandscape(on);
       return this._setIcon(this.btnFs, on ? 'exitFs' : 'fullscreen');
     }
@@ -1631,6 +1633,7 @@ export class Player {
     this._report();
     this.destroyed = true;
     videoLandscape(false);
+    if (this.root.classList.contains('pseudo-fs')) document.documentElement.classList.remove('player-fs');
     clearInterval(this._subTimer);
     clearInterval(this._perfTimer);
     clearInterval(this._castT); // a TV continua tocando se o player fechar; dá para parar pela TV

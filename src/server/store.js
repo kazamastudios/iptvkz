@@ -35,7 +35,13 @@ function writeJson(name, value) {
 function writeText(name, text) {
   const target = file(name);
   const tmp = target + '.tmp';
-  fs.writeFileSync(tmp, text);
+  try {
+    fs.writeFileSync(tmp, text);
+  } catch (e) {
+    // aparelho cheio: o arquivo antigo continua inteiro; o temporário pela metade sai
+    try { fs.unlinkSync(tmp); } catch {}
+    throw require('./util').diskError(e);
+  }
   fs.renameSync(tmp, target);
 }
 

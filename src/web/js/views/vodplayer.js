@@ -24,6 +24,8 @@ function open({ title, versions, version, startAt, onTime, next, onNext, onVersi
   if (active) active.close(true);
   const el = h('div.vod-overlay');
   document.getElementById('overlayRoot').append(el);
+  // a página de trás não rola enquanto o player está aberto (css/app.css: html.player-open)
+  document.documentElement.classList.add('player-open');
   const state = { closed: false };
   const prevFocus = document.activeElement;
   if (prevFocus && prevFocus.blur) prevFocus.blur();
@@ -32,6 +34,7 @@ function open({ title, versions, version, startAt, onTime, next, onNext, onVersi
     state.closed = true;
     player.destroy();
     el.remove();
+    document.documentElement.classList.remove('player-open');
     if (active && active.el === el) active = null;
     if (!silent && onClose) onClose();
     if (!silent && TV.on) {
