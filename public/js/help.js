@@ -9,7 +9,7 @@
   var T = function (pt, en) { return EN ? en : pt; };
   var me = document.querySelector('script[src$="js/help.js"]');
   var BASE = me ? me.getAttribute('src').replace(/js\/help\.js$/, '') : '';
-  var SUPPORT = T('suporte.html', 'support.html');
+  var SUPPORT = T('suporte', 'support');
 
   var FAQ = [
     { t: 'É grátis mesmo?', k: ['gratis', 'de graca', 'preco', 'pagar', 'pago', 'custa', 'mensalidade', 'assinatura', 'premium', 'anuncio'], a: 'Sim. O IPTVKZ não cobra mensalidade, não mostra anúncio, não pede cadastro e não tem versão paga.' },
@@ -91,7 +91,7 @@
   var input = el('input', { class: 'help__input', type: 'text', maxlength: '200', autocomplete: 'off', placeholder: T('Escreva sua dúvida', 'Type your question'), 'aria-label': T('Sua dúvida', 'Your question') });
   var ask = el('form', { class: 'help__ask', on: { submit: function (e) { e.preventDefault(); perguntar(input.value); } } }, [input, el('button', { class: 'btn btn--primary', type: 'submit', text: T('Enviar', 'Send') })]);
   var toForm = el('a', { class: 'help__report', href: SUPPORT, text: T('Não achei a resposta. Falar com a equipe', 'Couldn’t find the answer? Talk to the team') });
-  var tvNote = el('p', { class: 'help__tvnote', text: T('Para falar com a equipe, escreva para suporte@kazamastudios.com.br ou abra iptvkz.kazamastudios.com.br/suporte.html no celular.', 'To talk to the team, write to suporte@kazamastudios.com.br or open iptvkz.kazamastudios.com.br/en/support.html on your phone.') });
+  var tvNote = el('p', { class: 'help__tvnote', text: T('Para falar com a equipe, escreva para suporte@kazamastudios.com.br ou abra iptvkz.kazamastudios.com.br/suporte no celular.', 'To talk to the team, write to suporte@kazamastudios.com.br or open iptvkz.kazamastudios.com.br/en/support on your phone.') });
   var chat = el('div', { class: 'help__view' }, [log, chips, ask, toForm, tvNote]);
 
   var title = el('h2', { class: 'help__title', text: T('Ajuda do IPTVKZ', 'IPTVKZ Help') });
