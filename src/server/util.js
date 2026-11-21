@@ -294,4 +294,4 @@ function m3uFileProblem(head) {
   return null;
 }
 
-module.exports = { UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, m3uFileProblem, streamJsonArray, safeHost, httpError };
+module.exports = { UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, m3uFileProblem, streamJsonArray, safeHost, httpError, netError };

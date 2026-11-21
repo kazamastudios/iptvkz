@@ -141,6 +141,12 @@ function startFake() {
       res.writeHead(200, { 'Content-Encoding': 'gzip', 'Content-Type': 'application/xml' });
       return res.end(zlib.gzipSync(xmltv()));
     }
+    // guia que manda o começo e trava (o provedor parou no meio)
+    if (u.pathname === '/guia-trava.xml') {
+      res.writeHead(200, { 'Content-Type': 'application/xml' });
+      res.write('<?xml version="1.0"?><tv><channel id="c1"><display-name>Canal 1</display-name></channel>');
+      return; // nunca termina
+    }
     if (u.pathname === '/grande.m3u') return res.end(m3u(Number(u.searchParams.get('n')), FAKE));
     if (u.pathname === '/guia.xml.gz') return res.end(zlib.gzipSync(xmltv()));
     if (u.pathname === '/player_api.php') return xtreamApi(u.searchParams, res);
@@ -641,6 +647,23 @@ test('EPG: pede o guia comprimido; erro do guia em palavras', async () => {
   for (let i = 0; i < 3; i++) assert.strictEqual((await request('POST', '/api/epg', { body: body('epg404') })).json.status, 'error');
   await request('DELETE', '/api/list?list=epgce');
   await request('DELETE', '/api/list?list=epg404');
+});
+
+test('EPG: guia que trava no meio dá "tempo esgotado" (não fica carregando para sempre)', async () => {
+  const epg = require('../src/server/epg.js');
+  epg._test.setIdle(400);
+  try {
+    await addLists([{ id: 'epgtrava', type: 'm3u', name: 'Guia trava', url: `${FAKE}/lista.m3u`, epgUrl: `${FAKE}/guia-trava.xml` }]);
+    const body = { list: 'epgtrava', chans: [{ k: 'a', e: 'c1', n: 'Canal 1' }] };
+    const r = await until(async () => {
+      const x = await request('POST', '/api/epg', { body });
+      return x.json.status === 'error' ? x : null;
+    });
+    assert.match(r.json.message, /Tempo esgotado/);
+  } finally {
+    epg._test.setIdle(90 * 1000);
+    await request('DELETE', '/api/list?list=epgtrava');
+  }
 });
 
 test('preparação por trás interrompida não impede a lista de atualizar ao ser aberta', async () => {
