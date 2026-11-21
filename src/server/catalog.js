@@ -575,6 +575,9 @@ async function buildFromXtream(list, { first, onSection, checkStop = () => {} } 
     const read = async () => {
       const out = [];
       await x.list(action, (it) => {
+        // resposta de erro em forma de objeto (ex.: {"user_info":{"auth":0}} quando o painel derruba a sessão) não é
+        // item: sem o número do canal/filme/série, viraria um item fantasma com link .../undefined
+        if (!it || (it.stream_id == null && it.series_id == null)) return;
         const o = {};
         for (const k of keep) if (it[k] !== undefined) o[k] = it[k];
         out.push(o);
@@ -1328,7 +1331,9 @@ function refresh(list, first, { full = false, shouldStop } = {}) {
       inflight.delete(list.id);
       if (building.get(list.id) === b) building.delete(list.id);
     };
-    p.then(() => { failedAt.delete(list.id); done(); }, () => { failedAt.set(list.id, Date.now()); done(); });
+    // Preparação por trás interrompida (warmup.js: o app voltou a ser usado) não é falha: marcar como falha impedia a
+    // lista (velha, por isso estava sendo preparada) de atualizar sozinha nos 10 min seguintes, ao ser aberta.
+    p.then(() => { failedAt.delete(list.id); done(); }, (err) => { if (!(err && err.stopped)) failedAt.set(list.id, Date.now()); done(); });
     inflight.set(list.id, p);
   }
   return inflight.get(list.id);

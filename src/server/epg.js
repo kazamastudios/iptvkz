@@ -2,7 +2,7 @@
 // e responde só os canais pedidos.
 const zlib = require('zlib');
 const { Readable, PassThrough } = require('stream');
-const { norm, fetchWithTimeout, safeHost } = require('./util');
+const { norm, fetchWithTimeout, httpError } = require('./util');
 const store = require('./store');
 
 const STALE_MS = 12 * 60 * 60 * 1000;
@@ -11,7 +11,10 @@ const AFTER_MS = 24 * 60 * 60 * 1000;
 
 const memory = new Map(); // listId -> { updatedAt, url, channels, names, lower }
 const inflight = new Map();
-const errors = new Map();
+const errors = new Map(); // listId -> { message, at }: a última falha do guia
+// Guia que falhou: só tenta de novo depois disso (ou com "Atualizar"). Antes, cada consulta da tela baixava de novo
+// (e apagava o erro antes de mostrá-lo): a tela ficava em "carregando" e o provedor recebia um pedido por consulta.
+const RETRY_MS = 10 * 60 * 1000;
 
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 function decode(s) {
@@ -50,8 +53,11 @@ function parseTime(s) {
 }
 
 async function openStream(url) {
-  const res = await fetchWithTimeout(url, {}, 10 * 60 * 1000);
-  if (!res.ok || !res.body) throw new Error(`O guia respondeu ${res.status} (${safeHost(url)})`);
+  // Comprimido, o guia chega bem menor (XML repetitivo: 100 MB viram ~10 MB). O fetch do Node já pede; o da TV LG
+  // (shim.js) só manda o que recebe, mas descomprime a resposta. Guia já em .gz continua detectado abaixo.
+  const res = await fetchWithTimeout(url, { headers: { 'Accept-Encoding': 'gzip, deflate' } }, 10 * 60 * 1000);
+  if (!res.ok) throw httpError(url, res.status);
+  if (!res.body) throw new Error('O guia de programação veio vazio.');
   const src = Readable.fromWeb(res.body);
   const first = await new Promise((resolve, reject) => {
     src.once('data', (c) => { src.pause(); resolve(c); });
@@ -125,7 +131,7 @@ function refresh(listId, url) {
     errors.delete(listId);
     const p = build(listId, url)
       .then((d) => { memory.set(listId, d); return d; })
-      .catch((err) => { errors.set(listId, err.message); throw err; })
+      .catch((err) => { errors.set(listId, { message: err.message, at: Date.now() }); throw err; })
       .finally(() => inflight.delete(listId));
     inflight.set(listId, p);
     p.catch(() => {});
@@ -154,9 +160,11 @@ function query(list, catalog, chans, { force = false } = {}) {
   const url = sourceUrl(list, catalog);
   if (!url) return { status: 'none', data: {} };
   let d = load(list.id);
-  if (force || !d || d.url !== url || Date.now() - d.updatedAt > STALE_MS) refresh(list.id, url);
+  const failed = errors.get(list.id);
+  const waitRetry = !force && failed && Date.now() - failed.at < RETRY_MS;
+  if (!waitRetry && (force || !d || d.url !== url || Date.now() - d.updatedAt > STALE_MS)) refresh(list.id, url);
   if (!d || d.url !== url) {
-    if (errors.has(list.id) && !inflight.has(list.id)) return { status: 'error', message: errors.get(list.id), data: {} };
+    if (failed && !inflight.has(list.id)) return { status: 'error', message: failed.message, data: {} };
     return { status: 'loading', data: {} };
   }
   const shift = (Number(list.tzOffset) || 0) * 3600000;
