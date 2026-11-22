@@ -79,6 +79,7 @@ jobs:
         with:
           name: ffmpeg-${{ matrix.target }}
           path: dist/desktop/componentes/*.zip
+          retention-days: 1 # só passa para o job dos instaladores deste mesmo run (o FFmpeg fica no cache)
 
   # Testes do servidor. Nenhum job depende deste: se falhar, avisa sem travar os instaladores.
   test:
@@ -150,7 +151,8 @@ jobs:
             dist/desktop/*.AppImage
             dist/desktop/*.deb
           if-no-files-found: error
-          retention-days: 14
+          # PR: só para testar (5 dias). Tag v* e "Run workflow": 14 dias (a versão publicada fica na Release).
+          retention-days: ${{ github.event_name == 'pull_request' && 5 || 14 }}
 
   webos:
     # App da LG em dois canais:
@@ -208,14 +210,14 @@ jobs:
             dist/webos/*.ipk
             dist/webos/IPTVKZ-webos-bundle.gz
           if-no-files-found: error
-          retention-days: 14
+          retention-days: ${{ github.event_name == 'pull_request' && 5 || 14 }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: IPTVKZ-webOS-Store
           path: dist/webos/store/*.ipk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: ${{ github.event_name == 'pull_request' && 5 || 30 }}
 
   android:
     # Depois dos instaladores, para anexar ao mesmo rascunho de Release (roda também quando eles não rodaram).
@@ -288,4 +290,4 @@ jobs:
             dist/android/*.zip
             dist/android/android-update.json*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: ${{ github.event_name == 'pull_request' && 5 || 14 }}
