@@ -79,6 +79,7 @@ function painelM3u() {
   ].join('\n');
 }
 const revalida = [];
+const guiaPedidos = [];
 const gzipPedidos = [];
 const PICADA = '\ufeff' + m3u(40, 'http://exemplo.invalid').replace(/Canal/g, 'Canal Ação São João').split('\n').join('\r\n');
 
@@ -132,6 +133,20 @@ function startFake() {
     }
     // lista sem o cabeçalho #EXTM3U (começa direto no #EXTINF): muitos provedores mandam assim
     if (u.pathname === '/sem-cabecalho.m3u') return res.end(m3u(12, FAKE).split('\n').slice(1).join('\n'));
+    // guia comprimido pelo protocolo (Content-Encoding), só para quem pede; o pedido fica anotado
+    if (u.pathname === '/guia-ce.xml') {
+      const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+      guiaPedidos.push(gz);
+      if (!gz) return res.end(xmltv());
+      res.writeHead(200, { 'Content-Encoding': 'gzip', 'Content-Type': 'application/xml' });
+      return res.end(zlib.gzipSync(xmltv()));
+    }
+    // guia que manda o começo e trava (o provedor parou no meio)
+    if (u.pathname === '/guia-trava.xml') {
+      res.writeHead(200, { 'Content-Type': 'application/xml' });
+      res.write('<?xml version="1.0"?><tv><channel id="c1"><display-name>Canal 1</display-name></channel>');
+      return; // nunca termina
+    }
     if (u.pathname === '/grande.m3u') return res.end(m3u(Number(u.searchParams.get('n')), FAKE));
     if (u.pathname === '/guia.xml.gz') return res.end(zlib.gzipSync(xmltv()));
     if (u.pathname === '/player_api.php') return xtreamApi(u.searchParams, res);
@@ -609,6 +624,67 @@ test('EPG: guia .xml.gz da lista chega para o canal certo', async () => {
     return x.json.status === 'ok' && x.json.data.a ? x : null;
   });
   assert.strictEqual(r.json.data.a[0][2], 'Jornal de teste');
+});
+
+test('EPG: pede o guia comprimido; erro do guia em palavras', async () => {
+  await addLists([
+    { id: 'epgce', type: 'm3u', name: 'Guia comprimido', url: `${FAKE}/lista.m3u`, epgUrl: `${FAKE}/guia-ce.xml` },
+    { id: 'epg404', type: 'm3u', name: 'Guia 404', url: `${FAKE}/lista.m3u`, epgUrl: `${FAKE}/guia-nao-existe.xml` },
+  ]);
+  const body = (list) => ({ list, chans: [{ k: 'a', e: 'c1', n: 'Canal 1' }] });
+  const ok = await until(async () => {
+    const x = await request('POST', '/api/epg', { body: body('epgce') });
+    return x.json.status === 'ok' && x.json.data.a ? x : null;
+  });
+  assert.strictEqual(ok.json.data.a[0][2], 'Jornal de teste');
+  assert.deepStrictEqual(guiaPedidos, [true], 'pediu gzip');
+  const bad = await until(async () => {
+    const x = await request('POST', '/api/epg', { body: body('epg404') });
+    return x.json.status === 'error' ? x : null;
+  });
+  assert.match(bad.json.message, /não existe \(erro 404\)/);
+  // as próximas consultas da tela mostram o erro, sem baixar o guia de novo a cada uma
+  for (let i = 0; i < 3; i++) assert.strictEqual((await request('POST', '/api/epg', { body: body('epg404') })).json.status, 'error');
+  await request('DELETE', '/api/list?list=epgce');
+  await request('DELETE', '/api/list?list=epg404');
+});
+
+test('EPG: guia que trava no meio dá "tempo esgotado" (não fica carregando para sempre)', async () => {
+  const epg = require('../src/server/epg.js');
+  epg._test.setIdle(400);
+  try {
+    await addLists([{ id: 'epgtrava', type: 'm3u', name: 'Guia trava', url: `${FAKE}/lista.m3u`, epgUrl: `${FAKE}/guia-trava.xml` }]);
+    const body = { list: 'epgtrava', chans: [{ k: 'a', e: 'c1', n: 'Canal 1' }] };
+    const r = await until(async () => {
+      const x = await request('POST', '/api/epg', { body });
+      return x.json.status === 'error' ? x : null;
+    });
+    assert.match(r.json.message, /Tempo esgotado/);
+  } finally {
+    epg._test.setIdle(90 * 1000);
+    await request('DELETE', '/api/list?list=epgtrava');
+  }
+});
+
+test('preparação por trás interrompida não impede a lista de atualizar ao ser aberta', async () => {
+  const catalogs = require('../src/server/catalog.js');
+  const list = { id: 'interromp', type: 'm3u', name: 'Interrompida', url: `${FAKE}/grande.m3u?n=3000` };
+  await addLists([list]);
+  await request('GET', '/api/catalog?list=interromp&section=live');
+  const meta = path.join(DATA, 'catalog-interromp.meta.json');
+  await until(async () => (fs.existsSync(meta) ? true : null));
+  // o catálogo guardado ficou velho (13 h), e o servidor esquece o que tinha na memória
+  const m = JSON.parse(fs.readFileSync(meta, 'utf8'));
+  fs.writeFileSync(meta, JSON.stringify({ ...m, updatedAt: Date.now() - 13 * 3600 * 1000 }));
+  catalogs.forget('interromp');
+  // a preparação por trás começa e para logo (o app voltou a ser usado)
+  await assert.rejects(catalogs.warm(list, () => true), (e) => e.stopped === true);
+  // a pessoa abre a lista: a versão velha aparece e a atualização começa por trás
+  const r = await request('GET', '/api/catalog?list=interromp&section=live');
+  assert.strictEqual(r.status, 200);
+  assert.ok(catalogs.isRefreshing('interromp'), 'atualiza sozinha (não ficou marcada como falha)');
+  await until(async () => (!catalogs.isRefreshing('interromp') ? true : null), 20000);
+  await request('DELETE', '/api/list?list=interromp');
 });
 
 test('link get.php de painel Xtream: lido pela API, favoritos e progresso seguem nos dois sentidos', async () => {
