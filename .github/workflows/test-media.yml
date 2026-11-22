@@ -20,3 +20,4 @@ jobs:
         with:
           name: teste-formatos
           path: ${{ runner.temp }}/teste-formatos/*
+          retention-days: 7 # o que vale é a release "teste-formatos"

@@ -132,7 +132,7 @@ Os secrets do canal Developer (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASS
 2. O fluxo roda os testes, compila `bundlePlayRelease`, assina com a chave de upload, valida com o `bundletool` (incluindo o canal) e mostra o resumo e o tamanho de download.
 3. Baixe o artefato **IPTVKZ-GooglePlay-Beta** ou **IPTVKZ-GooglePlay-Producao** (`.aab` e `.sha256`), por exemplo com `gh run download <id> --repo kazamastudios/iptvkz -n IPTVKZ-GooglePlay-Beta`.
 
-Sem os secrets, o fluxo para com erro em vez de usar a chave de debug. Um AAB com `-UNSIGNED` no nome não pode ir para a Play. Em pull requests sai um Beta sem assinatura, só para conferir.
+Sem os secrets, o fluxo para com erro em vez de usar a chave de debug. Um AAB com `-UNSIGNED` no nome não pode ir para a Play. Em pull requests sai um Beta sem assinatura, só para conferir: ele não é guardado como artefato. O artefato do *Run workflow* fica 30 dias no GitHub.
 
 O fluxo não interfere no `build.yml`: se falhar, o APK Developer, os instaladores e a Release seguem normais.
 
