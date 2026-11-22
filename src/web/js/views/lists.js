@@ -108,7 +108,9 @@ function loadText(s, replacing) {
   const when = s.createdAt ? ` em ${new Date(s.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : '';
   const text = `${s.names.join(', ') || plural(s.lists, 'lista', 'listas')}, baixada${when}, com `
     + `${plural(s.favorites, 'favorito', 'favoritos')} e ${plural(s.history, 'item', 'itens')} no histórico. `
-    + (replacing ? `Ela substitui “${replacing}” e já abre.` : 'Ela entra junto com as listas que já estão aqui e já abre.');
+    + (replacing ? `Ela substitui “${replacing}” e já abre.` : 'Ela entra junto com as listas que já estão aqui e já abre.')
+    // no Editar, só a primeira lista do arquivo entra no lugar da editada (backup.js, retarget)
+    + (replacing && s.lists > 1 ? ` O arquivo tem ${s.lists} listas: só a primeira (${s.names[0] || 'lista 1'}) entra; para as outras, use “Adicionar lista”.` : '');
   return text;
 }
 
