@@ -28,7 +28,8 @@ export function supportUrl({ area, momento, erro } = {}) {
   if (area) q.set('area', area);
   if (momento) q.set('momento', momento);
   if (erro) q.set('erro', erro);
-  return `https://${SITE}/suporte.html?${q}`;
+  // endereço limpo (o site redireciona suporte.html para /suporte): QR Code menor na TV, sem o redirecionamento
+  return `https://${SITE}/suporte?${q}`;
 }
 
 const NOTE = 'O app não envia nada sozinho: a página abre com o aparelho e a versão preenchidos, você conta o que aconteceu e decide se envia. Não escreva links, usuários ou senhas da lista.';
@@ -41,7 +42,7 @@ export async function reportProblem(info) {
   }
   // TV: QR Code e o endereço. Celular com o app antigo (sem como abrir o navegador): só o endereço, para digitar.
   const qrBox = TV.on ? h('div.report-qr') : null;
-  const address = h('b', `${SITE}/`, h('wbr'), 'suporte.html');
+  const address = h('b', `${SITE}/`, h('wbr'), 'suporte');
   const m = modal('Relatar problema', h('div',
     h('div.report-box', qrBox,
       TV.on
