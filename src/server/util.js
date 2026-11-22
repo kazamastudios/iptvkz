@@ -271,7 +271,9 @@ async function fetchJson(url, opts) {
   try {
     text = await readText(url, opts);
   } catch (err) {
-    if (err.timeout || err.status || err.handler) throw err;
+    // repete só quando a conexão caiu no meio; servidor fora do ar (recusou, sem DNS) não melhora repetindo, e
+    // repetir dobrava a espera antes de passar ao servidor reserva
+    if (err.timeout || err.status || err.handler || !/caiu no meio/.test(err.message || '')) throw err;
     text = await readText(url, opts);
   }
   try {
@@ -300,4 +302,4 @@ function m3uFileProblem(head) {
   return null;
 }
 
-module.exports = { diskError, UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, m3uFileProblem, streamJsonArray, safeHost };
+module.exports = { diskError, UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, m3uFileProblem, streamJsonArray, safeHost, httpError, netError };
