@@ -40,6 +40,22 @@ if (!String.prototype.padEnd) {
     return s.slice(0, Math.max(len, String(this).length));
   };
 }
+// Chromium 52/53 (WebView de TV box com Android 7, webOS 4): sem Object.values/entries o app parava na abertura
+if (!Object.values) {
+  Object.values = function (o) { return Object.keys(o).map(function (k) { return o[k]; }); };
+}
+if (!Object.entries) {
+  Object.entries = function (o) { return Object.keys(o).map(function (k) { return [k, o[k]]; }); };
+}
+// Chromium < 66: sem AbortController. O substituto só marca "aborted"; o fetch antigo ignora o sinal e o prazo
+// de quem usa vem do próprio setTimeout.
+if (typeof window.AbortController === 'undefined') {
+  window.AbortController = function () {
+    var signal = { aborted: false, onabort: null, addEventListener: function () {}, removeEventListener: function () {} };
+    this.signal = signal;
+    this.abort = function () { signal.aborted = true; if (signal.onabort) signal.onabort(); };
+  };
+}
 if (!Object.fromEntries) {
   Object.fromEntries = function (it) {
     var o = {};

@@ -43,6 +43,30 @@
     <div class="sp-bar"><i></i></div>
     <div class="sp-msg">Abrindo</div>
   </div>
+  <script>
+    // Se o app não conseguir iniciar (navegador antigo demais, erro no código), a abertura diz o motivo e a versão
+    // do Chrome em vez de ficar em "Abrindo" para sempre. Some junto com a abertura quando o app inicia.
+    (function () {
+      var cv = (/Chrome\/(\d+)/.exec(navigator.userAgent) || [])[1] || '?';
+      function say(t) {
+        var s = document.getElementById('splash');
+        if (!s || /out/.test(s.className) || s.getAttribute('data-leaving')) return;
+        var m = s.querySelector('.sp-msg');
+        if (!m) return;
+        m.textContent = t + ' (Chrome ' + cv + ')';
+        m.style.height = 'auto';
+        m.style.padding = '0 8vw';
+      }
+      window.addEventListener('error', function (e) {
+        if (e && e.message) say('Não foi possível abrir: ' + e.message);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e && e.reason;
+        say('Não foi possível abrir: ' + ((r && r.message) || r));
+      });
+      setTimeout(function () { say('Ainda abrindo…'); }, 25000);
+    })();
+  </script>
   <div id="app">
     <aside class="sidebar">
       <a class="brand" href="#/">
