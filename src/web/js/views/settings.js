@@ -2,6 +2,8 @@
 import { h, ico, fmtAgo, confirmDialog, toast, modal } from '../core/util.js';
 import { installTvButton } from './installtv.js';
 import { reportButton } from './report.js';
+import { personalizeSection } from './personalize.js';
+import { simulatingNoPlus, setSimulateNoPlus } from '../core/premium.js';
 import { isBeta, debugOn, setDebug } from '../core/debug.js';
 import {
   S, C, activeList, orderedCats, setCatHidden, setCatOrder, resetCats, setSetting, saveNow, api,
@@ -306,6 +308,8 @@ export function settingsView(params, ctx) {
     return h('div.pref', h('div.lbl', label), sub ? h('div.sub', sub) : null, sel);
   };
   const autoNext = h('input', { type: 'checkbox', checked: !!S.settings.autoNext, onchange: (e) => setSetting('autoNext', e.target.checked) });
+  page.append(personalizeSection());
+
   page.append(h('div.set-section',
     h('h3', 'Reprodução'),
     h('p', 'Valem para todas as listas.'),
@@ -328,7 +332,11 @@ export function settingsView(params, ctx) {
       h('div.pref-grid', h('div.pref',
         h('div.lbl', 'Modo de depuração'),
         h('div.sub', 'Mostra no canto da tela FPS, travadas, memória, a lista e o vídeo, com cores: verde bom, amarelo no limite, vermelho ruim. Vale só neste aparelho.'),
-        sw(debugOn(), (on) => setDebug(on), 'Depuração')))));
+        sw(debugOn(), (on) => setDebug(on), 'Depuração')),
+      h('div.pref',
+        h('div.lbl', 'Simular sem IPTVKZ+'),
+        h('div.sub', 'No Beta tudo do IPTVKZ+ vem liberado. Ligue para ver o app como quem não comprou: cadeados e prévia dos temas.'),
+        sw(simulatingNoPlus(), (on) => setSimulateNoPlus(on), 'Simular')))));
   }
   page.append(h('div.set-section',
     h('h3', 'Sobre'),

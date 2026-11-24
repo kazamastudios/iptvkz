@@ -1,6 +1,7 @@
 /* IPTVKZ — tema escuro estilo streaming */
 :root {
   --bg: #08080b;
+  --bg-rgb: 8, 8, 11; /* o mesmo --bg, para degradês que somem no fundo */
   --bg-2: #0f0f16;
   --panel: #14141d;
   --card: #1a1a25;
@@ -14,6 +15,8 @@
   --accent-2: #ff5050;
   --accent-rgb: 255, 42, 42;
   --accent-soft: rgba(var(--accent-rgb), 0.15);
+  --accent-tint: #2a1a20; /* fundo escuro puxado para a cor de destaque (canal e programa em foco) */
+  --accent-tint-2: #3a1d25;
   --on-accent: #fff; /* texto sobre a cor de destaque */
   --danger: #ff2a2a; /* erro (conexão ruim etc.): vermelho também no Beta */
   --danger-rgb: 255, 42, 42;
@@ -37,8 +40,39 @@ html.beta {
   --accent-2: #ffc670;
   --accent-rgb: 255, 181, 71;
   --on-accent: #1d1305;
+  --accent-tint: #312a28;
+  --accent-tint-2: #43362b;
   --splash-1: 77, 50, 8;
   --splash-2: 58, 36, 6;
+}
+
+/* Temas (IPTVKZ+): cor de destaque e fundo, escolhidos por aparelho (core/theme.js marca o <html>). Vêm depois do
+   Beta: a cor escolhida vale também no Beta; sem escolha, o Beta continua âmbar. Texto escuro sobre as cores novas
+   (contraste de 5,9 a 10,9). Trocar o tema só troca variáveis: nada anima, leve na TV. */
+html[data-accent="blue"] { --accent: #3d8bff; --accent-2: #6aa6ff; --accent-rgb: 61, 139, 255; --on-accent: #0b0b10; --accent-tint: #1e253b; --accent-tint-2: #202e4c; --splash-1: 18, 42, 77; --splash-2: 14, 32, 59; --logo-hue: 216deg; --logo-br: 1.15; }
+html[data-accent="green"] { --accent: #22c55e; --accent-2: #4ade80; --accent-rgb: 34, 197, 94; --on-accent: #0b0b10; --accent-tint: #1b2b2b; --accent-tint-2: #1b392f; --splash-1: 10, 59, 28; --splash-2: 8, 45, 22; --logo-hue: 142deg; --logo-br: 1.3; }
+html[data-accent="purple"] { --accent: #a970ff; --accent-2: #c09bff; --accent-rgb: 169, 112, 255; --on-accent: #0b0b10; --accent-tint: #28233b; --accent-tint-2: #34294c; --splash-1: 51, 34, 77; --splash-2: 39, 26, 59; --logo-hue: 268deg; --logo-br: 1.25; }
+html[data-accent="pink"] { --accent: #ff4fa3; --accent-2: #ff7dbb; --accent-rgb: 255, 79, 163; --on-accent: #0b0b10; --accent-tint: #311f32; --accent-tint-2: #43243c; --splash-1: 77, 24, 49; --splash-2: 59, 18, 38; --logo-hue: 322deg; --logo-br: 1.2; }
+html[data-accent="cyan"] { --accent: #22d3ee; --accent-2: #67e8f9; --accent-rgb: 34, 211, 238; --on-accent: #0b0b10; --accent-tint: #1b2d39; --accent-tint-2: #1b3b49; --splash-1: 10, 63, 71; --splash-2: 8, 49, 55; --logo-hue: 190deg; --logo-br: 1.9; }
+/* Logo na cor do tema: gira só o tom do neon (vermelho, ou âmbar no Beta, que já começa 36° adiante); o branco e o
+   preto ficam iguais. O brilho (--logo-br) compensa o vermelho girado, que escurece no verde e no ciano; ajustado
+   comparando com a cor do tema. Filtro numa imagem parada, sem animação: leve na TV. Sem tema escolhido, nada de filtro. */
+html.beta[data-accent="blue"] { --logo-hue: 180deg; --logo-br: 1; }
+html.beta[data-accent="green"] { --logo-hue: 106deg; --logo-br: 1; }
+html.beta[data-accent="purple"] { --logo-hue: 228deg; --logo-br: 1; }
+html.beta[data-accent="pink"] { --logo-hue: 295deg; --logo-br: 1; }
+html.beta[data-accent="cyan"] { --logo-hue: 152deg; --logo-br: 1; }
+/* toda imagem da logo ou do ícone (menu, topo, abertura, carregamento do player, boas-vindas e o que vier) */
+html[data-accent] img[src^="/img/logo-"], html[data-accent] img[src^="/img/icon"] { filter: hue-rotate(var(--logo-hue, 0deg)) brightness(var(--logo-br, 1)); }
+/* Preto: bom para telas OLED (os pixels pretos ficam apagados) */
+html[data-bg="black"] {
+  --bg: #000000; --bg-rgb: 0, 0, 0; --bg-2: #050507; --panel: #0b0b10; --card: #121219; --card-2: #1a1a22;
+  --line: #1e1e28; --line-2: #2a2a38;
+}
+/* Grafite: escuro mais suave; textos secundários mais claros para manter 4,5:1 nos cards */
+html[data-bg="graphite"] {
+  --bg: #1a1b21; --bg-rgb: 26, 27, 33; --bg-2: #1e1f26; --panel: #22232b; --card: #282a33; --card-2: #30323d;
+  --line: #363846; --line-2: #444657; --muted: #b0b0c4; --faint: #a3a3b8;
 }
 
 * { box-sizing: border-box; }
@@ -361,8 +395,8 @@ input, select, textarea { font: inherit; color: inherit; }
 .hero-stream.open .hero-plot { height: auto; display: block; -webkit-line-clamp: unset; max-width: 720px; overflow: visible; }
 .hero-shade {
   position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
-  background: linear-gradient(90deg, var(--bg) 0%, var(--bg) 28%, rgba(8, 8, 11, .65) 50%, rgba(8, 8, 11, 0) 74%),
-    linear-gradient(0deg, var(--bg) 0%, rgba(8, 8, 11, 0) 42%);
+  background: linear-gradient(90deg, var(--bg) 0%, var(--bg) 28%, rgba(var(--bg-rgb), .65) 50%, rgba(var(--bg-rgb), 0) 74%),
+    linear-gradient(0deg, var(--bg) 0%, rgba(var(--bg-rgb), 0) 42%);
 }
 .hero-info { position: relative; z-index: 1; height: 100%; padding: 32px 24px 28px; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; }
 /* o texto fica estreito (legível sobre a imagem); os botões usam a largura toda */
@@ -425,7 +459,7 @@ input, select, textarea { font: inherit; color: inherit; }
   html:not(.tv-wide) .stream-home .hero-stream { --hero-h: calc(var(--app-h, 100vh) * .5); min-height: 280px; position: relative; }
   html:not(.tv-wide) .stream-scroll { scroll-padding-top: 0; }
   html:not(.tv-wide) .hero-art { width: 100%; }
-  html:not(.tv-wide) .hero-shade { background: linear-gradient(0deg, var(--bg) 6%, rgba(8, 8, 11, .6) 50%, rgba(8, 8, 11, .05) 100%); }
+  html:not(.tv-wide) .hero-shade { background: linear-gradient(0deg, var(--bg) 6%, rgba(var(--bg-rgb), .6) 50%, rgba(var(--bg-rgb), .05) 100%); }
   html:not(.tv-wide) .hero-info { max-width: none; padding: 0 14px 16px; gap: 8px; }
   html:not(.tv-wide) .hero-title { font-size: 26px; }
   html:not(.tv-wide) .hero-plot { font-size: 14px; -webkit-line-clamp: 2; height: 3em; }
@@ -667,7 +701,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .detail .backdrop.sharp img { filter: none; opacity: .35; transform: none; }
 .detail .backdrop::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: linear-gradient(180deg, rgba(10,10,15,.2), var(--bg) 92%), linear-gradient(90deg, var(--bg) 0%, transparent 60%); }
 .detail .inner { position: relative; padding: 8px 28px 40px; }
-.detail-back { margin: 4px 0 16px; background: rgba(8, 8, 11, .45); }
+.detail-back { margin: 4px 0 16px; background: rgba(var(--bg-rgb), .45); }
 .detail-back:hover { background: rgba(255, 255, 255, .12); }
 .detail .hero { display: flex; gap: 28px; align-items: flex-end; }
 .detail .hero .thumb { width: 220px; aspect-ratio: 2/3; border-radius: 14px; box-shadow: var(--shadow); }
@@ -717,7 +751,7 @@ input, select, textarea { font: inherit; color: inherit; }
   cursor: pointer; border: 1px solid transparent; min-width: 0;
 }
 .g-prog:hover { background: var(--card-2); border-color: var(--line-2); z-index: 1; }
-.g-prog.now { background: #2a1a20; border-color: rgba(var(--accent-rgb), .35); }
+.g-prog.now { background: var(--accent-tint); border-color: rgba(var(--accent-rgb), .35); }
 .g-prog .t { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .g-prog .h { font-size: 11px; color: var(--faint); white-space: nowrap; }
 .g-empty { position: absolute; top: 5px; bottom: 5px; left: 6px; display: flex; align-items: center; color: var(--faint); font-size: 12px; }
@@ -760,6 +794,25 @@ input, select, textarea { font: inherit; color: inherit; }
 .pref { background: var(--card); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
 .pref .lbl { font-weight: 600; }
 .pref .sub { font-size: 12px; color: var(--muted); }
+/* Personalização (temas): amostras. PC: hover aumenta; TV: o foco do controle faz o mesmo; celular: o toque afunda.
+   Só transform anima (leve em todos os aparelhos). */
+.plus-tag { margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .3px; vertical-align: middle; color: var(--accent); background: var(--accent-soft); }
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch { position: relative; flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 2px solid var(--line-2); background: var(--sw); color: #0b0b10; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform .15s ease; }
+.swatch.bg { width: 104px; height: 64px; border-radius: 12px; flex-direction: column; align-items: stretch; justify-content: flex-end; gap: 5px; padding: 8px 10px; color: #f4f4f8; text-align: left; }
+.swatch .sw-card { height: 12px; border-radius: 4px; background: var(--sw-card); }
+.swatch .sw-name { font-size: 12px; font-weight: 600; }
+.swatch.on { border-color: var(--text); }
+.swatch .sw-check svg { width: 20px; height: 20px; }
+.swatch.bg .sw-check { position: absolute; top: 6px; right: 8px; }
+.swatch.bg .sw-check svg { width: 16px; height: 16px; }
+.swatch .sw-lock { position: absolute; right: -5px; bottom: -5px; width: 20px; height: 20px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line-2); color: var(--muted); display: flex; align-items: center; justify-content: center; }
+.swatch .sw-lock svg { width: 11px; height: 11px; }
+@media (hover: hover) { .swatch:hover { transform: scale(1.08); } }
+.swatch:active { transform: scale(.94); }
+.tv .swatch.tv-focus, .kb-nav .swatch.tv-focus { transform: scale(1.08); box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--text); }
+.plus-note { display: flex; align-items: flex-start; gap: 6px; margin: 12px 0 0; font-size: 13px; }
+.plus-note .ico svg { width: 14px; height: 14px; margin-top: 2px; }
 .switch { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .switch input { display: none; }
 .switch .tr { width: 40px; height: 22px; border-radius: 22px; background: var(--line-2); position: relative; transition: background .15s; flex: none; }
@@ -849,11 +902,11 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .tv .nav a:focus, .tv .cat-item:focus { background: var(--accent-soft); color: var(--text); }
 .tv .ch-card { transition: transform .12s, background .12s, border-color .12s; }
-.tv .ch-card:focus { border-color: var(--accent); background: #2a1a20; transform: scale(1.03); box-shadow: 0 10px 28px rgba(0,0,0,.5); position: relative; z-index: 1; }
+.tv .ch-card:focus { border-color: var(--accent); background: var(--accent-tint); transform: scale(1.03); box-shadow: 0 10px 28px rgba(0,0,0,.5); position: relative; z-index: 1; }
 .tv .poster:focus .thumb { transform: translateY(-3px) scale(1.06); box-shadow: 0 14px 30px rgba(0,0,0,.6), 0 0 0 3px var(--accent); }
 .tv .poster:focus .pt { color: var(--accent); }
 .tv .ep:focus { border-color: var(--accent); background: var(--card-2); }
-.tv .g-prog:focus { border-color: var(--accent); background: #3a1d25; z-index: 1; }
+.tv .g-prog:focus { border-color: var(--accent); background: var(--accent-tint-2); z-index: 1; }
 .tv .player .pbtn:focus { background: var(--accent); color: var(--on-accent); }
 .tv .link-btn:focus { color: var(--text); box-shadow: 0 0 0 2px var(--accent); }
 .tv .pmenu .opt:focus { background: rgba(var(--accent-rgb), .25); box-shadow: none; }
@@ -1114,13 +1167,13 @@ input, select, textarea { font: inherit; color: inherit; }
 .tv .tv-focus { outline: none; box-shadow: 0 0 0 3px var(--accent); }
 .tv .brand.tv-focus, .tv .brand:focus, .kb-nav .brand.tv-focus { box-shadow: none; background: var(--accent-soft); }
 .tv .nav a.tv-focus, .tv .cat-item.tv-focus { background: var(--accent-soft); color: var(--text); }
-.tv .ch-card.tv-focus { border-color: var(--accent); background: #2a1a20; transform: scale(1.03); position: relative; z-index: 1; }
+.tv .ch-card.tv-focus { border-color: var(--accent); background: var(--accent-tint); transform: scale(1.03); position: relative; z-index: 1; }
 .tv .poster.tv-focus { box-shadow: none; }
 .tv .poster.tv-focus .thumb::after { box-shadow: inset 0 0 0 3px var(--accent); }
 .tv .poster.tv-focus .thumb img { transform: scale(1.07); }
 .tv .poster.tv-focus .pt { color: var(--accent); }
 .tv .ep.tv-focus { border-color: var(--accent); background: var(--card-2); box-shadow: none; }
-.tv .g-prog.tv-focus { border-color: var(--accent); background: #3a1d25; z-index: 1; }
+.tv .g-prog.tv-focus { border-color: var(--accent); background: var(--accent-tint-2); z-index: 1; }
 .tv .player .pbtn.tv-focus { background: var(--accent); color: var(--on-accent); box-shadow: none; }
 .tv .player .seek.tv-focus { box-shadow: none; }
 .tv .player .seek.tv-focus .track { height: 8px; box-shadow: 0 0 0 2px rgba(255, 255, 255, .55); }
@@ -1141,12 +1194,12 @@ input, select, textarea { font: inherit; color: inherit; }
    Seletores repetidos de propósito em vez de :is(), que TVs antigas não entendem (descartariam a regra toda). */
 .kb-nav .tv-focus { outline: none; box-shadow: 0 0 0 3px var(--accent); }
 .kb-nav .nav a.tv-focus, .kb-nav .cat-item.tv-focus { background: var(--accent-soft); color: var(--text); }
-.kb-nav .ch-card.tv-focus { border-color: var(--accent); background: #2a1a20; }
+.kb-nav .ch-card.tv-focus { border-color: var(--accent); background: var(--accent-tint); }
 .kb-nav .poster.tv-focus { box-shadow: none; }
 .kb-nav .poster.tv-focus .thumb img { transform: scale(1.07); }
 .kb-nav .poster.tv-focus .pt { color: var(--accent); }
 .kb-nav .ep.tv-focus { border-color: var(--accent); background: var(--card-2); box-shadow: none; }
-.kb-nav .g-prog.tv-focus { border-color: var(--accent); background: #3a1d25; z-index: 1; }
+.kb-nav .g-prog.tv-focus { border-color: var(--accent); background: var(--accent-tint-2); z-index: 1; }
 .kb-nav .pmenu .opt.tv-focus { background: rgba(var(--accent-rgb), .25); box-shadow: none; }
 .kb-nav .btn.primary.tv-focus, .kb-nav .pager-btn.tv-focus { background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(var(--accent-rgb), .5); }
 .kb-nav .search:focus-within, .kb-nav .filter:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent); }
