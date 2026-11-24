@@ -97,6 +97,22 @@ export class NativeVideo {
     if (this.probe) this.probe.remove();
   }
 
+  // Gira a imagem no player nativo (graus). false: app antigo, sem o giro.
+  rotate(deg) {
+    const b = bridge();
+    if (!b.rotate) return false;
+    b.rotate(deg);
+    return true;
+  }
+
+  // Preencher a tela (corta as bordas). false: app antigo.
+  fit(cover) {
+    const b = bridge();
+    if (!b.fit) return false;
+    b.fit(!!cover);
+    return true;
+  }
+
   setText(id) {
     this.cue = '';
     bridge().track('text', id == null ? 'off' : id);

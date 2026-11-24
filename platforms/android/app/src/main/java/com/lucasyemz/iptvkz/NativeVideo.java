@@ -6,6 +6,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.SurfaceView;
+import android.view.TextureView;
+import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
@@ -53,6 +55,11 @@ final class NativeVideo implements Player.Listener {
     private ExoPlayer player;
     private FrameLayout box;
     private SurfaceView surface;
+    // Imagem girada (botão Girar): a SurfaceView não gira, então nesse caso o vídeo vai para uma TextureView,
+    // que gira como qualquer view. Sem giro, volta para a SurfaceView, que gasta menos.
+    private TextureView texture;
+    private int rot;
+    private boolean cover; // preencher a área (corta as bordas) em vez de caber inteiro
     private float rx, ry, rw = 1, rh = 1; // área do player na tela, em frações
     private int vw, vh;
     private float par = 1;
@@ -63,6 +70,11 @@ final class NativeVideo implements Player.Listener {
         this.ctx = ctx;
         this.root = root;
         this.web = web;
+        // A tela virou (em pé ↔ deitada): as frações da área do player não mudam, então a página não avisa de novo.
+        // Sem isto o vídeo ficava com o tamanho da tela anterior, cortado e fora do lugar.
+        web.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l != or - ol || b - t != ob - ot) main.post(this::layout);
+        });
     }
 
     // ---------- chamadas da interface (thread do JavaScript → thread principal) ----------
@@ -103,6 +115,34 @@ final class NativeVideo implements Player.Listener {
 
     @JavascriptInterface
     public void close() { main.post(this::release); }
+
+    @JavascriptInterface
+    public void fit(boolean on) {
+        main.post(() -> {
+            cover = on;
+            layout();
+        });
+    }
+
+    @JavascriptInterface
+    public void rotate(int deg) {
+        main.post(() -> {
+            rot = ((deg % 360) + 360) % 360;
+            if (player == null || box == null) return;
+            if (rot != 0 && texture == null) {
+                texture = new TextureView(ctx);
+                box.addView(texture, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+                player.setVideoTextureView(texture);
+                surface.setVisibility(View.GONE);
+            } else if (rot == 0 && texture != null) {
+                surface.setVisibility(View.VISIBLE);
+                player.setVideoSurfaceView(surface);
+                box.removeView(texture);
+                texture = null;
+            }
+            layout();
+        });
+    }
 
     // ---------- player ----------
 
@@ -145,6 +185,9 @@ final class NativeVideo implements Player.Listener {
         web.setBackgroundColor(Color.TRANSPARENT);
         player.setVideoSurfaceView(surface);
         vw = vh = 0;
+        rot = 0;
+        cover = false;
+        texture = null;
         sentMeta = false;
         lastCue = "";
         layout();
@@ -170,6 +213,7 @@ final class NativeVideo implements Player.Listener {
             root.removeView(box);
             box = null;
             surface = null;
+            texture = null;
         }
         web.setBackgroundColor(Color.BLACK);
     }
@@ -196,13 +240,18 @@ final class NativeVideo implements Player.Listener {
         b.topMargin = Math.round(ry * H);
         box.setLayoutParams(b);
         int bw = b.width, bh = b.height;
+        boolean side = rot % 180 != 0; // de lado: a imagem cabe na área com largura e altura trocadas
+        if (side) { int t = bw; bw = bh; bh = t; }
         int sw = bw, sh = bh;
         if (vw > 0 && vh > 0 && bw > 0 && bh > 0) {
             float aspect = vw * par / vh;
-            if ((float) bw / bh > aspect) sw = Math.round(bh * aspect);
+            // inteiro: a imagem cabe na área; preencher: cobre a área e a caixa corta o que passar
+            if (((float) bw / bh > aspect) != cover) sw = Math.round(bh * aspect);
             else sh = Math.round(bw / aspect);
         }
-        surface.setLayoutParams(new FrameLayout.LayoutParams(sw, sh, Gravity.CENTER));
+        View v = texture != null ? texture : surface;
+        v.setLayoutParams(new FrameLayout.LayoutParams(sw, sh, Gravity.CENTER));
+        v.setRotation(texture != null ? rot : 0);
     }
 
     private void selectTrack(String type, String id) {
