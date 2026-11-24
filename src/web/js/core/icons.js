@@ -24,6 +24,7 @@ const P = {
   mute: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/>',
   fullscreen: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',
   exitFs: '<path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/>',
+  rotate: '<rect x="3" y="10" width="11" height="10" rx="1.5"/><path d="M9 4h4a6 6 0 0 1 6 6v2"/><path d="m16 9.5 3 3 3-3"/>',
   pip: '<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor"/>',
   // onda sonora (barras simétricas, mais altas no meio): idioma do áudio, como nos streamings. Desenho próprio.
   audioLang: '<path d="M3 11v2M6 9v6M9 6v12M12 3v18M15 6v12M18 9v6M21 11v2"/>',

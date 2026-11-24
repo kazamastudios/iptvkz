@@ -329,8 +329,12 @@ public class MainActivity extends Activity {
      * As barras voltam deslizando da borda. Ao sair, a barra de navegação volta.
      */
     @SuppressWarnings("deprecation")
+    private boolean videoFull; // vídeo em tela cheia: a imagem vai até a borda, inclusive no recorte da câmera
+
     private void immersive(boolean on) {
         Window w = getWindow();
+        videoFull = on;
+        w.getDecorView().requestApplyInsets();
         if (Build.VERSION.SDK_INT >= 28) {
             WindowManager.LayoutParams lp = w.getAttributes();
             lp.layoutInDisplayCutoutMode = on ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -359,6 +363,20 @@ public class MainActivity extends Activity {
      */
     private void fitSystemBars(WindowInsets insets) {
         if (Build.VERSION.SDK_INT < 35 || root == null) return;
+        // vídeo em tela cheia: sem margem, a imagem ocupa até o recorte da câmera; a página só afasta os controles dele
+        android.graphics.Insets cut = insets.getInsets(WindowInsets.Type.displayCutout());
+        if (web != null) {
+            float d = getResources().getDisplayMetrics().density;
+            android.graphics.Insets c = videoFull ? cut : android.graphics.Insets.NONE;
+            web.evaluateJavascript("(function(s){s.setProperty('--cut-t','" + Math.round(c.top / d) + "px');s.setProperty('--cut-r','"
+                    + Math.round(c.right / d) + "px');s.setProperty('--cut-b','" + Math.round(c.bottom / d) + "px');s.setProperty('--cut-l','"
+                    + Math.round(c.left / d) + "px')})(document.documentElement.style)", null);
+        }
+        if (videoFull) {
+            android.graphics.Insets b = insets.getInsets(WindowInsets.Type.systemBars());
+            root.setPadding(b.left, b.top, b.right, b.bottom);
+            return;
+        }
         android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
         int bottom = bars.bottom;
         if (!isTv) bottom = Math.max(bottom, insets.getInsets(WindowInsets.Type.ime()).bottom);
@@ -472,6 +490,19 @@ public class MainActivity extends Activity {
 
             @JavascriptInterface
             public boolean isKeyboardVisible() { return keyboardVisible; }
+
+            // vídeo em tela cheia no celular: "landscape" deita a tela, "portrait" deixa em pé (vídeo vertical, ou
+            // escolha da pessoa no botão Girar); vazio volta ao normal do aparelho
+            @JavascriptInterface
+            public void setVideoOrientation(String want) {
+                main.post(() -> {
+                    if (isTv) return;
+                    boolean on = "landscape".equals(want) || "portrait".equals(want);
+                    setRequestedOrientation(!on ? baseOrientation() : "portrait".equals(want)
+                            ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                    immersive(on);
+                });
+            }
 
             // vídeo em tela cheia (filme, série, canal ampliado): deita a tela; ao sair, volta ao normal do aparelho
             @JavascriptInterface
