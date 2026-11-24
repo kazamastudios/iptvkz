@@ -258,6 +258,17 @@ test('estáticos: interface sai, código do servidor e caminhos estranhos não',
   assert.strictEqual((await request('GET', '/api/ping')).status, 200, 'servidor continua de pé');
 });
 
+test('estáticos: logos (Beta e oficial no mesmo endereço) sempre conferidos; o resto fica um dia em cache', async () => {
+  for (const p of ['/img/logo-sidebar.webp', '/img/logo-horizontal.webp', '/img/icon-192.png']) {
+    const r = await request('GET', p);
+    assert.strictEqual(r.status, 200, p);
+    assert.strictEqual(r.headers['cache-control'], 'no-cache', `${p}: sem cache longo`);
+    const again = await request('GET', p, { headers: { 'If-None-Match': r.headers.etag } });
+    assert.strictEqual(again.status, 304, `${p}: sem mudança, não baixa de novo`);
+  }
+  assert.strictEqual((await request('GET', '/favicon.png')).headers['cache-control'], 'public, max-age=86400');
+});
+
 test('proxy: sem CORS aberto, só http(s)', async () => {
   const r = await request('GET', '/proxy?url=' + encodeURIComponent(FAKE + '/live/1.ts'));
   assert.strictEqual(r.status, 200);

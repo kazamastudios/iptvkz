@@ -516,7 +516,10 @@ function serveStatic(req, res, pathname) {
   let rel;
   try { rel = decodeURIComponent(pathname); } catch { rel = null; }
   if (rel === '/') rel = '/index.html';
-  if (rel && isBeta() && BETA_IMG.test(rel)) rel = rel.replace(/\.(png|webp)$/, '-beta.$1');
+  // Os logos têm o mesmo endereço no Beta (âmbar) e no oficial (vermelho): sem cache longo, quem troca de um para o
+  // outro (testador da Play que sai do Beta) não fica com o logo antigo. O ETag evita baixar de novo o que não mudou.
+  const brandImg = !!rel && BETA_IMG.test(rel);
+  if (brandImg && isBeta()) rel = rel.replace(/\.(png|webp)$/, '-beta.$1');
   const file = rel && !rel.includes('\0') ? path.normalize(path.join(PUBLIC, rel)) : '';
   // com o separador no fim, "src/web-outra" não passa por "src/web"
   if (!file.startsWith(path.join(PUBLIC, path.sep))) {
@@ -534,7 +537,7 @@ function serveStatic(req, res, pathname) {
     // Cache: tocadores com a versão no endereço (?v=) ficam até a próxima versão; imagens e bibliotecas, um dia.
     // Página e código do app são sempre conferidos (o ETag evita baixar de novo o que não mudou).
     const versioned = rel.startsWith('/vendor/') && /[?&]v=[^&]+/.test(req.url);
-    const longLived = rel.startsWith('/vendor/') || rel.startsWith('/img/') || /^\/favicon/.test(rel);
+    const longLived = !brandImg && (rel.startsWith('/vendor/') || rel.startsWith('/img/') || /^\/favicon/.test(rel));
     const cache = versioned ? 'public, max-age=31536000, immutable' : longLived ? 'public, max-age=86400' : 'no-cache';
     const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': cache, ETag: etag };
     if (req.headers['if-none-match'] === etag) {
