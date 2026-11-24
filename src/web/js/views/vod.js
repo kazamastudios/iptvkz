@@ -84,7 +84,7 @@ export function posterCard(section, item, ctx, { where = false, onOpen = null, w
     const last = getProgress('s:' + item.id);
     if (last && last.done) bottom.push(h('span.badge.seen', '✓ Concluída'));
     else if (last) {
-      bottom.push(h('span.badge', `T${last.season}:E${last.num}`));
+      bottom.push(h('span.badge.sxe', `T${last.season}:E${last.num}`));
       const ep = getProgress(last.ep);
       if (ep && ep.d) bar = h('div.pbar', h('i', { style: { width: Math.min(100, (ep.t / ep.d) * 100) + '%' } }));
     }

@@ -1,4 +1,4 @@
-// Tema: cor de destaque e fundo. É por aparelho, como o visual (core/viewmode.js): fica no localStorage e não vai
+// Tema: cor de destaque, fundo e o jeito das capas (tamanho, cantos, o que aparece nelas). É por aparelho, como o visual (core/viewmode.js): fica no localStorage e não vai
 // para o servidor. As cores além do vermelho e os fundos Preto e Grafite são do IPTVKZ+ (core/premium.js): sem ele,
 // a pessoa experimenta em Configurações, e o tema volta ao sair de lá. O CSS dos temas está em css/app.css.
 import { hasPlus } from './premium.js';
@@ -21,18 +21,41 @@ export const BACKGROUNDS = [
   { id: 'graphite', label: 'Grafite', color: '#1a1b21', card: '#282a33' },
 ];
 
-const DEFAULT = { accent: 'red', bg: 'dark' };
+// Capas do seu jeito (css/app.css: html[data-psize], [data-pradius], [data-phide])
+export const SIZES = [
+  { id: 's', label: 'Pequena' },
+  { id: 'm', label: 'Média', free: true },
+  { id: 'l', label: 'Grande' },
+];
+export const RADII = [
+  { id: 'square', label: 'Retos' },
+  { id: 'round', label: 'Arredondados', free: true },
+  { id: 'soft', label: 'Bem redondos' },
+];
+// o que aparece sobre a capa (e o nome embaixo): a pessoa esconde o que não quer ver
+export const OVERLAYS = [
+  { id: 'tags', label: 'Dublado e Legendado' },
+  { id: 'rating', label: 'Nota' },
+  { id: 'year', label: 'Ano' },
+  { id: 'seen', label: 'Assistido e episódio' },
+  { id: 'bar', label: 'Barra de progresso' },
+  { id: 'name', label: 'Nome embaixo' },
+];
+
+const DEFAULT = { accent: 'red', bg: 'dark', size: 'm', radius: 'round', hide: [] };
+const LISTS = { accent: ACCENTS, bg: BACKGROUNDS, size: SIZES, radius: RADII };
 const valid = (list, id) => list.some((x) => x.id === id);
-export const isFree = (part, id) => (part === 'accent' ? ACCENTS : BACKGROUNDS).some((x) => x.id === id && x.free);
+const cleanHide = (v) => (Array.isArray(v) ? OVERLAYS.map((o) => o.id).filter((id) => v.includes(id)) : []);
+// grátis: o padrão de cada parte (em "hide", não esconder nada)
+export const isFree = (part, id) => (part === 'hide' ? !cleanHide(id).length : LISTS[part].some((x) => x.id === id && x.free));
 
 // O que a pessoa escolheu (mesmo que pago e sem IPTVKZ+)
 export function savedTheme() {
   try {
     const t = JSON.parse(localStorage.getItem(KEY) || '{}');
-    return {
-      accent: valid(ACCENTS, t.accent) ? t.accent : DEFAULT.accent,
-      bg: valid(BACKGROUNDS, t.bg) ? t.bg : DEFAULT.bg,
-    };
+    const out = { hide: cleanHide(t.hide) };
+    for (const [part, list] of Object.entries(LISTS)) out[part] = valid(list, t[part]) ? t[part] : DEFAULT[part];
+    return out;
   } catch {
     return { ...DEFAULT };
   }
@@ -42,10 +65,9 @@ export function savedTheme() {
 export function theme() {
   const t = savedTheme();
   if (hasPlus()) return t;
-  return {
-    accent: isFree('accent', t.accent) ? t.accent : DEFAULT.accent,
-    bg: isFree('bg', t.bg) ? t.bg : DEFAULT.bg,
-  };
+  const out = {};
+  for (const part of Object.keys(DEFAULT)) out[part] = isFree(part, t[part]) ? t[part] : DEFAULT[part];
+  return out;
 }
 
 let shown = null; // tema em prévia (não salvo), ou null
@@ -58,6 +80,9 @@ export function applyTheme(t = theme()) {
   const html = document.documentElement;
   if (t.accent === DEFAULT.accent) delete html.dataset.accent; else html.dataset.accent = t.accent;
   if (t.bg === DEFAULT.bg) delete html.dataset.bg; else html.dataset.bg = t.bg;
+  if (t.size === DEFAULT.size) delete html.dataset.psize; else html.dataset.psize = t.size;
+  if (t.radius === DEFAULT.radius) delete html.dataset.pradius; else html.dataset.pradius = t.radius;
+  if (!t.hide.length) delete html.dataset.phide; else html.dataset.phide = t.hide.join(' ');
   // Android: a abertura nativa (antes da página carregar) usa a mesma cor na próxima vez. Prévia não conta.
   const a = window.IPTVKZAndroid;
   if (!shown && a && a.setThemeAccent) try { a.setThemeAccent(t.accent); } catch {}
