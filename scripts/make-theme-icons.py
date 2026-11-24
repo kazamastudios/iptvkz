@@ -17,7 +17,8 @@ THEMES = {
     "pink": (322, 1.2, 295),
     "cyan": (190, 1.9, 152),
 }
-FILES = ["mipmap-xxxhdpi/ic_launcher", "drawable-xhdpi/banner", "drawable-xxxhdpi/banner"]
+# ic_launcher_fg: camada da frente do ícone adaptável (scripts/make-android-icons.py)
+FILES = ["mipmap-xxxhdpi/ic_launcher", "mipmap-xxxhdpi/ic_launcher_fg", "drawable-xhdpi/banner", "drawable-xxxhdpi/banner"]
 
 
 def tint(im, deg, bright):

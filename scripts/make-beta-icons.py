@@ -96,8 +96,16 @@ frames[256].save(P("platforms", "windows", "iptvkz-beta.ico"), sizes=[(n, n) for
                  append_images=[frames[n] for n in SIZES if n != 256])
 print("ok platforms/windows/iptvkz-beta.ico")
 
-# Android TV: ícone e banner
-save(square(master, 192), "platforms", "android", "app", "src", "beta", "res", "mipmap-xxxhdpi", "ic_launcher.png")
+# Android: ícone quadrado cheio (a Google Play recusa ícone de TV com cantos transparentes) e camada da frente do
+# ícone adaptável, do mesmo jeito que scripts/make-android-icons.py faz com o oficial.
+_android_full = amber(Image.open(P("assets", "brand", "icon-master.png")).convert("RGBA").crop((95, 95, 1159, 1159)))
+_android_full = ribbon(_android_full)
+_beta_res = ("platforms", "android", "app", "src", "beta", "res")
+save(_android_full.resize((192, 192), Image.LANCZOS), *_beta_res, "mipmap-xxxhdpi", "ic_launcher.png")
+_fg = Image.new("RGBA", (432, 432), (0, 0, 0, 0))
+_fg.alpha_composite(_android_full.resize((288, 288), Image.LANCZOS), (72, 72))
+save(_fg, *_beta_res, "mipmap-xxxhdpi", "ic_launcher_fg.png")
+# Android TV: banner
 for dens, (bw, bh) in (("xhdpi", (320, 180)), ("xxxhdpi", (640, 360))):
     src = P("platforms", "android", "app", "src", "main", "res", "drawable-xxxhdpi", "banner.png")
     ban = amber(Image.open(src)).resize((bw * 2, bh * 2), Image.LANCZOS)
