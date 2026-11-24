@@ -19,6 +19,8 @@ export const BACKGROUNDS = [
   { id: 'dark', label: 'Escuro', color: '#08080b', card: '#1a1a25', free: true },
   { id: 'black', label: 'Preto', color: '#000000', card: '#121219', note: 'Bom para telas OLED' },
   { id: 'graphite', label: 'Grafite', color: '#1a1b21', card: '#282a33' },
+  // claro: o conteúdo fica claro; menu lateral, player e abertura continuam escuros (css/app.css)
+  { id: 'light', label: 'Claro', color: '#f3f3f7', card: '#ffffff', ink: '#15151d' },
 ];
 
 // Capas do seu jeito (css/app.css: html[data-psize], [data-pradius], [data-phide])
