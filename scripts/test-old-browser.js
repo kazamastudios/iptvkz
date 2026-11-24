@@ -1,7 +1,7 @@
 // Teste do piso de navegador: abre o app (versão legacy) num Chromium sem o que o Chromium 51 não tem (WebView do
 // Android 7.0, como nas TV box) e passa pelas telas principais, no modo PC e no modo TV. Falha com qualquer erro de
 // JavaScript ou se o app não sair da abertura. Usa o Electron do projeto (nada para instalar).
-//   npx electron scripts/test-old-browser.js        (no Linux sem tela: xvfb-run -a npx electron ...)
+//   npx electron scripts/test-old-browser.js        (no Linux sem tela: xvfb-run -a npx electron --no-sandbox ...)
 // Lista fictícia, servida aqui mesmo; a pasta de dados é temporária e apagada no fim.
 const { app, BrowserWindow } = require('electron');
 const http = require('http');

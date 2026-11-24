@@ -123,7 +123,8 @@ jobs:
           git diff --exit-code --stat -- src/web/js/app.legacy.js
 
       - name: Abrir o app no piso Chromium 51
-        run: xvfb-run -a npx electron scripts/test-old-browser.js
+        # --no-sandbox na linha de comando: no runner o sandbox do Chromium não está configurado
+        run: xvfb-run -a npx electron --no-sandbox scripts/test-old-browser.js
 
   build:
     needs: [changes, ffmpeg]
