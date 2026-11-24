@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -97,7 +96,14 @@ final class Bundles {
 
     static int readInt(File f) {
         try {
-            return Integer.parseInt(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).trim());
+            // FileInputStream e não Files/toPath(): esses só existem do Android 8 em diante, e no 7 (TV box como a
+            // TX9) o app fechava ao abrir
+            try (InputStream in = new FileInputStream(f)) {
+                byte[] buf = new byte[32];
+                int n = 0, r;
+                while (n < buf.length && (r = in.read(buf, n, buf.length - n)) > 0) n += r;
+                return Integer.parseInt(new String(buf, 0, n, StandardCharsets.UTF_8).trim());
+            }
         } catch (IOException | NumberFormatException e) {
             return 0;
         }
