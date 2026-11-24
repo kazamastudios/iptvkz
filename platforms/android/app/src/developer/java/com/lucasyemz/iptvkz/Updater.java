@@ -21,7 +21,6 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.PublicKey;
@@ -73,7 +72,10 @@ final class Updater {
 
     private void stage(int bundle, File tmp) throws IOException {
         File versionTmp = new File(activity.getCacheDir(), "bundle.version");
-        Files.write(versionTmp.toPath(), String.valueOf(bundle).getBytes(StandardCharsets.UTF_8));
+        // FileOutputStream e não Files/toPath() (só existem do Android 8 em diante)
+        try (OutputStream o = new FileOutputStream(versionTmp)) {
+            o.write(String.valueOf(bundle).getBytes(StandardCharsets.UTF_8));
+        }
         if (!tmp.renameTo(Bundles.staged(activity)) || !versionTmp.renameTo(Bundles.stagedVersion(activity))) {
             throw new IOException("Não foi possível guardar a atualização");
         }

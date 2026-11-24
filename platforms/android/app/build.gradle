@@ -111,6 +111,9 @@ android {
         }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    // Chamada que não existe no Android mínimo (minSdk 24) derruba o app ao abrir nos aparelhos antigos (TV box com
+    // Android 7). Fatal: o build de release (lintVital, também no CI) para em vez de gerar o APK/AAB.
+    lint { fatal 'NewApi' }
 }
 
 // Build de publicação na Play (PLAY_REQUIRE_SIGNING=1) não sai sem a chave de upload.
