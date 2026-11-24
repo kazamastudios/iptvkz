@@ -394,6 +394,7 @@ export class Player {
     this.attempts = 0;
     this.usingAlt = false;
     this.resumeAt = src.startAt || 0;
+    this._paintResume(src);
     this.subSource = null;
     this.subDelay = 0;
     if (this.rot) this.setRotation(0); // o giro e a posição da tela valem só para aquele vídeo
@@ -955,6 +956,7 @@ export class Player {
     // a partir do que está na tela (vários toques seguidos somam, mesmo antes do vídeo chegar no anterior)
     const target = Math.max(0, Math.min(v.duration - 1, this._shownTime() + s));
     this.resumeAt = 0;
+    this.resumeHint = null;
     this._seekTo = { t: target, at: Date.now() }; this._seekAt = Date.now();
     v.currentTime = target;
     this._updateSeek();
@@ -1069,6 +1071,8 @@ export class Player {
     clearTimeout(this._hideT);
     this._hideT = setTimeout(() => {
       if (this.video.paused || !this.menu.classList.contains('hidden')) return;
+      // "Continuar de onde parou" ainda abrindo: a barra fica na tela mostrando o ponto salvo (o "playing" esconde depois)
+      if (this.resumeHint && this.root.classList.contains('awaiting')) return;
       if (this._ctrlFocused()) {
         // no ao vivo as setas trocam de canal: sem uso, o foco solta dos botões
         if (!(TV.on && this.opts.live) && !release) return this._scheduleHide(ms);
@@ -1104,6 +1108,7 @@ export class Player {
       const ratio = e.type === 'pointercancel' ? lastRatio : ratioAt(e);
       const t = ratio * d;
       this.resumeAt = 0; // a escolha da pessoa vale mais que o "continuar de onde parou" que ainda não foi aplicado
+      this.resumeHint = null;
       this._seekTo = { t, at: Date.now() }; this._seekAt = Date.now();
       show(t / d);
       this._scheduleHide(3000);
@@ -1133,6 +1138,19 @@ export class Player {
     this._isDragging = () => dragging;
   }
 
+  // "Continuar de onde parou": a barra e o tempo já nascem no ponto salvo (com a duração guardada no progresso), em
+  // vez de começar no zero até o vídeo carregar e pular para lá. Dava a entender que o filme começava do início.
+  _paintResume(src) {
+    this.resumeHint = null;
+    if (this.opts.live || !this.seekFill) return;
+    const t = src.startAt > 1 ? src.startAt : 0;
+    const d = src.duration > t ? src.duration : 0;
+    if (t) this.resumeHint = { t, at: performance.now() };
+    this._paintSeek(d ? t / d : 0);
+    this.seekBuf.style.width = '0%';
+    this.timeEl.textContent = d ? `${fmtTime(t)} / ${fmtTime(d)}` : fmtTime(t);
+  }
+
   _paintSeek(ratio) {
     this.seekFill.style.width = ratio * 100 + '%';
     this.seekKnob.style.left = ratio * 100 + '%';
@@ -1146,6 +1164,12 @@ export class Player {
     const s = this._seekTo;
     if (s && Date.now() - s.at < 1500) return s.t;
     this._seekTo = null;
+    // até o vídeo chegar no ponto salvo (ou 20 s, se o servidor não deixar pular), a tela mostra esse ponto
+    const r = this.resumeHint;
+    if (r) {
+      if (v.currentTime < r.t - 3 && performance.now() - r.at < 20000) return r.t;
+      this.resumeHint = null;
+    }
     return v.currentTime;
   }
 
@@ -1648,6 +1672,7 @@ export class Player {
     clearTimeout(this._scrubT);
     if (!this.scrub) return;
     this.resumeAt = 0;
+    this.resumeHint = null;
     this._seekTo = { t: this.scrub.t, at: Date.now() }; this._seekAt = Date.now();
     this.video.currentTime = this.scrub.t;
     this.scrub = null;

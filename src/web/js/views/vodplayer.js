@@ -20,7 +20,7 @@ export function overlayKey(e) {
   return active.player.handleKey(e);
 }
 
-function open({ title, versions, version, startAt, onTime, next, onNext, onVersion, onClose }) {
+function open({ title, versions, version, startAt, duration, onTime, next, onNext, onVersion, onClose }) {
   if (active) active.close(true);
   const el = h('div.vod-overlay');
   document.getElementById('overlayRoot').append(el);
@@ -55,7 +55,7 @@ function open({ title, versions, version, startAt, onTime, next, onNext, onVersi
     onVersion,
   });
   active = { player, el, close };
-  player.load({ url: version.url, title, startAt });
+  player.load({ url: version.url, title, startAt, duration });
   return active;
 }
 
@@ -64,6 +64,9 @@ function resumePoint(id) {
   return p && p.t > 1 && (!p.d || p.t / p.d < 0.95) ? p.t : 0;
 }
 
+// duração guardada no progresso: a barra do player já nasce preenchida até o ponto salvo
+const savedDuration = (id) => (getProgress(id) || {}).d || 0;
+
 export function playMovie(movie, version, { fromStart = false, onClose } = {}) {
   const startAt = fromStart ? 0 : resumePoint(movie.id);
   open({
@@ -71,6 +74,7 @@ export function playMovie(movie, version, { fromStart = false, onClose } = {}) {
     versions: movie.versions,
     version,
     startAt,
+    duration: savedDuration(movie.id),
     onTime: (t, d) => setProgress(movie.id, { kind: 'movie', t, d }),
     onVersion: (label, t) => {
       setSetting('versionPref', label);
@@ -100,6 +104,7 @@ export function playEpisode(serie, seasons, seasonNum, epId, { versionLabel, fro
     versions: ep.versions,
     version,
     startAt: fromStart ? 0 : resumePoint(ep.id),
+    duration: savedDuration(ep.id),
     onTime: (t, d) => {
       setProgress(ep.id, { kind: 'ep', t, d });
       setProgress('s:' + serie.id, { kind: 'serie-last', ep: ep.id, season, num: ep.num, title: ep.title, version: versionLabel, done: !nxt && t / d >= 0.95 });
