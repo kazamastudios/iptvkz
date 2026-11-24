@@ -1,7 +1,7 @@
 // Baixa listas (M3U ou Xtream) e normaliza tudo num catálogo único:
 // { live, movies, series } cada um com { cats: [{id,name}], items: [...] }.
 const fs = require('fs');
-const { hash, norm, fetchJson, fetchWithTimeout, streamLines, byteLines, streamJsonArray, safeHost } = require('./util');
+const { diskError, hash, norm, fetchJson, fetchWithTimeout, streamLines, byteLines, streamJsonArray, safeHost } = require('./util');
 const store = require('./store');
 const diag = require('./diag');
 const idmap = require('./idmap');
@@ -1175,12 +1175,18 @@ async function buildNow(list, { first, onSection, full = false, shouldStop, stam
   // as seções do disco, como ao abrir com o app fechado.
   const t2 = Date.now();
   const files = `${stamp}-${++saveSeq}`;
-  for (const k of SECTIONS) {
-    let text = await sectionText(catalog[k] || { cats: [], items: [] });
-    catalog[k] = null;
-    mem.read();
-    await fsCall(fs.writeFile, store.file(secName(list.id, files, k)), text);
-    text = null;
+  try {
+    for (const k of SECTIONS) {
+      let text = await sectionText(catalog[k] || { cats: [], items: [] });
+      catalog[k] = null;
+      mem.read();
+      await fsCall(fs.writeFile, store.file(secName(list.id, files, k)), text);
+      text = null;
+    }
+  } catch (e) {
+    // não deu para gravar (aparelho cheio): apaga o que ficou pela metade; a lista salva antes continua valendo
+    dropFiles(list.id, files);
+    throw diskError(e);
   }
   const converter = Date.now() - t2;
   const travado = loop.stop();
@@ -1222,11 +1228,19 @@ const legacyName = (id) => `catalog-${id}.json`;
 const fsCall = (fn, ...args) => new Promise((resolve, reject) => fn(...args, (e, r) => (e ? reject(e) : resolve(r))));
 let saveSeq = 0;
 
+// apaga um conjunto de seções (gravação que não terminou ou que ficou para trás)
+const dropFiles = (id, files) => SECTIONS.forEach((k) => fs.unlink(store.file(secName(id, files, k)), () => {}));
+
 async function saveFiles(id, light, parts) {
   const files = `${light.updatedAt}-${++saveSeq}`;
-  for (const k of SECTIONS) await fsCall(fs.writeFile, store.file(secName(id, files, k)), parts[k]);
+  try {
+    for (const k of SECTIONS) await fsCall(fs.writeFile, store.file(secName(id, files, k)), parts[k]);
+  } catch (e) {
+    dropFiles(id, files);
+    throw diskError(e);
+  }
   // outra carga já trocou a lista enquanto gravava: esta sai
-  if (memory.get(id) !== light) return SECTIONS.forEach((k) => fs.unlink(store.file(secName(id, files, k)), () => {}));
+  if (memory.get(id) !== light) return dropFiles(id, files);
   commitFiles(id, light, files);
 }
 
@@ -1237,7 +1251,12 @@ function commitFiles(id, light, files) {
     SECTIONS.forEach((k) => fs.unlink(store.file(secName(id, files, k)), () => {}));
     return;
   }
-  store.writeText(metaName(id), JSON.stringify({ ...light, files }));
+  try {
+    store.writeText(metaName(id), JSON.stringify({ ...light, files }));
+  } catch (e) {
+    dropFiles(id, files); // o resumo não coube: as seções novas saem e a lista anterior continua
+    throw e;
+  }
   light.files = files;
   // as seções vêm do disco quando a tela pede
   partsCache.set(light, diskParts(id, light));

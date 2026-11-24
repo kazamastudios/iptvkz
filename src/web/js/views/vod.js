@@ -416,8 +416,16 @@ export function streamHero(ctx) {
       acts.replaceChildren(...movieActions(item, version, trailer, renderActs, acts));
     } else {
       versions.replaceChildren();
+      // Série já começada: "Continuar" toca direto o episódio onde parou (ou o próximo), e "Ver episódios" abre a
+      // página dela. Os episódios só chegam na página da série, então "Continuar" abre a página já tocando (play=1).
+      const page = `#/${cfg.series.detail}?id=${encodeURIComponent(item.id)}`;
+      const last = getProgress('s:' + item.id);
+      const goOn = last && !last.done
+        ? (isWatched(last.ep) ? 'Próximo episódio' : `Continuar T${last.season}:E${last.num}`)
+        : null;
       acts.replaceChildren(
-        h('button.btn.primary.big', { onclick: () => ctx.navigate(`#/${cfg.series.detail}?id=${encodeURIComponent(item.id)}`) }, ico('play'), 'Ver episódios'),
+        goOn ? h('button.btn.primary.big', { onclick: () => ctx.navigate(page + '&play=1') }, ico('play'), goOn) : null,
+        h('button.btn' + (goOn ? '.big' : '.primary.big'), { onclick: () => ctx.navigate(page) }, ico(goOn ? 'series' : 'play'), 'Ver episódios'),
         trailerButton(cardName(item), trailer), laterButton(section, item), favButton(section, item));
     }
     if (at >= 0) {
@@ -906,6 +914,10 @@ export function serieView(params, ctx) {
   let seasons = [];
   let trailer = '';
   let season = last ? last.season : null;
+  // veio do "Continuar" do destaque (play=1): toca o episódio do botão principal assim que os episódios chegam.
+  // Sai do endereço, para voltar a esta página depois não tocar de novo.
+  let autoplay = params.get('play') === '1';
+  if (autoplay) try { history.replaceState(null, '', location.hash.replace(/&play=1/, '')); } catch {}
 
   function epVersionLabels() {
     const set = new Set();
@@ -1049,6 +1061,11 @@ export function serieView(params, ctx) {
         return;
       }
       renderAll();
+      if (autoplay) {
+        autoplay = false;
+        const go = d.acts.querySelector('.btn.primary');
+        if (go && d.el.isConnected) go.click();
+      }
     } catch (e) {
       d.settleArt();
       epsEl.replaceChildren(h('div.error-box', 'Não foi possível carregar os episódios: ' + e.message));

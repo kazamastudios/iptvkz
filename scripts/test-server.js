@@ -420,6 +420,40 @@ test('atualizar: lista cortada ou página no lugar mantêm a versão guardada, c
   assert.match(bad.json.error, /página/);
 });
 
+test('aparelho sem espaço: aviso claro, nada pela metade no disco e a versão guardada continua', async () => {
+  await addLists([{ id: 'cheia', type: 'm3u', name: 'Cheia', url: `${FAKE}/lista.m3u` }]);
+  const ok = await request('GET', '/api/catalog?list=cheia&section=live');
+  assert.strictEqual(ok.status, 200);
+  const files = () => fs.readdirSync(DATA).filter((f) => f.startsWith('catalog-cheia.')).sort();
+  await until(async () => (files().length === 4 ? true : null));
+  const before = files();
+  // simula o disco cheio só para os arquivos desta lista
+  const real = fs.writeFile;
+  const full = (f) => /catalog-cheia\.|catalog-cheia2\./.test(String(f));
+  fs.writeFile = function (f, data, ...rest) {
+    const cb = rest[rest.length - 1];
+    if (full(f)) return process.nextTick(() => cb(Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' })));
+    return real.call(fs, f, data, ...rest);
+  };
+  try {
+    const r = await request('GET', '/api/catalog?list=cheia&section=live&refresh=1');
+    if (r.status === 200) {
+      assert.match(r.json.warning || '', /sem espaço/, 'a lista guardada continua, com o aviso');
+      assert.strictEqual(r.json.catalog.updatedAt, ok.json.catalog.updatedAt);
+    } else assert.match(r.json.error, /sem espaço/);
+    assert.deepStrictEqual(files(), before, 'nada pela metade no disco');
+    // sem versão guardada: o erro claro vai para a tela
+    await addLists([{ id: 'cheia2', type: 'm3u', name: 'Cheia 2', url: `${FAKE}/lista.m3u` }]);
+    const bad = await request('GET', '/api/catalog?list=cheia2&section=live');
+    assert.strictEqual(bad.status, 500);
+    assert.match(bad.json.error, /sem espaço/);
+    assert.doesNotMatch(bad.json.error, /ENOSPC/);
+    assert.deepStrictEqual(fs.readdirSync(DATA).filter((f) => f.startsWith('catalog-cheia2.')), []);
+  } finally {
+    fs.writeFile = real;
+  }
+});
+
 test('atualizar: lista bem menor vale, e dá para voltar à anterior', async () => {
   variant = 'small';
   const r = await request('GET', '/api/catalog?list=var&section=live&refresh=1');
