@@ -105,6 +105,7 @@ Para a Play aceitar um AAB como atualização, só importam o **pacote**, a **ch
 - **Dynamic Code Loading:** a versão da Play não baixa código; o `src/` vem dentro do AAB.
 - **Aviso de versão nova:** a versão da Play pergunta à própria Play se há atualização (biblioteca In-App Updates, `com.google.android.play:app-update`). Se houver, mostra "Nova versão do IPTVKZ"; "Atualizar" abre a atualização da Play, ou a página do app na loja quando o aparelho não abre a tela da Play. Quem baixa e instala é sempre a Play. Só dá para ver funcionando com o app instalado pela Play (teste interno), com um `versionCode` maior já publicado na mesma faixa.
 - **Permissões:** só `INTERNET` e `ACCESS_NETWORK_STATE`.
+- **Ícone e banner da Android TV:** a 1.2.1 foi recusada em 24/11/2026 porque o ícone tinha cantos transparentes ("Your icon does not fill the entire icon space"). O ícone (`mipmap-xxxhdpi/ic_launcher*`) precisa ser um quadrado **cheio**, e o banner fica em `drawable-xhdpi/banner.png` com 320×180. No Android 8+ o app usa ícone adaptável (`mipmap-anydpi-v26/`). Para refazer: `python scripts/make-android-icons.py`, depois `python scripts/make-beta-icons.py` e `python scripts/make-theme-icons.py`.
 
 ## 5. Chave de upload
 
