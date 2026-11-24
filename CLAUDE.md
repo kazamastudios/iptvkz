@@ -31,6 +31,7 @@ O app é de um para muitos: PC, TV LG, Android TV e celular têm a mesma experi�
 1. **Mudou num lugar, muda em todos.** Ao planejar, diga como fica no PC (mouse), na TV (controle, foco, sem hover) e no celular (toque).
 2. **Não funciona numa plataforma? Faça o equivalente e diga qual.** Hover no PC = foco do controle na TV = toque no celular. Ex.: o zoom da capa no hover também aparece no foco da TV.
 3. **Leve em todos os aparelhos.** Animar só `transform` e `opacity`, um elemento por vez, nada animando fora da tela.
+4. **Piso de compatibilidade: Android 7.0 (API 24) e Chromium 51** (WebView de TV box antiga; webOS 4 é Chromium 53). Função do Java que não existe no Android 7 para o build (lint `NewApi`). Função do navegador mais nova que o Chromium 51 precisa de substituto em `src/web/js/core/polyfills.js`. O CI confere: `scripts/test-old-browser.js` abre o app sem o que o Chromium 51 não tem, e `scripts/test-android-boot.js` abre o APK com o Node de 32 bits.
 
 ## Arquivos gerados que vão para o Git
 

@@ -1,4 +1,5 @@
-// Polyfills para navegadores de TV antigos (webOS 4+ / Chromium 53+). Só entram na versão "legacy".
+// Polyfills para navegadores antigos. O piso é o Chromium 51: WebView do Android 7.0 (TV box) e webOS 4 (53).
+// Só entram na versão "legacy". scripts/test-old-browser.js abre o app sem o que o Chromium 51 não tem.
 /* eslint-disable no-extend-native */
 if (!Array.prototype.flat) {
   Object.defineProperty(Array.prototype, 'flat', {
@@ -41,6 +42,17 @@ if (!String.prototype.padEnd) {
   };
 }
 // Chromium 52/53 (WebView de TV box com Android 7, webOS 4): sem Object.values/entries o app parava na abertura
+// Chromium 54: o esbuild usa em { ...a, b } (helper __spreadProps)
+if (!Object.getOwnPropertyDescriptors) {
+  Object.getOwnPropertyDescriptors = function (o) {
+    var r = {};
+    Object.getOwnPropertyNames(o).forEach(function (k) { r[k] = Object.getOwnPropertyDescriptor(o, k); });
+    if (Object.getOwnPropertySymbols) {
+      Object.getOwnPropertySymbols(o).forEach(function (k) { r[k] = Object.getOwnPropertyDescriptor(o, k); });
+    }
+    return r;
+  };
+}
 if (!Object.values) {
   Object.values = function (o) { return Object.keys(o).map(function (k) { return o[k]; }); };
 }
@@ -87,4 +99,16 @@ if (typeof Promise !== 'undefined' && !Promise.prototype.finally) {
   if (!Element.prototype.before) Element.prototype.before = function () { if (this.parentNode) this.parentNode.insertBefore(toNodes(arguments), this); };
   if (!Element.prototype.after) Element.prototype.after = function () { if (this.parentNode) this.parentNode.insertBefore(toNodes(arguments), this.nextSibling); };
   if (window.NodeList && !NodeList.prototype.forEach) NodeList.prototype.forEach = Array.prototype.forEach;
+  // Chromium 61: scrollTo em elementos (com { left, top }); sem rolagem suave
+  if (!Element.prototype.scrollTo) {
+    Element.prototype.scrollTo = function (a, b) {
+      if (a && typeof a === 'object') {
+        if (a.left != null) this.scrollLeft = a.left;
+        if (a.top != null) this.scrollTop = a.top;
+      } else {
+        this.scrollLeft = a;
+        this.scrollTop = b;
+      }
+    };
+  }
 })();
