@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       test: ${{ steps.o.outputs.test }}
+      web: ${{ steps.o.outputs.web }}
       desktop: ${{ steps.o.outputs.desktop }}
       webos: ${{ steps.o.outputs.webos }}
       android: ${{ steps.o.outputs.android }}
@@ -31,16 +32,17 @@ jobs:
         if: github.event_name == 'pull_request'
         with:
           filters: |
-            app: ['src/**', 'package.json', 'package-lock.json', 'scripts/build-legacy.js', 'scripts/make-*', 'scripts/build-info.js', 'scripts/vendor.js', '.github/workflows/build.yml']
+            app: ['src/**', 'package.json', 'package-lock.json', 'scripts/build-legacy.js', 'scripts/test-old-browser*.js', 'scripts/make-*', 'scripts/build-info.js', 'scripts/vendor.js', '.github/workflows/build.yml']
             server: ['src/server/**', 'scripts/test-server.js', 'package.json', 'package-lock.json']
             desktop: ['platforms/desktop/**', 'scripts/build-desktop.js', 'scripts/build-ffmpeg.sh', 'assets/brand/**']
             webos: ['platforms/webos/**', 'scripts/build-ipk.js', 'scripts/check-webos.js', 'assets/brand/**', 'platforms/android/app/src/developer/res/values/update_key.xml']
-            android: ['platforms/android/**', 'scripts/build-android.js', 'assets/brand/**']
+            android: ['platforms/android/**', 'scripts/build-android.js', 'scripts/test-android-boot.js', 'assets/brand/**']
       - id: o
         run: |
           all=${{ github.event_name != 'pull_request' }}
           on() { if [ "$all" = true ] || [ "$1" = true ] || [ "$2" = true ]; then echo true; else echo false; fi; }
           echo "test=$(on '${{ steps.f.outputs.server }}')" >> "$GITHUB_OUTPUT"
+          echo "web=$(on '${{ steps.f.outputs.app }}')" >> "$GITHUB_OUTPUT"
           echo "desktop=$(on '${{ steps.f.outputs.app }}' '${{ steps.f.outputs.desktop }}')" >> "$GITHUB_OUTPUT"
           echo "webos=$(on '${{ steps.f.outputs.app }}' '${{ steps.f.outputs.webos }}')" >> "$GITHUB_OUTPUT"
           echo "android=$(on '${{ steps.f.outputs.app }}' '${{ steps.f.outputs.android }}')" >> "$GITHUB_OUTPUT"
@@ -97,6 +99,32 @@ jobs:
       - run: npm ci
 
       - run: npm test
+
+  # Piso de navegador: o app (versão legacy) num Chromium sem o que o Chromium 51 não tem (WebView do Android 7.0,
+  # TV box antiga), passando pelas telas no modo PC e no modo TV. Pega função nova usada sem substituto antes de
+  # ela chegar aos aparelhos. Também confere se o app.legacy.js commitado está em dia com o código.
+  piso-navegador:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: app.legacy.js em dia (rode npm run build e faça o commit)
+        run: |
+          npm run build
+          git diff --exit-code --stat -- src/web/js/app.legacy.js
+
+      - name: Abrir o app no piso Chromium 51
+        # --no-sandbox na linha de comando: no runner o sandbox do Chromium não está configurado
+        run: xvfb-run -a npx electron --no-sandbox scripts/test-old-browser.js
 
   build:
     needs: [changes, ffmpeg]
@@ -291,3 +319,38 @@ jobs:
             dist/android/android-update.json*
           if-no-files-found: error
           retention-days: ${{ github.event_name == 'pull_request' && 5 || 14 }}
+
+  # O APK abre de verdade com o Node de 32 bits (armeabi-v7a), o das TV box antigas: emulador Android 11 x86, que
+  # traduz apps ARM de 32 bits. Os aparelhos do dia a dia (Mecool, celular) usam o de 64 bits.
+  android-32:
+    needs: [changes, android]
+    if: ${{ !cancelled() && needs.android.result == 'success' && !startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: IPTVKZ-Android
+          path: dist/android
+
+      - name: Ligar KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Abrir o APK com o Node de 32 bits
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: node scripts/test-android-boot.js dist/android/IPTVKZ-android.apk armeabi-v7a
