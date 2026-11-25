@@ -1091,7 +1091,14 @@ async function buildNow(list, { first, onSection, full = false, shouldStop, stam
         if (!firstErr) firstErr = e;
       }
     }
-    if (!data) { activeBase.delete(list.id); throw firstErr || new Error('Servidor não respondeu'); }
+    if (!data) {
+      activeBase.delete(list.id);
+      const err = firstErr || new Error('Servidor não respondeu');
+      // com reservas, todos foram tentados: a tela diz isso (o erro é o do primeiro, o servidor em uso)
+      const others = serversOf(list).length - 1;
+      if (others > 0) err.message += ` ${others === 1 ? 'O outro servidor desta conta também não funcionou' : `Os outros ${others} servidores desta conta também não funcionaram`} nesta rede.`;
+      throw err;
+    }
   } else if (list.source === 'file') {
     // Lê o arquivo do disco aos poucos, como no download: ler tudo de uma vez punha a lista inteira na memória
     // (com acentos, o dobro do tamanho do arquivo), e na TV LG o serviço do app tem só ~320 MB.

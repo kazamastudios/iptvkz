@@ -337,7 +337,7 @@ function bannerModel(m) {
   }
   if (!m.list || !m.list.state || !(m.list.tone === 'bad' || m.list.tone === 'warn')) return null;
   const text = m.list.state === 'expiring' ? `“${m.list.name}” vence ${/^em /.test(m.list.sub) ? m.list.sub : 'hoje'}. Renove com o seu provedor para não ficar sem canais.` : `“${m.list.name}”: ${m.list.detail}`;
-  return { key: `${status.listId}:${m.list.state}`, tone: m.list.tone, text, list: true };
+  return { key: `${status.listId}:${m.list.state}`, tone: m.list.tone, text, list: true, state: m.list.state };
 }
 
 function renderBanner(m) {
@@ -350,7 +350,9 @@ function renderBanner(m) {
   box.replaceChildren(h('div.status-banner.' + b.tone, { role: 'status' },
     ico('alert'),
     h('span.status-banner-text', b.text),
-    b.list ? h('button.btn.small', { onclick: () => ctx.editList(activeList()) }, 'Editar lista') : null,
+    // bloqueada pela rede, endereço não encontrado ou fora do ar: o atalho para outro servidor (ou outro link)
+    b.list && ['blocked', 'notfound', 'gone', 'offline'].includes(b.state) ? otherAddressButton(activeList(), '.small')
+      : b.list ? h('button.btn.small', { onclick: () => ctx.editList(activeList()) }, 'Editar lista') : null,
     h('button.btn.small.ghost', { onclick: verifyNow }, 'Verificar de novo'),
     h('button.icon-btn', { title: 'Dispensar', 'aria-label': 'Dispensar aviso', onclick: () => { dismissedBanner = b.key; renderBanner(statusModel()); } }, ico('close'))));
 }
@@ -698,6 +700,29 @@ function stateActions(primary, more, danger) {
 // Lista Xtream com outros servidores do mesmo provedor: nas telas de erro e de bloqueio, dá para tentar outro
 // servidor na hora (seletor no PC e no celular; botões na TV, onde o controle anda melhor entre botões) e
 // testar todos (a tela Servidores, com o teste de velocidade). Sem outros servidores, não aparece nada.
+// "Outro servidor": abre Servidores com o campo de endereço aberto. Ao fechar, se os servidores mudaram,
+// a lista carrega de novo (o app tenta o servidor em uso e depois os outros, na ordem).
+function addServer(list) {
+  const cur = S.lists.find((l) => l.id === list.id) || list;
+  const before = JSON.stringify([cur.server, cur.servers || []]);
+  const reload = () => { status.at = 0; checkListStatus(); loadActive(true); };
+  openServers(cur, reload, () => {
+    const now = S.lists.find((l) => l.id === list.id);
+    if (now && JSON.stringify([now.server, now.servers || []]) !== before) reload();
+  }, { add: true });
+}
+
+// Botão da tela de erro e da faixa do topo para quando o endereço não funciona nesta rede (bloqueado, fora do ar,
+// não encontrado): Xtream ganha "Outro servidor" (abre Servidores para adicionar um endereço que o provedor dê para a
+// mesma conta); M3U por link, "Outro link" (o Editar). Lista de arquivo: nada. Texto curto: no celular os botões
+// ficam em duas colunas, e "Adicionar outro servidor" não cabia.
+function otherAddressButton(list, cls = '') {
+  if (!list) return null;
+  if (list.type === 'xtream') return h('button.btn' + cls, { onclick: () => addServer(list) }, ico('plus'), 'Outro servidor');
+  if (list.source !== 'file') return h('button.btn' + cls, { onclick: () => ctx.editList(list) }, ico('link'), 'Outro link');
+  return null;
+}
+
 function serverPicker(list) {
   if (!list || list.type !== 'xtream') return null;
   const main = parseServers(list.server)[0] || list.server;
@@ -800,6 +825,10 @@ function showError() {
   // a tela já explica: o aviso do topo, igual, sai enquanto ela está aberta (como na lista vencida)
   document.body.classList.toggle('list-blocked', blocked || dnsCase);
   const dnsHidden = hiddenByDns(lastError);
+  // com servidores reservas, o servidor já tentou todos (catalog.js): a frase vai junto do endereço
+  const triedNote = ((lastError || '').match(/(O outro servidor desta conta[^.]*\.|Os outros \d+ servidores desta conta[^.]*\.)/) || [])[0] || '';
+  // problema de endereço/servidor nesta rede: vale tentar outro servidor (ou outro link)
+  const addressProblem = blocked || dnsCase || /não respondeu a tempo|Tempo esgotado|recusou a conexão|está com problema|sem caminho/.test(lastError || '');
   const [title, hint, code] = blocked ? [dnsHidden ? 'Bloqueada pela rede' : 'A rede bloqueou esta lista', ''] : loadErrorTitle(lastError);
   showState(h('div.center-state',
     ico('alert'),
@@ -811,10 +840,13 @@ function showError() {
         : 'O endereço desta lista foi bloqueado pela rede ou pela operadora que você está usando agora, e por isso ela não funciona aqui. Não é um problema do IPTVKZ. Consulte o provedor da lista para mais informações e para saber se o acesso é permitido.')
       : h('p', hint || lastError),
     // detalhe embaixo: nos casos de endereço, só o endereço (o texto já está em cima); nos outros, a mensagem do servidor
-    dnsCase ? h('p.faint', { style: { fontSize: '12px' } }, `Endereço: ${listHost(list) || '-'}`)
+    dnsCase ? h('p.faint', { style: { fontSize: '12px' } }, `Endereço: ${listHost(list) || '-'}`, triedNote ? ` · ${triedNote}` : '')
       : blocked || hint ? h('p.faint', { style: { fontSize: '12px' } }, lastError) : null,
     stateActions(h('button.btn.primary', { onclick: () => loadActive(true) }, ico('refresh'), 'Tentar de novo'), [
-      list ? h('button.btn', { onclick: () => ctx.editList(list) }, ico('edit'), 'Editar lista') : null,
+      // o endereço não funciona nesta rede (bloqueado, não encontrado, fora do ar): outro servidor ou outro link
+      addressProblem ? otherAddressButton(list) : null,
+      // M3U: "Outro link" já é o Editar
+      list && !(addressProblem && list.type !== 'xtream' && list.source !== 'file') ? h('button.btn', { onclick: () => ctx.editList(list) }, ico('edit'), 'Editar lista') : null,
       S.lists.length > 1 ? h('button.btn', { onclick: () => ctx.navigate('#/settings') }, ico('settings'), 'Trocar de lista') : null,
       // bloqueio da rede não é falha do app: não pede relato
       blocked ? null : reportButton({ area: 'lista', momento: 'carregar', erro: code }),

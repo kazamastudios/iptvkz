@@ -327,7 +327,8 @@ export const SERVER_FAIL = {
 // Servidores de uma lista Xtream (mesmo usuário e senha): o em uso primeiro, depois os outros, do mais rápido ao
 // mais lento depois do teste. "Usar este" troca o servidor em uso e recarrega a lista; dá para tirar e adicionar.
 // O campo de digitar só abre com "Adicionar servidor" (na TV, focar um campo abre o teclado).
-export function openServers(list, onChanged, onClose) {
+// add: abre já com o campo de endereço aberto (vindo de "Adicionar outro servidor", nas telas de erro)
+export function openServers(list, onChanged, onClose, { add = false } = {}) {
   let main = parseServers(list.server)[0] || list.server;
   let others = parseServers((list.servers || []).join('\n')).filter((s) => s !== main);
   const results = new Map(); // servidor -> { ms, state }
@@ -423,7 +424,11 @@ export function openServers(list, onChanged, onClose) {
     h('p.muted', { style: { margin: '0 0 12px' } }, 'Endereços da mesma conta (mesmo usuário e senha). O primeiro é o que está em uso; se ele cair, o app usa o próximo.'),
     err, rowsBox, addBox,
     h('div.row.servers-acts', { style: { gap: '8px', marginTop: '4px' } }, testBtn, addBtn)), { wide: true, onClose });
-  setTimeout(() => focusEl(testBtn), 50);
+  if (add) {
+    // o campo aberto e em foco (na TV, o OK abre o teclado; no celular, o toque)
+    addBox.classList.remove('hidden');
+    setTimeout(() => focusEl(addInput), 50);
+  } else setTimeout(() => focusEl(testBtn), 50);
 }
 
 // Link digitado ou colado: sem http (o mais comum nos provedores) ganha http://; espaços e aspas em volta saem.

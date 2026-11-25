@@ -727,7 +727,12 @@ test('endereço não encontrado: bloqueado pela rede, não existe mais, ou não 
   assert.strictEqual(await state('dns-sumiu'), 'gone');
   assert.match(await load('dns-talvez'), /Esta rede não encontrou o endereço talvez\.invalid/);
   assert.strictEqual(await state('dns-talvez'), 'notfound');
-  for (const id of ['dns-bloq', 'dns-sumiu', 'dns-talvez']) await request('DELETE', `/api/list?list=${id}`);
+  // com reservas, todos são tentados, e a mensagem diz isso
+  await addLists([{ id: 'dns-reservas', type: 'xtream', name: 'Reservas', server: 'http://existe.invalid:8080', servers: ['http://sumiu.invalid:8080'], username: 'u', password: 'p' }]);
+  const all = await load('dns-reservas');
+  assert.match(all, /não encontra existe\.invalid:8080, mas esse endereço existe/);
+  assert.match(all, /O outro servidor desta conta também não funcionou nesta rede/);
+  for (const id of ['dns-bloq', 'dns-sumiu', 'dns-talvez', 'dns-reservas']) await request('DELETE', `/api/list?list=${id}`);
 });
 
 test('Servidores: o teste separa servidor fora do ar, bloqueado pela rede e endereço que não existe', async () => {
