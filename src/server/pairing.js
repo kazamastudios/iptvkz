@@ -287,6 +287,7 @@ const EDIT_FORM = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"
 <div class="bar"><div id="err"></div><div id="ok"></div><button class="send" id="sv" type="button">Salvar na TV</button></div>
 </div></main>
 <script>
+var FAIL={offline:'fora do ar',blocked:'bloqueado pela rede',gone:'endereço não existe',notfound:'endereço não encontrado',expired:'conta vencida',banned:'conta bloqueada',disabled:'conta desativada',refused:'recusou o acesso'};
 var $=function(i){return document.getElementById(i)},base=location.pathname.replace(/\\/$/,''),L=null,srv=[],res={};
 function tab(n){$('t1').className=n===1?'on':'';$('t2').className=n===2?'on':'';$('p1').className=n===1?'':'hidden';$('p2').className=n===2?'':'hidden'}
 $('t1').onclick=function(){tab(1)};$('t2').onclick=function(){tab(2)};
@@ -294,7 +295,7 @@ function short(s){return String(s).replace(/^https?:\\/\\//,'')}
 function rows(){var b=$('rows');b.innerHTML='';srv.forEach(function(s,i){var r=res[s],d=document.createElement('div');d.className='srow'+(i===0?' on':'');
 var h=document.createElement('span');h.className='h';h.textContent=short(s);d.appendChild(h);
 if(i===0){var t=document.createElement('span');t.className='tag';t.textContent='EM USO';d.appendChild(t)}
-if(r){var m=document.createElement('span');m.className='ms '+(r.ms==null?'bad':r.ms<800?'good':r.ms<2000?'warn':'bad');m.textContent=r.ms==null?(r.state==='offline'?'fora do ar':'recusou'):r.ms+' ms';d.appendChild(m)}
+if(r){var m=document.createElement('span');m.className='ms '+(r.ms==null?(r.state==='blocked'||r.state==='notfound'?'warn':'bad'):r.ms<800?'good':r.ms<2000?'warn':'bad');m.textContent=r.ms==null?(FAIL[r.state]||'não respondeu'):r.ms+' ms';d.appendChild(m)}
 if(i>0){var u=document.createElement('button');u.type='button';u.className='sm';u.textContent='Usar';u.onclick=function(){srv.splice(i,1);srv.unshift(s);rows()};d.appendChild(u);
 var x=document.createElement('button');x.type='button';x.className='sm danger';x.textContent='Tirar';x.onclick=function(){srv.splice(i,1);rows()};d.appendChild(x)}
 b.appendChild(d)})}
@@ -307,7 +308,7 @@ if(d.type==='xtream'){$('u').value=d.username||'';$('w').value=d.password||'';sr
 else{$('xt').className='hidden';$('tabs').className='hidden';if(d.source!=='file'){$('mu').className='';$('l').value=d.url||''}}
 }).catch(fail);
 $('ad').onclick=function(){$('ns').value.split(/[\\s,;|]+/).filter(Boolean).forEach(function(s){if(srv.indexOf(s)<0)srv.push(s)});$('ns').value='';rows()};
-$('te').onclick=function(){if(!srv.length)return;msg('','Testando um servidor de cada vez...');$('te').disabled=true;post('teste',{servers:srv}).then(function(r){res={};srv=r.results.map(function(x){res[x.server]=x;return x.server});rows();msg('','Teste pronto.')}).catch(fail).then(function(){$('te').disabled=false})};
+$('te').onclick=function(){if(!srv.length)return;msg('','Testando um servidor de cada vez...');$('te').disabled=true;post('teste',{servers:srv}).then(function(r){res={};srv=r.results.map(function(x){res[x.server]=x;return x.server});rows();var nb=r.results.filter(function(x){return x.state==='blocked'}).length;msg('',nb?(nb===1?'Teste pronto. Um servidor está bloqueado':'Teste pronto. '+nb+' servidores estão bloqueados')+' pela rede da TV (operadora ou roteador), não fora do ar: em outra rede pode funcionar.':'Teste pronto.')}).catch(fail).then(function(){$('te').disabled=false})};
 $('sv').onclick=function(){if(!L)return;$('sv').disabled=true;msg();
 post('',{edit:{action:'save',fields:{name:$('n').value,server:srv[0]||'',servers:srv.slice(1),username:$('u').value,password:$('w').value,url:$('l').value,epgUrl:$('g').value}}}).then(function(){msg('','Salvo na TV.')}).catch(fail).then(function(){$('sv').disabled=false})};
 $('ra').onclick=function(){post('',{edit:{action:'refresh'}}).then(function(){msg('','A TV está atualizando a lista.')}).catch(fail)};

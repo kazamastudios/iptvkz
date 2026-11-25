@@ -201,6 +201,9 @@ const STATUS_INFO = {
   refused: ['bad', 'Acesso recusado'],
   offline: ['warn', 'Lista fora do ar'],
   blocked: ['bad', 'Bloqueada pela rede'],
+  // endereço da lista: não existe mais na internet (domínio expirado) / esta rede não o acha (sem saber por quê)
+  gone: ['bad', 'Endereço não existe'],
+  notfound: ['warn', 'Endereço não encontrado'],
   local: ['idle', 'Arquivo local'],
   unknown: ['idle', 'Lista não verificada'],
 };
@@ -211,7 +214,9 @@ const STATUS_DETAIL = {
   refused: 'O servidor recusou o acesso: a lista pode ter expirado ou o usuário e a senha mudaram.',
   refusedM3u: 'O provedor não entregou a lista: o link pode ter expirado ou mudado.',
   offline: 'O servidor da lista não respondeu. Pode ser temporário.',
-  blocked: 'A rede ou a operadora que você está usando bloqueou o endereço desta lista. Não é um problema do IPTVKZ. Consulte o provedor da lista para mais informações e para saber se o acesso é permitido.',
+  blocked: 'A rede que você está usando não deixa este aparelho chegar ao endereço desta lista (bloqueio da rede ou da operadora, ou problema no roteador). Não é um problema do IPTVKZ. Em outra rede o resultado pode ser outro; consulte o provedor da lista para mais informações.',
+  gone: 'O endereço desta lista não existe mais na internet: o domínio pode ter expirado ou mudado. Peça o link atualizado ao seu provedor.',
+  notfound: 'Esta rede não encontrou o endereço desta lista. Confira o link; se ele funciona em outro aparelho, teste este em outra rede.',
   unknown: 'Sem conexão no momento: a lista será verificada quando a conexão voltar.',
   local: 'Lista de arquivo: não dá para saber se os links ainda funcionam.',
 };
@@ -760,7 +765,15 @@ function showBlocked(state) {
 }
 
 // A rede (operadora) desviou o acesso ao endereço da lista: a mensagem do servidor diz isso (util.js, netError).
-const blockedByNetwork = (msg) => /desviou o acesso/.test(msg || '');
+// Também quando o aparelho não acha o endereço, mas o DNS público diz que ele existe (util.js, explainDns): é a rede
+// escondendo um endereço que existe.
+const blockedByNetwork = (msg) => /desviou o acesso|mas esse endereço existe na internet/.test(msg || '');
+const hiddenByDns = (msg) => /mas esse endereço existe na internet/.test(msg || '');
+// o servidor da lista (sem usuário, senha nem caminho), para mostrar na tela de erro
+function listHost(list) {
+  const raw = list && (list.type === 'xtream' ? list.server : list.url);
+  try { return new URL(/^https?:\/\//i.test(raw) ? raw : 'http://' + raw).host; } catch { return ''; }
+}
 
 // Título da tela de erro pelo tipo do problema: a pessoa entende de cara se é a internet dela, o login, o link ou o
 // servidor da lista (que costuma voltar sozinho). O texto do servidor, com os detalhes, continua embaixo.
@@ -768,6 +781,10 @@ function loadErrorTitle(msg) {
   const m = msg || '';
   if (net.state === 'offline' || navigator.onLine === false) return ['Sem internet', 'Confira o Wi-Fi ou o cabo e toque em “Tentar de novo”.', 'sem-internet'];
   if (/senha inválidos|recusou o acesso|erro 40[13]/.test(m)) return ['O provedor não aceitou o acesso', 'Confira o usuário e a senha (ou o link) com o seu provedor e, se mudou algo, edite a lista.', 'acesso-recusado'];
+  // o DNS público diz que o endereço não existe: não adianta conferir letra por letra nem trocar de rede
+  if (/não existe mais na internet/.test(m)) return ['O endereço da lista não existe mais', 'O domínio pode ter expirado ou mudado. Peça o link atualizado ao seu provedor e edite a lista.', 'endereco-inexistente'];
+  // esta rede não acha o endereço, e não deu para saber se ele existe
+  if (/Esta rede não encontrou o endereço/.test(m)) return ['Endereço da lista não encontrado', 'Esta rede não encontrou o endereço. Confira se o link está certo; se ele funciona em outro aparelho, teste este em outra rede (os dados do celular, por exemplo).', 'endereco'];
   if (/endereço não encontrado|não existe \(erro 404\)|página, não uma lista/.test(m)) return ['Endereço da lista não encontrado', 'Confira se o link está certo, letra por letra, ou peça o link de novo ao provedor.', 'endereco'];
   if (/sem espaço para guardar/.test(m)) return ['Aparelho sem espaço', 'A lista não coube no aparelho. Libere espaço (apague apps, fotos ou vídeos que não usa) e toque em “Tentar de novo”.', 'sem-espaco'];
   if (/não respondeu a tempo|Tempo esgotado|caiu no meio|recusou a conexão|está com problema|pedidos demais|sem caminho/.test(m)) return ['O servidor da lista não respondeu', 'Costuma ser passageiro. Espere um pouco e tente de novo.', 'servidor'];
@@ -778,16 +795,24 @@ function showError() {
   const list = activeList();
   // Bloqueio da rede: a pessoa tende a culpar o app. A tela diz com todas as letras de onde vem.
   const blocked = blockedByNetwork(lastError);
+  // endereço que a rede esconde, que não existe mais ou que esta rede não acha (util.js, explainDns)
+  const dnsCase = blocked && hiddenByDns(lastError) || /não existe mais na internet|Esta rede não encontrou o endereço/.test(lastError || '');
   // a tela já explica: o aviso do topo, igual, sai enquanto ela está aberta (como na lista vencida)
-  document.body.classList.toggle('list-blocked', blocked);
-  const [title, hint, code] = blocked ? ['A rede bloqueou esta lista', ''] : loadErrorTitle(lastError);
+  document.body.classList.toggle('list-blocked', blocked || dnsCase);
+  const dnsHidden = hiddenByDns(lastError);
+  const [title, hint, code] = blocked ? [dnsHidden ? 'Bloqueada pela rede' : 'A rede bloqueou esta lista', ''] : loadErrorTitle(lastError);
   showState(h('div.center-state',
     ico('alert'),
     h('h2', title),
     blocked
-      ? h('p', 'O endereço desta lista foi bloqueado pela rede ou pela operadora que você está usando agora, e por isso ela não funciona aqui. Não é um problema do IPTVKZ. Consulte o provedor da lista para mais informações e para saber se o acesso é permitido.')
+      ? h('p', dnsHidden
+        // o endereço existe (DNS público), mas a rede deste aparelho não o acha
+        ? 'O endereço desta lista existe na internet, mas a rede que este aparelho está usando não o encontra. Isso costuma ser bloqueio da rede ou da operadora, ou problema no DNS do roteador. Não é um problema do IPTVKZ. Em outra rede (os dados do celular, por exemplo) o resultado pode ser outro; consulte o provedor da lista para mais informações.'
+        : 'O endereço desta lista foi bloqueado pela rede ou pela operadora que você está usando agora, e por isso ela não funciona aqui. Não é um problema do IPTVKZ. Consulte o provedor da lista para mais informações e para saber se o acesso é permitido.')
       : h('p', hint || lastError),
-    blocked || hint ? h('p.faint', { style: { fontSize: '12px' } }, lastError) : null,
+    // detalhe embaixo: nos casos de endereço, só o endereço (o texto já está em cima); nos outros, a mensagem do servidor
+    dnsCase ? h('p.faint', { style: { fontSize: '12px' } }, `Endereço: ${listHost(list) || '-'}`)
+      : blocked || hint ? h('p.faint', { style: { fontSize: '12px' } }, lastError) : null,
     stateActions(h('button.btn.primary', { onclick: () => loadActive(true) }, ico('refresh'), 'Tentar de novo'), [
       list ? h('button.btn', { onclick: () => ctx.editList(list) }, ico('edit'), 'Editar lista') : null,
       S.lists.length > 1 ? h('button.btn', { onclick: () => ctx.navigate('#/settings') }, ico('settings'), 'Trocar de lista') : null,

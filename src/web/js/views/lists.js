@@ -310,6 +310,20 @@ export function parseServers(text) {
   return out;
 }
 
+// Resultado do teste de um servidor que não respondeu, em palavras: separa o servidor que caiu (fora do ar) do que a
+// rede deste aparelho bloqueia (em outra rede pode funcionar), do endereço que não existe mais e da conta recusada.
+// O mesmo texto está na página de editar pelo celular (src/server/pairing.js).
+export const SERVER_FAIL = {
+  offline: 'fora do ar',
+  blocked: 'bloqueado pela rede',
+  gone: 'endereço não existe',
+  notfound: 'endereço não encontrado',
+  expired: 'conta vencida',
+  banned: 'conta bloqueada',
+  disabled: 'conta desativada',
+  refused: 'recusou o acesso',
+};
+
 // Servidores de uma lista Xtream (mesmo usuário e senha): o em uso primeiro, depois os outros, do mais rápido ao
 // mais lento depois do teste. "Usar este" troca o servidor em uso e recarrega a lista; dá para tirar e adicionar.
 // O campo de digitar só abre com "Adicionar servidor" (na TV, focar um campo abre o teclado).
@@ -319,7 +333,7 @@ export function openServers(list, onChanged, onClose) {
   const results = new Map(); // servidor -> { ms, state }
   const short = (s) => String(s).replace(/^https?:\/\//, '');
   const err = h('div.error-box.hidden');
-  const showErr = (msg) => { err.textContent = msg; err.classList.toggle('hidden', !msg); };
+  const showErr = (msg, warn = false) => { err.textContent = msg; err.classList.toggle('hidden', !msg); err.classList.toggle('warn-box', !!warn); };
   const rowsBox = h('div.speed-box');
   const addInput = h('input.input', { placeholder: 'http://servidor.com:8080 (pode colar vários)', autocomplete: 'off' });
   const addBox = h('div.row.hidden.add-server', { style: { gap: '8px', marginBottom: '10px' } }, addInput,
@@ -359,7 +373,8 @@ export function openServers(list, onChanged, onClose) {
         h('span.speed-host', short(s)),
         i === 0 ? h('span.badge.onair', 'EM USO') : null,
         s === best ? h('span.badge.gold', 'mais rápido') : null,
-        r ? h('span.' + (r.ms == null ? 'bad' : r.ms < 800 ? 'good' : r.ms < 2000 ? 'warn' : 'bad'), r.ms == null ? (r.state === 'offline' ? 'fora do ar' : 'recusou') : `${r.ms} ms`) : null,
+        // bloqueado pela rede e endereço não encontrado em amarelo: o servidor pode estar funcionando (em outra rede)
+        r ? h('span.' + (r.ms == null ? (r.state === 'blocked' || r.state === 'notfound' ? 'warn' : 'bad') : r.ms < 800 ? 'good' : r.ms < 2000 ? 'warn' : 'bad'), r.ms == null ? SERVER_FAIL[r.state] || 'não respondeu' : `${r.ms} ms`) : null,
         i > 0 && !(r && r.ms == null) ? h('button.btn.small', { type: 'button', onclick: () => save(s) }, 'Usar este') : null,
         i > 0 ? h('button.icon-btn', {
           type: 'button',
@@ -388,6 +403,12 @@ export function openServers(list, onChanged, onClose) {
         } else render();
         const best = r.fastest >= 0 ? r.results[r.fastest] : null;
         if (best && r.fastest > 0) toast(`${short(best.server)} está mais rápido que o em uso`, 'info');
+        // bloqueado pela rede não é servidor caído: em outra rede (os dados do celular, por exemplo) pode funcionar
+        const blockedN = r.results.filter((x) => x.state === 'blocked').length;
+        if (blockedN) {
+          // aviso, não erro: o servidor pode estar funcionando
+          showErr(`${blockedN === 1 ? 'Um servidor está bloqueado' : `${blockedN} servidores estão bloqueados`} pela rede deste aparelho (operadora ou roteador), não fora do ar. Em outra rede, como os dados do celular, ${blockedN === 1 ? 'ele pode funcionar' : 'eles podem funcionar'}.`, true);
+        }
       } catch (e2) {
         showErr(e2.message || String(e2));
       } finally {

@@ -306,6 +306,8 @@ input, select, textarea { font: inherit; color: inherit; }
 .terms p { margin: 0 0 6px; }
 .tv .terms:focus { box-shadow: 0 0 0 2px var(--accent); }
 .error-box { background: var(--bad-bg-2); border: 1px solid var(--bad-line-2); color: var(--bad-text); padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 14px; }
+/* aviso, não erro (ex.: servidor bloqueado pela rede, que pode funcionar em outra rede) */
+.error-box.warn-box { background: rgba(255, 181, 71, .12); border-color: rgba(255, 181, 71, .45); color: var(--warn-text); }
 
 .tabs { display: flex; gap: 6px; padding: 4px; background: var(--bg-2); border-radius: 999px; border: 1px solid var(--line); margin-bottom: 18px; width: fit-content; }
 .tabs button { border: 0; background: none; padding: 8px 16px; border-radius: 999px; cursor: pointer; color: var(--muted); display: flex; gap: 8px; align-items: center; font-weight: 500; }

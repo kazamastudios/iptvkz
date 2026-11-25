@@ -35,7 +35,7 @@ async function fetchWithTimeout(url, opts = {}, ms = 90000) {
     return res;
   } catch (err) {
     if (ctrl.signal.aborted) throw new Error('Tempo esgotado ao acessar ' + safeHost(url));
-    throw netError(url, err);
+    throw await explainDns(url, netError(url, err));
   } finally {
     clearTimeout(timer);
   }
@@ -66,7 +66,65 @@ function netError(url, err) {
     hit = [null, 'a rede desviou o acesso para outra página (certificado de segurança que não é o do servidor). Isso costuma acontecer quando a rede ou a operadora bloqueia o endereço; no Wi-Fi ou em outra rede o resultado pode ser outro'];
   }
   // blocked: a tela explica que é a rede (não o app) e o status da lista fica "Bloqueada pela rede"
-  return Object.assign(new Error(`Não foi possível conectar a ${safeHost(url)}: ${hit ? hit[1] : raw || 'erro desconhecido'}.`), blocked ? { blocked: true } : {});
+  // dns: o aparelho não achou o endereço (explainDns descobre se é a rede escondendo ou o endereço que não existe)
+  const dns = !blocked && !!hit && /endereço não encontrado/.test(hit[1]);
+  return Object.assign(new Error(`Não foi possível conectar a ${safeHost(url)}: ${hit ? hit[1] : raw || 'erro desconhecido'}.`), blocked ? { blocked: true } : {}, dns ? { dns: true } : {});
+}
+
+// ---------- "Endereço não encontrado": a rede escondendo, ou o endereço que não existe? ----------
+// O aparelho não achou o endereço da lista (DNS). Isso tem duas causas bem diferentes, que pedem coisas diferentes
+// da pessoa: a rede (operadora, roteador) esconde um endereço que existe, ou o endereço não existe mais (domínio
+// expirado ou trocado). Para separar, pergunta a um DNS público (Cloudflare; Google de reserva) se o nome existe.
+// Vai só o nome do servidor (nada do link, usuário ou senha), e só depois que o aparelho já não achou. A resposta
+// serve só para explicar o erro: o app não usa o endereço que o DNS público devolve (não contorna bloqueio).
+let DOH = [
+  (name) => `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=A`,
+  (name) => `https://dns.google/resolve?name=${encodeURIComponent(name)}&type=A`,
+];
+const dohCache = new Map(); // nome -> { at, value }: o status da lista é verificado a cada 2 min
+const DOH_TTL = 10 * 60 * 1000;
+
+// 'exists', 'nxdomain' ou null (não deu para perguntar)
+async function publicDns(name) {
+  const c = dohCache.get(name);
+  if (c && Date.now() - c.at < DOH_TTL) return c.value;
+  let value = null;
+  for (const make of DOH) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const res = await fetch(make(name), { headers: { Accept: 'application/dns-json', 'User-Agent': UA }, signal: ctrl.signal });
+      if (!res.ok) continue;
+      const j = JSON.parse(await res.text());
+      // 0: o nome existe; 3: não existe (NXDOMAIN). Outros (falha do servidor DNS): pergunta ao próximo
+      if (j && j.Status === 0) { value = 'exists'; break; }
+      if (j && j.Status === 3) { value = 'nxdomain'; break; }
+    } catch {
+      // DNS público fora do alcance nesta rede: tenta o próximo
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  if (value) dohCache.set(name, { at: Date.now(), value });
+  return value;
+}
+
+// Reescreve o erro de "endereço não encontrado" conforme o DNS público. Outros erros passam como estão.
+async function explainDns(url, err) {
+  if (!err || !err.dns) return err;
+  let name = '';
+  try { name = new URL(url).hostname; } catch {}
+  // endereço por número (IP) ou nome local: não há o que perguntar
+  if (!name || /^[\d.]+$|^\[|^localhost$|\.local$/i.test(name)) return err;
+  const host = safeHost(url);
+  const found = await publicDns(name);
+  if (found === 'exists') {
+    return Object.assign(new Error(`A rede deste aparelho não encontra ${host}, mas esse endereço existe na internet. A rede ou a operadora pode estar bloqueando o endereço, ou o DNS do roteador está com problema; em outra rede (como os dados do celular) o resultado pode ser outro.`), { blocked: true, dnsBlocked: true });
+  }
+  if (found === 'nxdomain') {
+    return Object.assign(new Error(`O endereço ${host} não existe mais na internet: o domínio pode ter expirado ou mudado. Peça o link atualizado ao seu provedor.`), { gone: true });
+  }
+  return Object.assign(new Error(`Esta rede não encontrou o endereço ${host}. Confira se o link está certo; se ele funciona em outro aparelho, o problema é a rede deste (o DNS do roteador ou da operadora).`), { unresolved: true });
 }
 
 // Aparelho sem espaço ao gravar a lista: em vez do código do sistema (ENOSPC), o que fazer. Outros erros passam como estão.
@@ -161,7 +219,7 @@ async function readBody(url, onText, { onProgress, headers, raw = false, idleMs 
     if (err.handler) throw err;
     if (ctrl.signal.aborted) throw Object.assign(new Error('Tempo esgotado ao baixar de ' + safeHost(url)), { timeout: true });
     if (err.status) throw err;
-    throw netError(url, err);
+    throw await explainDns(url, netError(url, err));
   } finally {
     clearTimeout(idle);
     clearTimeout(hard);
@@ -302,4 +360,4 @@ function m3uFileProblem(head) {
   return null;
 }
 
-module.exports = { diskError, UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, m3uFileProblem, streamJsonArray, safeHost, httpError, netError };
+module.exports = { diskError, UA, hash, norm, fetchWithTimeout, fetchText, fetchJson, streamLines, byteLines, m3uFileProblem, streamJsonArray, safeHost, httpError, netError, explainDns, _dns: { set(list) { DOH = list; dohCache.clear(); } } };

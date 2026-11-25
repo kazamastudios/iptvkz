@@ -121,6 +121,7 @@ A versão oficial está em https://iptvkz.kazamastudios.com.br/privacidade.html.
 - O app se conecta apenas a estes endereços:
   - os das listas, guias, imagens e vídeos cadastrados por quem usa;
   - os serviços públicos de teste de conexão do Google e da Microsoft, sem dados da conta;
+  - um DNS público (Cloudflare ou Google), só quando o aparelho não encontra o endereço de uma lista, para dizer se ela está bloqueada pela rede ou se o endereço não existe mais; vai só o nome do servidor;
   - o YouTube, só quando a pessoa pede um trailer.
 - A versão da LG Content Store não procura atualizações fora da loja.
 - O cadastro pelo celular funciona só dentro da rede de casa, com um código de uso único que vale 15 minutos.

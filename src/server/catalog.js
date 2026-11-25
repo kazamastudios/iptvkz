@@ -840,6 +840,15 @@ async function buildViaApi(list, xl, { first, onSection, checkStop, stamp }) {
   }
 }
 
+// Estado da lista quando nem deu para conectar: bloqueada pela rede (operadora, roteador), endereço que não existe
+// mais (domínio expirado), endereço que esta rede não acha (sem saber por quê) ou servidor fora do ar.
+function netState(err) {
+  if (err && err.blocked) return 'blocked';
+  if (err && err.gone) return 'gone';
+  if (err && err.unresolved) return 'notfound';
+  return 'offline';
+}
+
 async function checkXtream(cfg, timeout = STATUS_TIMEOUT) {
   const x = xtream(cfg);
   const q = `username=${encodeURIComponent(cfg.username || '')}&password=${encodeURIComponent(cfg.password || '')}`;
@@ -848,7 +857,7 @@ async function checkXtream(cfg, timeout = STATUS_TIMEOUT) {
     res = await fetchWithTimeout(`${x.base}/player_api.php?${q}`, {}, timeout);
   } catch (err) {
     // a rede (operadora) desviou o acesso ao endereço: não é o servidor que está fora do ar
-    return { state: err && err.blocked ? 'blocked' : 'offline' };
+    return { state: netState(err) };
   }
   // Muitos painéis respondem 401/403 quando a conta venceu ou foi bloqueada.
   if (res.status === 401 || res.status === 403) return { state: 'refused', http: res.status };
@@ -883,7 +892,7 @@ async function checkM3uLink(url) {
   try {
     res = await fetchWithTimeout(url, {}, STATUS_TIMEOUT);
   } catch (err) {
-    return { state: err && err.blocked ? 'blocked' : 'offline' };
+    return { state: netState(err) };
   }
   const stop = () => { try { res.body && res.body.cancel(); } catch {} };
   if (res.status === 401 || res.status === 403) { stop(); return { state: 'refused', http: res.status }; }
@@ -918,7 +927,9 @@ async function speedTest(cfg) {
       const other = server.startsWith('https://') ? server.replace(/^https/, 'http') : server.replace(/^http/, 'https');
       t0 = Date.now();
       const r2 = await checkXtream({ server: other, username: cfg.username, password: cfg.password }, 8000);
-      if (r2.state !== 'offline') { server = other; r = r2; }
+      // só troca se o outro jeito respondeu de verdade (conta ativa, vencida, recusada...): bloqueio da rede ou
+      // endereço não encontrado é o mesmo nos dois e não é motivo para mudar o endereço salvo
+      if (!['offline', 'blocked', 'gone', 'notfound'].includes(r2.state)) { server = other; r = r2; }
     }
     const ok = ['active', 'expiring'].includes(r.state);
     if (!out.some((x) => x.server === server)) out.push({ server, state: r.state, ms: ok ? Date.now() - t0 : null });
