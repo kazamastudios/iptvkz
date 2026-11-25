@@ -147,6 +147,16 @@ function startFake() {
       res.write('<?xml version="1.0"?><tv><channel id="c1"><display-name>Canal 1</display-name></channel>');
       return; // nunca termina
     }
+    // DNS público fictício (formato JSON do Cloudflare/Google): existe.invalid existe, sumiu.invalid não, e o resto
+    // falha (não deu para saber)
+    if (u.pathname === '/dns-query') {
+      const name = u.searchParams.get('name');
+      res.setHeader('Content-Type', 'application/dns-json');
+      if (name === 'existe.invalid') return res.end(JSON.stringify({ Status: 0, Answer: [{ type: 1, data: '203.0.113.7' }] }));
+      if (name === 'sumiu.invalid') return res.end(JSON.stringify({ Status: 3 }));
+      res.writeHead(500);
+      return res.end();
+    }
     if (u.pathname === '/grande.m3u') return res.end(m3u(Number(u.searchParams.get('n')), FAKE));
     if (u.pathname === '/guia.xml.gz') return res.end(zlib.gzipSync(xmltv()));
     if (u.pathname === '/player_api.php') return xtreamApi(u.searchParams, res);
@@ -216,6 +226,8 @@ async function addLists(lists) {
 
 test.before(async () => {
   await startFake();
+  // o "DNS público" (explainDns) é o provedor fictício: nenhum teste depende da internet
+  require('../src/server/util.js')._dns.set([(name) => `${FAKE}/dns-query?name=${encodeURIComponent(name)}`]);
   const { port } = await server.start({ port: 18787, host: '127.0.0.1', portFallback: true, keepAlive: true, pairing: true });
   BASE = `http://127.0.0.1:${port}`;
   HOSTPORT = `127.0.0.1:${port}`;
@@ -698,6 +710,43 @@ test('EPG: guia que trava no meio dá "tempo esgotado" (não fica carregando par
     epg._test.setIdle(90 * 1000);
     await request('DELETE', '/api/list?list=epgtrava');
   }
+});
+
+test('endereço não encontrado: bloqueado pela rede, não existe mais, ou não deu para saber', async () => {
+  // nenhum nome .invalid é achado pelo DNS do aparelho; o DNS público (fictício) diz se ele existe
+  await addLists([
+    { id: 'dns-bloq', type: 'm3u', name: 'Bloqueada', url: 'http://existe.invalid/lista.m3u' },
+    { id: 'dns-sumiu', type: 'xtream', name: 'Sumiu', server: 'http://sumiu.invalid:8080', username: 'u', password: 'p' },
+    { id: 'dns-talvez', type: 'm3u', name: 'Talvez', url: 'http://talvez.invalid/lista.m3u' },
+  ]);
+  const load = async (id) => (await request('GET', `/api/catalog?list=${id}&section=live`)).json.error;
+  const state = async (id) => (await request('GET', `/api/list-status?list=${id}`)).json.state;
+  assert.match(await load('dns-bloq'), /não encontra existe\.invalid, mas esse endereço existe na internet/);
+  assert.strictEqual(await state('dns-bloq'), 'blocked');
+  assert.match(await load('dns-sumiu'), /sumiu\.invalid:8080 não existe mais na internet/);
+  assert.strictEqual(await state('dns-sumiu'), 'gone');
+  assert.match(await load('dns-talvez'), /Esta rede não encontrou o endereço talvez\.invalid/);
+  assert.strictEqual(await state('dns-talvez'), 'notfound');
+  // com reservas, todos são tentados, e a mensagem diz isso
+  await addLists([{ id: 'dns-reservas', type: 'xtream', name: 'Reservas', server: 'http://existe.invalid:8080', servers: ['http://sumiu.invalid:8080'], username: 'u', password: 'p' }]);
+  const all = await load('dns-reservas');
+  assert.match(all, /não encontra existe\.invalid:8080, mas esse endereço existe/);
+  assert.match(all, /O outro servidor desta conta também não funcionou nesta rede/);
+  for (const id of ['dns-bloq', 'dns-sumiu', 'dns-talvez', 'dns-reservas']) await request('DELETE', `/api/list?list=${id}`);
+});
+
+test('Servidores: o teste separa servidor fora do ar, bloqueado pela rede e endereço que não existe', async () => {
+  const closed = await new Promise((r) => { const sv = http.createServer().listen(0, '127.0.0.1', () => { const p = sv.address().port; sv.close(() => r(p)); }); });
+  await addLists([{ id: 'srv-teste', type: 'xtream', name: 'Servidores', server: FAKE, username: XT.user, password: XT.pass }]);
+  const r = await request('POST', '/api/list-speed', { body: { id: 'srv-teste', server: FAKE, servers: [`http://127.0.0.1:${closed}`, 'http://existe.invalid:8080', 'http://sumiu.invalid:8080'], username: XT.user } });
+  assert.strictEqual(r.status, 200);
+  const by = Object.fromEntries(r.json.results.map((x) => [x.server, x.state]));
+  assert.strictEqual(by[FAKE], 'active');
+  assert.strictEqual(by[`http://127.0.0.1:${closed}`], 'offline', 'caiu');
+  assert.strictEqual(by['http://existe.invalid:8080'], 'blocked', 'a rede esconde');
+  assert.strictEqual(by['http://sumiu.invalid:8080'], 'gone', 'não existe mais');
+  assert.strictEqual(r.json.fastest, 0);
+  await request('DELETE', '/api/list?list=srv-teste');
 });
 
 test('preparação por trás interrompida não impede a lista de atualizar ao ser aberta', async () => {

@@ -2,7 +2,7 @@
 // e responde só os canais pedidos.
 const zlib = require('zlib');
 const { Readable, PassThrough } = require('stream');
-const { norm, UA, safeHost, httpError, netError } = require('./util');
+const { norm, UA, safeHost, httpError, netError, explainDns } = require('./util');
 const store = require('./store');
 
 const STALE_MS = 12 * 60 * 60 * 1000;
@@ -84,7 +84,7 @@ async function openStream(url) {
   } catch (err) {
     done();
     if (ctrl.signal.aborted) throw new Error('Tempo esgotado ao acessar o guia em ' + safeHost(url));
-    throw netError(url, err);
+    throw await explainDns(url, netError(url, err));
   }
   if (!res.ok) { done(); throw httpError(url, res.status); }
   if (!res.body) { done(); throw new Error('O guia de programação veio vazio.'); }
